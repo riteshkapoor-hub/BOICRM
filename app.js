@@ -1,62 +1,107 @@
 /***********************
- * BOI CRM Frontend (Browser JS) — app.js
+ * BOI CRM (Frontend) — app.js
  ***********************/
 
-// Your Apps Script Web App URL
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzrHBqp6ZcS3lvRir9EchBhsldBS1jRghuQCWhj7XOY4nyuy8NRQP6mz3J1WGNYm-cD/exec";
+// Default Apps Script URL (you can change via Settings modal)
+const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzrHBqp6ZcS3lvRir9EchBhsldBS1jRghuQCWhj7XOY4nyuy8NRQP6mz3J1WGNYm-cD/exec";
+
+const LS_SCRIPT_URL = "boi_crm_script_url";
+const LS_USER = "boi_crm_user";
 
 let leadType = "supplier"; // supplier | buyer
-let sessionUser = "";
 let html5Qr = null;
+let sessionCount = 0;
 
 const $ = (id) => document.getElementById(id);
 
-function setStatus(msg, ok = null) {
+function scriptUrl() {
+  return (localStorage.getItem(LS_SCRIPT_URL) || DEFAULT_SCRIPT_URL).trim();
+}
+
+function setStatus(msg) {
   const el = $("status");
   if (!el) return;
   el.textContent = msg || "";
-  el.classList.remove("text-danger", "text-success", "text-info");
-  if (ok === true) el.classList.add("text-success");
-  else if (ok === false) el.classList.add("text-danger");
-  else el.classList.add("text-info");
 }
 
-function updateSummary(count) {
-  $("summary").textContent = `${count} leads this session`;
+function updateSummary() {
+  $("summary").textContent = `${sessionCount} leads this session`;
 }
 
-let sessionCount = 0;
+function setUserPill() {
+  const u = localStorage.getItem(LS_USER) || "";
+  $("userPill").textContent = `User: ${u || "—"}`;
+}
 
+function openOverlay(id) {
+  const el = $(id);
+  el.classList.add("open");
+  el.setAttribute("aria-hidden", "false");
+}
+function closeOverlay(id) {
+  const el = $(id);
+  el.classList.remove("open");
+  el.setAttribute("aria-hidden", "true");
+}
+
+/* -------- Lead type toggle -------- */
 function showSupplier() {
   leadType = "supplier";
-  $("cardSupplier").classList.remove("d-none");
-  $("cardBuyer").classList.add("d-none");
-  $("btnSupplier").classList.add("btn-primary");
-  $("btnSupplier").classList.remove("btn-outline-primary");
-  $("btnBuyer").classList.add("btn-outline-primary");
-  $("btnBuyer").classList.remove("btn-primary");
+  $("btnSupplier").classList.add("isActive");
+  $("btnBuyer").classList.remove("isActive");
+  $("cardSupplier").style.display = "";
+  $("cardBuyer").style.display = "none";
 }
 
 function showBuyer() {
   leadType = "buyer";
-  $("cardBuyer").classList.remove("d-none");
-  $("cardSupplier").classList.add("d-none");
-  $("btnBuyer").classList.add("btn-primary");
-  $("btnBuyer").classList.remove("btn-outline-primary");
-  $("btnSupplier").classList.add("btn-outline-primary");
-  $("btnSupplier").classList.remove("btn-primary");
+  $("btnBuyer").classList.add("isActive");
+  $("btnSupplier").classList.remove("isActive");
+  $("cardBuyer").style.display = "";
+  $("cardSupplier").style.display = "none";
 }
 
-function getUsername() {
-  const saved = localStorage.getItem("boi_crm_user") || "";
-  if (saved) return saved;
-  const name = prompt("Enter your name (saved as Entered By):") || "";
-  const clean = name.trim();
-  if (clean) localStorage.setItem("boi_crm_user", clean);
-  return clean;
+/* -------- Username (session) -------- */
+function ensureUser() {
+  const u = (localStorage.getItem(LS_USER) || "").trim();
+  if (u) {
+    closeOverlay("userOverlay");
+    setUserPill();
+    return;
+  }
+  openOverlay("userOverlay");
+  setUserPill();
 }
 
-async function fileToBase64(file) {
+/* -------- Settings -------- */
+function openSettings() {
+  $("scriptUrlInput").value = scriptUrl();
+  $("logBox").textContent = "";
+  openOverlay("settingsOverlay");
+}
+function saveSettings() {
+  const u = $("scriptUrlInput").value.trim();
+  if (!u.endsWith("/exec")) {
+    alert("Apps Script URL must end with /exec");
+    return;
+  }
+  localStorage.setItem(LS_SCRIPT_URL, u);
+  $("logBox").textContent = `Saved.\n${u}`;
+}
+async function testSettings() {
+  try {
+    const url = new URL(scriptUrl());
+    url.searchParams.set("ping", "1");
+    const res = await fetch(url.toString(), { method: "GET", mode: "cors" });
+    const text = await res.text();
+    $("logBox").textContent = `Ping response:\n${text}`;
+  } catch (e) {
+    $("logBox").textContent = `Ping failed:\n${e.message}`;
+  }
+}
+
+/* -------- Files to base64 -------- */
+function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
     r.onload = () => {
@@ -97,14 +142,12 @@ async function collectUploads(catalogInputId, cardInputId) {
   return { catalogFiles, cardFile };
 }
 
-/**
- * POST JSON as text/plain to avoid CORS preflight on GitHub Pages.
- */
+/* -------- POST lead (text/plain to minimize CORS preflight) -------- */
 async function postLead(payload) {
-  try {
-    setStatus("Saving…", null);
+  setStatus("Saving…");
 
-    const res = await fetch(SCRIPT_URL, {
+  try {
+    const res = await fetch(scriptUrl(), {
       method: "POST",
       mode: "cors",
       headers: { "Content-Type": "text/plain;charset=UTF-8" },
@@ -113,39 +156,45 @@ async function postLead(payload) {
 
     const text = await res.text();
     let json;
-    try {
-      json = JSON.parse(text);
-    } catch {
-      throw new Error(`Server did not return JSON. Got: ${text.slice(0, 180)}`);
+    try { json = JSON.parse(text); }
+    catch { throw new Error("Server did not return JSON: " + text.slice(0, 160)); }
+
+    if (!json || json.result !== "success") {
+      throw new Error(json?.message || "Save failed");
     }
 
-    if (json.result !== "success") throw new Error(json.message || "Save failed");
-
-    setStatus("Saved ✓", true);
+    setStatus("Saved ✓");
     return json;
   } catch (e) {
     console.error(e);
-    setStatus(`Save failed: ${e.message}`, false);
-    alert(`Save failed: ${e.message}`);
+    setStatus("Save failed");
+    alert("Save failed: " + e.message);
     return null;
   }
 }
 
-function addSessionRow(type, contactCompany, country) {
+/* -------- Session table row -------- */
+function addSessionRow(type, main, country) {
   const tbody = $("tbl").querySelector("tbody");
   const tr = document.createElement("tr");
-  const time = new Date().toLocaleTimeString();
   tr.innerHTML = `
-    <td>${type}</td>
-    <td>${contactCompany}</td>
-    <td>${country || ""}</td>
-    <td>${time}</td>
+    <td>${escapeHtml(type)}</td>
+    <td>${escapeHtml(main)}</td>
+    <td>${escapeHtml(country || "")}</td>
+    <td>${new Date().toLocaleTimeString()}</td>
   `;
   tbody.prepend(tr);
 }
 
+function escapeHtml(s) {
+  return String(s || "")
+    .replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;").replaceAll("'","&#039;");
+}
+
+/* -------- QR parsing + apply -------- */
 function parseVCard(text) {
-  const out = { fullName: "", company: "", email: "", phone: "" };
+  const out = { fullName:"", company:"", email:"", phone:"" };
   const t = String(text || "").trim();
   if (!t.includes("BEGIN:VCARD")) return out;
 
@@ -177,10 +226,9 @@ function applyScan(raw) {
   }
 }
 
+/* -------- QR modal open/close (ONLY on click) -------- */
 function openQr() {
-  const overlay = $("qrScannerOverlay");
-  overlay.classList.add("is-open");
-  overlay.setAttribute("aria-hidden", "false");
+  openOverlay("qrOverlay");
 
   if (!window.Html5Qrcode) {
     alert("QR scanner library not loaded.");
@@ -190,50 +238,53 @@ function openQr() {
 
   if (!html5Qr) html5Qr = new Html5Qrcode("qr-reader");
 
-  html5Qr
-    .start(
-      { facingMode: "environment" },
-      { fps: 10, qrbox: 250 },
-      (decodedText) => {
-        applyScan(decodedText);
-        closeQr();
-      },
-      () => {}
-    )
-    .catch((err) => {
-      console.error(err);
-      alert("Could not start camera. Please allow camera permission.");
+  html5Qr.start(
+    { facingMode: "environment" },
+    { fps: 10, qrbox: 250 },
+    (decodedText) => {
+      applyScan(decodedText);
       closeQr();
-    });
+    },
+    () => {}
+  ).catch((err) => {
+    console.error(err);
+    alert("Could not start camera. Please allow camera permission.");
+    closeQr();
+  });
 }
 
 function closeQr() {
-  const overlay = $("qrScannerOverlay");
-  overlay.classList.remove("is-open");
-  overlay.setAttribute("aria-hidden", "true");
-
+  closeOverlay("qrOverlay");
   if (html5Qr) {
-    try {
-      html5Qr.stop().catch(() => {});
-    } catch {}
+    try { html5Qr.stop().catch(()=>{}); } catch {}
   }
 }
 
+/* -------- Clear forms -------- */
 function clearSupplier() {
-  ["supCompany","supContact","supEmail","supPhone","supCountry","supProductType","supProducts","supExFactory","supFOB","supQR","supNotes"]
-    .forEach(id => { if ($(id)) $(id).value = ""; });
-  if ($("supCatalogFiles")) $("supCatalogFiles").value = "";
-  if ($("supCardFile")) $("supCardFile").value = "";
+  ["supCompany","supContact","supTitle","supEmail","supPhone","supPhone2","supWebsite","supSocial",
+   "supCountry","supProductType","supProducts","supExFactory","supFOB","supQR","supNotes"
+  ].forEach(id => $(id).value = "");
+  $("supCatalogFiles").value = "";
+  $("supCardFile").value = "";
+  $("supResult").textContent = "";
 }
 
 function clearBuyer() {
-  ["buyContact","buyCompany","buyEmail","buyPhone","buyCountry","buyNeeds","buyQR","buyNotes"]
-    .forEach(id => { if ($(id)) $(id).value = ""; });
-  if ($("buyCatalogFiles")) $("buyCatalogFiles").value = "";
-  if ($("buyCardFile")) $("buyCardFile").value = "";
+  ["buyContact","buyCompany","buyTitle","buyEmail","buyPhone","buyPhone2","buyWebsite","buySocial",
+   "buyCountry","buyMarkets","buyNeeds","buyPL","buyQR","buyNotes"
+  ].forEach(id => {
+    const el = $(id);
+    if (el.tagName === "SELECT") el.value = "";
+    else el.value = "";
+  });
+  $("buyCatalogFiles").value = "";
+  $("buyCardFile").value = "";
+  $("buyResult").textContent = "";
 }
 
-async function saveSupplier() {
+/* -------- Save handlers -------- */
+async function saveSupplier(closeAfter) {
   const company = $("supCompany").value.trim();
   const products = $("supProducts").value.trim();
   if (!company || !products) {
@@ -242,14 +293,19 @@ async function saveSupplier() {
   }
 
   const uploads = await collectUploads("supCatalogFiles", "supCardFile");
+  const enteredBy = (localStorage.getItem(LS_USER) || "Unknown").trim() || "Unknown";
 
   const payload = {
     type: "supplier",
-    enteredBy: sessionUser,
+    enteredBy,
     company,
     contact: $("supContact").value.trim(),
+    title: $("supTitle").value.trim(),
     email: $("supEmail").value.trim(),
     phone: $("supPhone").value.trim(),
+    phone2: $("supPhone2").value.trim(),
+    website: $("supWebsite").value.trim(),
+    social: $("supSocial").value.trim(),
     country: $("supCountry").value.trim(),
     productType: $("supProductType").value.trim(),
     productsOrNeeds: products,
@@ -261,17 +317,25 @@ async function saveSupplier() {
     cardFile: uploads.cardFile
   };
 
-  const result = await postLead(payload);
-  if (!result) return;
+  const res = await postLead(payload);
+  if (!res) return;
+
+  $("supResult").innerHTML = `Drive folder: <a href="${escapeHtml(res.folderUrl)}" target="_blank" rel="noopener">${escapeHtml(res.folderUrl)}</a><br>
+Items sheet: <a href="${escapeHtml(res.itemsSheetUrl)}" target="_blank" rel="noopener">${escapeHtml(res.itemsSheetUrl)}</a>`;
 
   sessionCount++;
-  updateSummary(sessionCount);
-  addSessionRow("Supplier", `${payload.company} / ${payload.contact || ""}`, payload.country);
+  updateSummary();
+  addSessionRow("Supplier", `${company}${payload.contact ? " / " + payload.contact : ""}`, payload.country);
 
-  clearSupplier();
+  if (closeAfter) {
+    clearSupplier();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  } else {
+    clearSupplier();
+  }
 }
 
-async function saveBuyer() {
+async function saveBuyer(closeAfter) {
   const contact = $("buyContact").value.trim();
   const needs = $("buyNeeds").value.trim();
   if (!contact || !needs) {
@@ -280,15 +344,22 @@ async function saveBuyer() {
   }
 
   const uploads = await collectUploads("buyCatalogFiles", "buyCardFile");
+  const enteredBy = (localStorage.getItem(LS_USER) || "Unknown").trim() || "Unknown";
 
   const payload = {
     type: "buyer",
-    enteredBy: sessionUser,
+    enteredBy,
     contact,
     company: $("buyCompany").value.trim(),
+    title: $("buyTitle").value.trim(),
     email: $("buyEmail").value.trim(),
     phone: $("buyPhone").value.trim(),
+    phone2: $("buyPhone2").value.trim(),
+    website: $("buyWebsite").value.trim(),
+    social: $("buySocial").value.trim(),
     country: $("buyCountry").value.trim(),
+    markets: $("buyMarkets").value.trim(),
+    privateLabel: $("buyPL").value.trim(),
     productsOrNeeds: needs,
     qrData: $("buyQR").value.trim(),
     notes: $("buyNotes").value.trim(),
@@ -296,41 +367,83 @@ async function saveBuyer() {
     cardFile: uploads.cardFile
   };
 
-  const result = await postLead(payload);
-  if (!result) return;
+  const res = await postLead(payload);
+  if (!res) return;
+
+  $("buyResult").innerHTML = `Drive folder: <a href="${escapeHtml(res.folderUrl)}" target="_blank" rel="noopener">${escapeHtml(res.folderUrl)}</a><br>
+Items sheet: <a href="${escapeHtml(res.itemsSheetUrl)}" target="_blank" rel="noopener">${escapeHtml(res.itemsSheetUrl)}</a>`;
 
   sessionCount++;
-  updateSummary(sessionCount);
-  addSessionRow("Buyer", `${payload.contact} / ${payload.company || ""}`, payload.country);
+  updateSummary();
+  addSessionRow("Buyer", `${contact}${payload.company ? " / " + payload.company : ""}`, payload.country);
 
-  clearBuyer();
+  if (closeAfter) {
+    clearBuyer();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  } else {
+    clearBuyer();
+  }
 }
 
+/* -------- Init -------- */
 document.addEventListener("DOMContentLoaded", () => {
-  // Session user
-  sessionUser = getUsername();
-  sessionUser = sessionUser || "Unknown";
-
-  // Default view
+  // Default UI
   showSupplier();
-  updateSummary(0);
-  setStatus("Ready", null);
+  updateSummary();
+  setUserPill();
+  setStatus("Ready");
 
-  // Buttons
+  // User overlay
+  ensureUser();
+  $("btnStartSession").addEventListener("click", () => {
+    const name = $("usernameInput").value.trim();
+    if (!name) { alert("Enter username"); return; }
+    localStorage.setItem(LS_USER, name);
+    setUserPill();
+    closeOverlay("userOverlay");
+  });
+
+  $("btnSwitchUser").addEventListener("click", () => {
+    localStorage.removeItem(LS_USER);
+    $("usernameInput").value = "";
+    ensureUser();
+  });
+
+  // Lead type
   $("btnSupplier").addEventListener("click", showSupplier);
   $("btnBuyer").addEventListener("click", showBuyer);
 
-  $("btnScan").addEventListener("click", () => openQr());
-  $("btnCloseQr").addEventListener("click", () => closeQr());
+  // QR
+  $("btnScan").addEventListener("click", openQr);
+  $("btnCloseQr").addEventListener("click", closeQr);
+  $("qrOverlay").addEventListener("click", (e) => {
+    if (e.target && e.target.id === "qrOverlay") closeQr();
+  });
 
-  $("saveSupplier").addEventListener("click", saveSupplier);
+  // Settings
+  $("btnSettings").addEventListener("click", openSettings);
+  $("btnCloseSettings").addEventListener("click", () => closeOverlay("settingsOverlay"));
+  $("btnSaveSettings").addEventListener("click", saveSettings);
+  $("btnTestSettings").addEventListener("click", testSettings);
+  $("settingsOverlay").addEventListener("click", (e) => {
+    if (e.target && e.target.id === "settingsOverlay") closeOverlay("settingsOverlay");
+  });
+
+  // Supplier buttons
+  $("saveSupplierNew").addEventListener("click", () => saveSupplier(false));
+  $("saveSupplierClose").addEventListener("click", () => saveSupplier(true));
   $("clearSupplier").addEventListener("click", clearSupplier);
 
-  $("saveBuyer").addEventListener("click", saveBuyer);
+  // Buyer buttons
+  $("saveBuyerNew").addEventListener("click", () => saveBuyer(false));
+  $("saveBuyerClose").addEventListener("click", () => saveBuyer(true));
   $("clearBuyer").addEventListener("click", clearBuyer);
 
-  // Clicking outside box closes QR
-  $("qrScannerOverlay").addEventListener("click", (e) => {
-    if (e.target && e.target.id === "qrScannerOverlay") closeQr();
+  // ESC closes modals
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      closeQr();
+      closeOverlay("settingsOverlay");
+    }
   });
 });
