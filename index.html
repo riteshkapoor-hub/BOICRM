@@ -4,435 +4,316 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>BOI CRM — IndusFood</title>
+
+  <!-- Prevent favicon 404 -->
+  <link rel="icon" href="data:,">
+
   <link rel="stylesheet" href="./styles.css" />
 </head>
-<body>
 
-  <header class="header">
-    <div class="header__left">
-      <div class="logoBox">
-        <img src="./boi-logo.png" alt="BOI" class="logo"
-             onerror="this.style.display='none'; document.querySelector('.logoBox').innerHTML='<div class=&quot;logoFallback&quot;>BOI</div>';">
-      </div>
-      <div>
-        <div class="header__title">BOI CRM — IndusFood</div>
-        <div class="header__sub">Blue Orbit International LLP · Lead Capture</div>
+<body>
+  <!-- TOP HEADER -->
+  <header class="hdr">
+    <div class="hdr__left">
+      <div class="brand">
+        <img class="brand__logo" src="./boi-logo.png" alt="BOI"
+             onerror="this.style.display='none';document.querySelector('.brand').classList.add('brand--fallback');document.querySelector('.brand__fallback').style.display='flex';" />
+        <div class="brand__fallback" style="display:none;">BOI</div>
+
+        <div class="brand__text">
+          <div class="brand__title">BOI CRM — IndusFood</div>
+          <div class="brand__sub">Blue Orbit International LLP · Lead Capture</div>
+        </div>
       </div>
     </div>
 
-    <div class="header__right">
+    <div class="hdr__right">
       <div class="pill" id="userPill">User: —</div>
-      <div class="pill">Saves to Sheets + Drive</div>
-      <button id="btnSwitchUser" class="btn btn--ghost btn--sm" type="button">Switch User</button>
+      <button class="btn btn--ghost btn--sm" id="btnSwitchUser" type="button">Switch User</button>
+      <button class="btn btn--ghost btn--sm" id="btnSettings" type="button">Settings</button>
     </div>
   </header>
 
-  <nav class="topbar">
-    <div class="tabs">
-      <button class="tab isActive" data-view="capture" type="button">Capture</button>
-      <button class="tab" data-view="dashboard" type="button">Dashboard</button>
-      <button class="tab" data-view="leads" type="button">Leads</button>
+  <!-- TOP BAR -->
+  <section class="topbar">
+    <div class="seg">
+      <div class="seg__label">LEAD TYPE</div>
+      <button class="seg__btn isActive" id="btnSupplier" type="button">Supplier</button>
+      <button class="seg__btn" id="btnBuyer" type="button">Buyer</button>
+      <div class="seg__hint">Scan is optional. If QR is vCard, it auto-fills contact details.</div>
     </div>
 
-    <div class="topbar__right">
-      <button id="btnScan" class="btn btn--ghost" type="button">Scan QR (optional)</button>
-      <button id="btnSettings" class="btn btn--ghost" type="button">Settings</button>
+    <div class="topbar__actions">
+      <button class="btn btn--primary" id="btnScan" type="button">Scan QR (optional)</button>
     </div>
-  </nav>
+  </section>
 
   <main class="wrap">
-
-    <!-- CAPTURE VIEW -->
-    <section id="viewCapture" class="view">
-      <div class="captureTop">
-        <div class="seg">
-          <button id="btnSupplier" class="seg__btn isActive" type="button">Supplier</button>
-          <button id="btnBuyer" class="seg__btn" type="button">Buyer</button>
-        </div>
-        <div class="hint">Scan is optional. If QR contains vCard, it will auto-fill name/company/email/phone.</div>
-      </div>
-
-      <div class="grid">
-        <!-- SUPPLIER -->
-        <section class="card" id="panelSupplier">
-          <div class="card__head">
-            <div class="card__title">Supplier details</div>
-            <div class="card__sub">Creates a subfolder under Suppliers and returns folder + items sheet URLs.</div>
-          </div>
-
-          <div class="form">
-            <div class="row2">
-              <div>
-                <label>Company name <span class="req">*</span></label>
-                <input id="supCompany" type="text" />
-              </div>
-              <div>
-                <label>Contact person</label>
-                <input id="supContact" type="text" />
-              </div>
-            </div>
-
-            <div class="row2">
-              <div>
-                <label>Title</label>
-                <input id="supTitle" type="text" />
-              </div>
-              <div>
-                <label>Email</label>
-                <input id="supEmail" type="email" />
-              </div>
-            </div>
-
-            <div class="row2">
-              <div>
-                <label>Phone 1</label>
-                <input id="supPhone" type="text" />
-              </div>
-              <div>
-                <label>Phone 2 (optional)</label>
-                <input id="supPhone2" type="text" />
-              </div>
-            </div>
-
-            <div class="row2">
-              <div>
-                <label>Website</label>
-                <input id="supWebsite" type="text" />
-              </div>
-              <div>
-                <label>Social handle</label>
-                <input id="supSocial" type="text" />
-              </div>
-            </div>
-
-            <div class="row2">
-              <div>
-                <label>Country</label>
-                <input id="supCountry" type="text" />
-              </div>
-              <div>
-                <label>Product type</label>
-                <input id="supProductType" type="text" placeholder="Chips, powders, sweeteners..." />
-              </div>
-            </div>
-
-            <div>
-              <label>What do they sell? (one per line) <span class="req">*</span></label>
-              <textarea id="supProducts" rows="3"></textarea>
-            </div>
-
-            <div class="row2">
-              <div>
-                <label>Price — Ex-Factory</label>
-                <input id="supExFactory" type="text" placeholder="USD / unit" />
-              </div>
-              <div>
-                <label>Price — FOB</label>
-                <input id="supFOB" type="text" placeholder="USD / unit" />
-              </div>
-            </div>
-
-            <div>
-              <label>Attach catalog (optional · multiple)</label>
-              <input id="supCatalogFiles" type="file" multiple accept="image/*,application/pdf" />
-            </div>
-
-            <div>
-              <label>Attach card image (optional)</label>
-              <input id="supCardFile" type="file" accept="image/*" />
-            </div>
-
-            <div>
-              <label>QR data (auto-filled if scanned)</label>
-              <textarea id="supQR" rows="2"></textarea>
-            </div>
-
-            <div>
-              <label>Notes</label>
-              <textarea id="supNotes" rows="2"></textarea>
-            </div>
-
-            <div class="actions">
-              <button id="saveSupplierNew" class="btn btn--primary" type="button">Save &amp; New</button>
-              <button id="saveSupplierClose" class="btn btn--primary" type="button">Save &amp; Close</button>
-              <button id="clearSupplier" class="btn btn--ghost" type="button">Clear</button>
-            </div>
-
-            <div id="supResult" class="result"></div>
-          </div>
-        </section>
-
-        <!-- BUYER -->
-        <section class="card" id="panelBuyer" style="display:none;">
-          <div class="card__head">
-            <div class="card__title">Buyer details</div>
-            <div class="card__sub">Creates a subfolder under Buyers and returns folder + items sheet URLs.</div>
-          </div>
-
-          <div class="form">
-            <div class="row2">
-              <div>
-                <label>Contact name <span class="req">*</span></label>
-                <input id="buyContact" type="text" />
-              </div>
-              <div>
-                <label>Company</label>
-                <input id="buyCompany" type="text" />
-              </div>
-            </div>
-
-            <div class="row2">
-              <div>
-                <label>Title</label>
-                <input id="buyTitle" type="text" />
-              </div>
-              <div>
-                <label>Email</label>
-                <input id="buyEmail" type="email" />
-              </div>
-            </div>
-
-            <div class="row2">
-              <div>
-                <label>Phone 1</label>
-                <input id="buyPhone" type="text" />
-              </div>
-              <div>
-                <label>Phone 2 (optional)</label>
-                <input id="buyPhone2" type="text" />
-              </div>
-            </div>
-
-            <div class="row2">
-              <div>
-                <label>Website</label>
-                <input id="buyWebsite" type="text" />
-              </div>
-              <div>
-                <label>Social handle</label>
-                <input id="buySocial" type="text" />
-              </div>
-            </div>
-
-            <div class="row2">
-              <div>
-                <label>Country</label>
-                <input id="buyCountry" type="text" />
-              </div>
-              <div>
-                <label>Target markets</label>
-                <input id="buyMarkets" type="text" placeholder="GCC, EU, USA..." />
-              </div>
-            </div>
-
-            <div>
-              <label>What do they want to buy? (one per line) <span class="req">*</span></label>
-              <textarea id="buyNeeds" rows="3"></textarea>
-            </div>
-
-            <div class="row2">
-              <div>
-                <label>Private label?</label>
-                <select id="buyPL">
-                  <option value=""></option>
-                  <option>Private label</option>
-                  <option>Own brand</option>
-                  <option>Both / open</option>
-                </select>
-              </div>
-              <div></div>
-            </div>
-
-            <div>
-              <label>Attach reference (optional · multiple)</label>
-              <input id="buyCatalogFiles" type="file" multiple accept="image/*,application/pdf" />
-            </div>
-
-            <div>
-              <label>Attach card image (optional)</label>
-              <input id="buyCardFile" type="file" accept="image/*" />
-            </div>
-
-            <div>
-              <label>QR data (auto-filled if scanned)</label>
-              <textarea id="buyQR" rows="2"></textarea>
-            </div>
-
-            <div>
-              <label>Notes</label>
-              <textarea id="buyNotes" rows="2"></textarea>
-            </div>
-
-            <div class="actions">
-              <button id="saveBuyerNew" class="btn btn--primary" type="button">Save &amp; New</button>
-              <button id="saveBuyerClose" class="btn btn--primary" type="button">Save &amp; Close</button>
-              <button id="clearBuyer" class="btn btn--ghost" type="button">Clear</button>
-            </div>
-
-            <div id="buyResult" class="result"></div>
-          </div>
-        </section>
-
-        <!-- SESSION -->
-        <aside class="card">
-          <div class="card__head">
-            <div class="card__title">Session leads</div>
-            <div class="card__sub">This device only. Master record is in your Google Sheet.</div>
-          </div>
-
-          <div class="asideBody">
-            <div class="asideTop">
-              <div id="summary" class="muted">0 leads this session</div>
-              <div id="status" class="status"></div>
-            </div>
-
-            <div class="tableWrap">
-              <table class="table" id="tbl">
-                <thead>
-                  <tr>
-                    <th>Type</th>
-                    <th>Contact / Company</th>
-                    <th>Country</th>
-                    <th>Drive</th>
-                  </tr>
-                </thead>
-                <tbody></tbody>
-              </table>
-            </div>
-
-            <div class="mini muted" style="margin-top:10px;">
-              Dashboard + Leads tabs show everything saved in the master sheet.
-            </div>
-          </div>
-        </aside>
-      </div>
-    </section>
-
-    <!-- DASHBOARD VIEW -->
-    <section id="viewDashboard" class="view" style="display:none;">
-      <div class="dashGrid">
-        <div class="kpi">
-          <div class="kpi__label">Total leads</div>
-          <div class="kpi__value" id="kpiTotal">—</div>
-        </div>
-        <div class="kpi">
-          <div class="kpi__label">Leads (7 days)</div>
-          <div class="kpi__value" id="kpiWeek">—</div>
-        </div>
-        <div class="kpi">
-          <div class="kpi__label">Leads (today)</div>
-          <div class="kpi__value" id="kpiToday">—</div>
-        </div>
-        <div class="kpi">
-          <div class="kpi__label">Buyers / Suppliers</div>
-          <div class="kpi__value" id="kpiSplit">—</div>
-        </div>
-
-        <div class="card">
-          <div class="card__head">
-            <div class="card__title">Leads by country (top)</div>
-            <div class="card__sub">Quick view like typical CRM geographic breakdown.</div>
-          </div>
-          <div class="pad">
-            <canvas id="chartCountry" height="160"></canvas>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card__head">
-            <div class="card__title">Leads by owner (Entered By)</div>
-            <div class="card__sub">Shows who entered leads (your team).</div>
-          </div>
-          <div class="pad">
-            <canvas id="chartOwner" height="160"></canvas>
-          </div>
-        </div>
-
-        <div class="card dashWide">
-          <div class="card__head">
-            <div class="card__title">Recent activity (last 10)</div>
-            <div class="card__sub">Recent leads list like Salesforce/HubSpot style activity panel.</div>
-          </div>
-          <div class="pad">
-            <div id="recentList" class="recent"></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="dashActions">
-        <button id="btnRefreshDash" class="btn btn--primary" type="button">Refresh Dashboard</button>
-      </div>
-    </section>
-
-    <!-- LEADS VIEW -->
-    <section id="viewLeads" class="view" style="display:none;">
-      <div class="card">
+    <div class="grid">
+      <!-- SUPPLIER CARD -->
+      <section class="card" id="cardSupplier">
         <div class="card__head">
-          <div class="card__title">All saved leads</div>
-          <div class="card__sub">Loaded from master sheet (latest first).</div>
+          <div class="card__title">Supplier details</div>
+          <div class="card__sub">Attach catalog/card images if available. Saves to Sheets + Drive folders.</div>
         </div>
-        <div class="pad">
-          <div class="leadTools">
-            <input id="leadSearch" type="text" placeholder="Search name, company, country, entered by…" />
-            <button id="btnRefreshLeads" class="btn btn--ghost" type="button">Refresh</button>
+
+        <div class="form">
+          <div class="row2">
+            <div>
+              <label>Company name <span class="req">*</span></label>
+              <input id="supCompany" type="text" autocomplete="organization" />
+            </div>
+            <div>
+              <label>Contact person</label>
+              <input id="supContact" type="text" autocomplete="name" />
+            </div>
           </div>
 
-          <div class="tableWrap" style="max-height:70vh;">
-            <table class="table" id="tblLeads">
+          <div class="row2">
+            <div>
+              <label>Title</label>
+              <input id="supTitle" type="text" autocomplete="organization-title" />
+            </div>
+            <div>
+              <label>Email</label>
+              <input id="supEmail" type="email" autocomplete="email" />
+            </div>
+          </div>
+
+          <div class="row2">
+            <div>
+              <label>Phone 1 / WhatsApp</label>
+              <input id="supPhone" type="text" autocomplete="tel" />
+            </div>
+            <div>
+              <label>Phone 2 (optional)</label>
+              <input id="supPhone2" type="text" autocomplete="tel" />
+            </div>
+          </div>
+
+          <div class="row2">
+            <div>
+              <label>Website</label>
+              <input id="supWebsite" type="text" placeholder="https://..." />
+            </div>
+            <div>
+              <label>Social handle</label>
+              <input id="supSocial" type="text" placeholder="@company" />
+            </div>
+          </div>
+
+          <div class="row2">
+            <div>
+              <label>Country</label>
+              <input id="supCountry" type="text" />
+            </div>
+            <div>
+              <label>Product type</label>
+              <input id="supProductType" type="text" placeholder="Chips, powders, sweeteners…" />
+            </div>
+          </div>
+
+          <div>
+            <label>What do they sell? (one per line) <span class="req">*</span></label>
+            <textarea id="supProducts" rows="3" placeholder="Example: Mango powder&#10;Vacuum cooked chips&#10;Jaggery"></textarea>
+          </div>
+
+          <div class="row2">
+            <div>
+              <label>Price — Ex-Factory</label>
+              <input id="supExFactory" type="text" placeholder="USD / unit" />
+            </div>
+            <div>
+              <label>Price — FOB</label>
+              <input id="supFOB" type="text" placeholder="USD / unit" />
+            </div>
+          </div>
+
+          <div>
+            <label>Attach catalog (optional · multiple)</label>
+            <input id="supCatalogFiles" type="file" multiple accept="image/*,application/pdf" />
+          </div>
+
+          <div>
+            <label>Attach card image (optional)</label>
+            <input id="supCardFile" type="file" accept="image/*" />
+          </div>
+
+          <div>
+            <label>QR raw (auto-filled if scanned)</label>
+            <textarea id="supQR" rows="2"></textarea>
+          </div>
+
+          <div>
+            <label>Notes</label>
+            <textarea id="supNotes" rows="2"></textarea>
+          </div>
+
+          <div class="actions">
+            <button class="btn btn--accent" id="saveSupplierNew" type="button">Save &amp; New</button>
+            <button class="btn btn--accent" id="saveSupplierClose" type="button">Save &amp; Close</button>
+            <button class="btn btn--ghost" id="clearSupplier" type="button">Clear</button>
+          </div>
+
+          <div class="result" id="supResult"></div>
+        </div>
+      </section>
+
+      <!-- BUYER CARD -->
+      <section class="card" id="cardBuyer" style="display:none;">
+        <div class="card__head">
+          <div class="card__title">Buyer details</div>
+          <div class="card__sub">Attach reference images if available. Saves to Sheets + Drive folders.</div>
+        </div>
+
+        <div class="form">
+          <div class="row2">
+            <div>
+              <label>Contact name <span class="req">*</span></label>
+              <input id="buyContact" type="text" autocomplete="name" />
+            </div>
+            <div>
+              <label>Company</label>
+              <input id="buyCompany" type="text" autocomplete="organization" />
+            </div>
+          </div>
+
+          <div class="row2">
+            <div>
+              <label>Title</label>
+              <input id="buyTitle" type="text" autocomplete="organization-title" />
+            </div>
+            <div>
+              <label>Email</label>
+              <input id="buyEmail" type="email" autocomplete="email" />
+            </div>
+          </div>
+
+          <div class="row2">
+            <div>
+              <label>Phone 1 / WhatsApp</label>
+              <input id="buyPhone" type="text" autocomplete="tel" />
+            </div>
+            <div>
+              <label>Phone 2 (optional)</label>
+              <input id="buyPhone2" type="text" autocomplete="tel" />
+            </div>
+          </div>
+
+          <div class="row2">
+            <div>
+              <label>Website</label>
+              <input id="buyWebsite" type="text" placeholder="https://..." />
+            </div>
+            <div>
+              <label>Social handle</label>
+              <input id="buySocial" type="text" placeholder="@buyer" />
+            </div>
+          </div>
+
+          <div class="row2">
+            <div>
+              <label>Country</label>
+              <input id="buyCountry" type="text" />
+            </div>
+            <div>
+              <label>Markets / notes</label>
+              <input id="buyMarkets" type="text" placeholder="GCC, EU, USA…" />
+            </div>
+          </div>
+
+          <div>
+            <label>What do they want to buy? (one per line) <span class="req">*</span></label>
+            <textarea id="buyNeeds" rows="3" placeholder="Example: Pineapple powder&#10;Moringa powder&#10;Vacuum cooked chips"></textarea>
+          </div>
+
+          <div class="row2">
+            <div>
+              <label>Private label?</label>
+              <select id="buyPL">
+                <option value=""></option>
+                <option>Private label</option>
+                <option>Own brand</option>
+                <option>Both / open</option>
+              </select>
+            </div>
+            <div></div>
+          </div>
+
+          <div>
+            <label>Attach reference (optional · multiple)</label>
+            <input id="buyCatalogFiles" type="file" multiple accept="image/*,application/pdf" />
+          </div>
+
+          <div>
+            <label>Attach card image (optional)</label>
+            <input id="buyCardFile" type="file" accept="image/*" />
+          </div>
+
+          <div>
+            <label>QR raw (auto-filled if scanned)</label>
+            <textarea id="buyQR" rows="2"></textarea>
+          </div>
+
+          <div>
+            <label>Notes</label>
+            <textarea id="buyNotes" rows="2"></textarea>
+          </div>
+
+          <div class="actions">
+            <button class="btn btn--accent" id="saveBuyerNew" type="button">Save &amp; New</button>
+            <button class="btn btn--accent" id="saveBuyerClose" type="button">Save &amp; Close</button>
+            <button class="btn btn--ghost" id="clearBuyer" type="button">Clear</button>
+          </div>
+
+          <div class="result" id="buyResult"></div>
+        </div>
+      </section>
+
+      <!-- SESSION PANEL -->
+      <aside class="card">
+        <div class="card__head">
+          <div class="card__title">Session leads</div>
+          <div class="card__sub">This device only. Master record is in your Google Sheet.</div>
+        </div>
+
+        <div class="aside">
+          <div class="aside__top">
+            <div class="muted" id="summary">0 leads this session</div>
+            <div class="status" id="status"></div>
+          </div>
+
+          <div class="tableWrap">
+            <table class="table" id="tbl">
               <thead>
                 <tr>
-                  <th>Time</th>
                   <th>Type</th>
-                  <th>Contact</th>
-                  <th>Company</th>
+                  <th>Contact / Company</th>
                   <th>Country</th>
-                  <th>Entered By</th>
-                  <th>Drive</th>
+                  <th>Time</th>
                 </tr>
               </thead>
               <tbody></tbody>
             </table>
           </div>
 
-          <div class="mini muted" id="leadCount"></div>
+          <div class="mini muted" style="margin-top:10px;">
+            Tip: Attach catalog + business card image. The Drive folder link appears after save.
+          </div>
         </div>
-      </div>
-    </section>
-
+      </aside>
+    </div>
   </main>
 
-  <!-- SETTINGS MODAL -->
-  <div class="overlay" id="settingsOverlay" aria-hidden="true">
-    <div class="modal">
-      <div class="modal__head">
-        <div>
-          <div class="modal__title">Settings</div>
-          <div class="mini muted">Apps Script Web App URL must end with /exec</div>
-        </div>
-        <button class="btn btn--ghost" id="closeSettings" type="button">Close</button>
-      </div>
-
-      <div class="modal__body">
-        <label>Apps Script URL</label>
-        <input id="scriptUrlInput" type="text" />
-        <div class="actions" style="margin-top:12px;">
-          <button class="btn btn--primary" id="saveSettings" type="button">Save</button>
-          <button class="btn btn--ghost" id="testConnection" type="button">Test Connection</button>
-        </div>
-        <pre class="log" id="logBox"></pre>
-      </div>
-    </div>
-  </div>
-
-  <!-- QR MODAL -->
+  <!-- QR SCANNER MODAL -->
   <div class="overlay" id="qrOverlay" aria-hidden="true">
     <div class="modal">
       <div class="modal__head">
         <div>
-          <div class="modal__title">Scan badge / QR</div>
-          <div class="mini muted">Allow camera permission. Scan is optional.</div>
+          <div class="modal__title">Scan badge / business card (optional)</div>
+          <div class="mini muted">Camera permission will be requested only after you click Scan.</div>
         </div>
-        <button class="btn btn--ghost" id="btnCloseQr" type="button">Close</button>
+        <button class="btn btn--ghost btn--sm" id="btnCloseQr" type="button">Close</button>
       </div>
       <div class="modal__body">
         <div id="qr-reader" class="qrBox"></div>
@@ -440,28 +321,51 @@
     </div>
   </div>
 
-  <!-- USERNAME MODAL -->
+  <!-- USER SESSION MODAL -->
   <div class="overlay open" id="userOverlay" aria-hidden="false">
-    <div class="modal">
+    <div class="modal modal--small">
       <div class="modal__head">
         <div>
           <div class="modal__title">Start session</div>
-          <div class="mini muted">Enter your name. This will be saved as “Entered By” for every lead.</div>
+          <div class="mini muted">This name is saved as “Entered By” for every lead.</div>
         </div>
       </div>
       <div class="modal__body">
         <label>Username</label>
-        <input id="usernameInput" type="text" placeholder="e.g., Ritesh / Team BOI" />
+        <input id="usernameInput" type="text" placeholder="Ritesh / Team BOI" />
         <div class="actions" style="margin-top:12px;">
-          <button class="btn btn--primary" id="startSession" type="button">Start</button>
+          <button class="btn btn--accent" id="btnStartSession" type="button">Start</button>
         </div>
       </div>
     </div>
   </div>
 
+  <!-- SETTINGS MODAL -->
+  <div class="overlay" id="settingsOverlay" aria-hidden="true">
+    <div class="modal modal--small">
+      <div class="modal__head">
+        <div>
+          <div class="modal__title">Settings</div>
+          <div class="mini muted">Apps Script URL should end with <b>/exec</b></div>
+        </div>
+        <button class="btn btn--ghost btn--sm" id="btnCloseSettings" type="button">Close</button>
+      </div>
+      <div class="modal__body">
+        <label>Apps Script Web App URL</label>
+        <input id="scriptUrlInput" type="text" />
+        <div class="actions" style="margin-top:12px;">
+          <button class="btn btn--accent" id="btnSaveSettings" type="button">Save</button>
+          <button class="btn btn--ghost" id="btnTestSettings" type="button">Test</button>
+        </div>
+        <pre class="log" id="logBox"></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Libraries -->
   <script src="https://unpkg.com/html5-qrcode"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- App -->
   <script src="./app.js" defer></script>
 </body>
 </html>
-
