@@ -1,342 +1,298 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>BOI CRM — IndusFood 2026</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- OPTIONAL: if you don't have favicon, remove to avoid 404 -->
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>BOI CRM — IndusFood</title>
+
+  <!-- If you don't have favicon.ico in repo, keep this commented to avoid 404 -->
   <!-- <link rel="icon" href="./favicon.ico" /> -->
 
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
   <link rel="stylesheet" href="./styles.css" />
 </head>
-
 <body>
-  <div class="app-shell">
 
-    <!-- Dark enterprise header -->
-    <header class="app-header">
-      <div class="header-inner">
-        <div class="brand-block">
-          <div class="brand-logo" aria-label="Blue Orbit International LLP">
-            <img
-              src="./boi-logo.png"
-              alt="Blue Orbit International LLP"
-              onerror="this.onerror=null;this.style.display='none'; this.parentElement.innerHTML='<span class=&quot;logo-fallback&quot;>BOI</span>';"
-            />
+  <header class="header">
+    <div class="header__left">
+      <div class="logoBox">
+        <img src="./boi-logo.png" alt="BOI" class="logo"
+             onerror="this.style.display='none'; document.querySelector('.logoBox').innerHTML='<div class=&quot;logoFallback&quot;>BOI</div>';">
+      </div>
+      <div>
+        <div class="header__title">BOI CRM — IndusFood</div>
+        <div class="header__sub">Blue Orbit International LLP · Lead Capture</div>
+      </div>
+    </div>
+
+    <div class="header__right">
+      <div class="pill">GitHub Pages · HTTPS</div>
+      <div class="pill">Saves to Sheets + Drive</div>
+    </div>
+  </header>
+
+  <nav class="topbar">
+    <div class="topbar__left">
+      <div class="seg">
+        <button id="btnSupplier" class="seg__btn" type="button">Supplier</button>
+        <button id="btnBuyer" class="seg__btn" type="button">Buyer</button>
+      </div>
+      <div class="hint">Scan is optional. Auto-fills only if QR contains vCard.</div>
+    </div>
+
+    <div class="topbar__right">
+      <button id="btnScan" class="btn btn--ghost" type="button">Scan QR (optional)</button>
+      <button id="btnSettings" class="btn btn--ghost" type="button">Settings</button>
+    </div>
+  </nav>
+
+  <main class="grid">
+    <section class="card" id="panelSupplier">
+      <div class="card__head">
+        <div class="card__title">Supplier details</div>
+        <div class="card__sub">Creates a subfolder under your Suppliers root and returns folder + items sheet URLs.</div>
+      </div>
+
+      <div class="form">
+        <div class="row2">
+          <div>
+            <label>Company name <span class="req">*</span></label>
+            <input id="supCompany" type="text" />
           </div>
-
-          <div class="brand-text">
-            <div class="brand-title">BOI CRM — IndusFood</div>
-            <div class="brand-subtitle">Blue Orbit International LLP · Secure Lead Capture</div>
+          <div>
+            <label>Contact person</label>
+            <input id="supContact" type="text" />
           </div>
         </div>
 
-        <div class="header-status">
-          <span class="status-pill status-pill--secure">HTTPS · Camera Ready</span>
-          <span class="status-pill status-pill--cloud">Saves to Sheets + Drive</span>
+        <div class="row2">
+          <div>
+            <label>Email</label>
+            <input id="supEmail" type="email" />
+          </div>
+          <div>
+            <label>Phone / WhatsApp</label>
+            <input id="supPhone" type="text" />
+          </div>
+        </div>
+
+        <div class="row2">
+          <div>
+            <label>Country</label>
+            <input id="supCountry" type="text" />
+          </div>
+          <div>
+            <label>Product type</label>
+            <input id="supProductType" type="text" placeholder="Chips, powders, sweeteners..." />
+          </div>
+        </div>
+
+        <div>
+          <label>What do they sell? (one per line) <span class="req">*</span></label>
+          <textarea id="supProducts" rows="3"></textarea>
+        </div>
+
+        <div class="row2">
+          <div>
+            <label>Price — Ex-Factory</label>
+            <input id="supExFactory" type="text" placeholder="USD / unit" />
+          </div>
+          <div>
+            <label>Price — FOB</label>
+            <input id="supFOB" type="text" placeholder="USD / unit" />
+          </div>
+        </div>
+
+        <div>
+          <label>Attach catalog (optional · multiple)</label>
+          <input id="supCatalogFiles" type="file" multiple accept="image/*,application/pdf" />
+        </div>
+
+        <div>
+          <label>Attach card image (optional)</label>
+          <input id="supCardFile" type="file" accept="image/*" />
+        </div>
+
+        <div>
+          <label>QR data (auto-filled if scanned)</label>
+          <textarea id="supQR" rows="2"></textarea>
+        </div>
+
+        <div>
+          <label>Notes</label>
+          <textarea id="supNotes" rows="2"></textarea>
+        </div>
+
+        <div class="actions">
+          <button id="saveSupplierNew" class="btn btn--primary" type="button">Save &amp; New</button>
+          <button id="saveSupplierClose" class="btn btn--primary" type="button">Save &amp; Close</button>
+          <button id="clearSupplier" class="btn btn--ghost" type="button">Clear</button>
+        </div>
+
+        <div id="supResult" class="result"></div>
+      </div>
+    </section>
+
+    <section class="card" id="panelBuyer" style="display:none;">
+      <div class="card__head">
+        <div class="card__title">Buyer details</div>
+        <div class="card__sub">Creates a subfolder under your Buyers root and returns folder + items sheet URLs.</div>
+      </div>
+
+      <div class="form">
+        <div class="row2">
+          <div>
+            <label>Contact name <span class="req">*</span></label>
+            <input id="buyContact" type="text" />
+          </div>
+          <div>
+            <label>Company</label>
+            <input id="buyCompany" type="text" />
+          </div>
+        </div>
+
+        <div class="row2">
+          <div>
+            <label>Email</label>
+            <input id="buyEmail" type="email" />
+          </div>
+          <div>
+            <label>Phone / WhatsApp</label>
+            <input id="buyPhone" type="text" />
+          </div>
+        </div>
+
+        <div class="row2">
+          <div>
+            <label>Country</label>
+            <input id="buyCountry" type="text" />
+          </div>
+          <div>
+            <label>Target markets</label>
+            <input id="buyMarkets" type="text" placeholder="GCC, EU, USA..." />
+          </div>
+        </div>
+
+        <div>
+          <label>What do they want to buy? (one per line) <span class="req">*</span></label>
+          <textarea id="buyNeeds" rows="3"></textarea>
+        </div>
+
+        <div class="row2">
+          <div>
+            <label>Private label?</label>
+            <select id="buyPL">
+              <option value=""></option>
+              <option>Private label</option>
+              <option>Own brand</option>
+              <option>Both / open</option>
+            </select>
+          </div>
+          <div></div>
+        </div>
+
+        <div>
+          <label>Attach reference (optional · multiple)</label>
+          <input id="buyCatalogFiles" type="file" multiple accept="image/*,application/pdf" />
+        </div>
+
+        <div>
+          <label>Attach card image (optional)</label>
+          <input id="buyCardFile" type="file" accept="image/*" />
+        </div>
+
+        <div>
+          <label>QR data (auto-filled if scanned)</label>
+          <textarea id="buyQR" rows="2"></textarea>
+        </div>
+
+        <div>
+          <label>Notes</label>
+          <textarea id="buyNotes" rows="2"></textarea>
+        </div>
+
+        <div class="actions">
+          <button id="saveBuyerNew" class="btn btn--primary" type="button">Save &amp; New</button>
+          <button id="saveBuyerClose" class="btn btn--primary" type="button">Save &amp; Close</button>
+          <button id="clearBuyer" class="btn btn--ghost" type="button">Clear</button>
+        </div>
+
+        <div id="buyResult" class="result"></div>
+      </div>
+    </section>
+
+    <aside class="card">
+      <div class="card__head">
+        <div class="card__title">Session leads</div>
+        <div class="card__sub">This device only. Master record is in your Google Sheet.</div>
+      </div>
+
+      <div class="asideBody">
+        <div class="asideTop">
+          <div id="summary" class="muted">0 leads this session</div>
+          <div id="status" class="status"></div>
+        </div>
+
+        <div class="tableWrap">
+          <table class="table" id="tbl">
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Contact / Company</th>
+                <th>Country</th>
+                <th>Drive</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <div class="mini muted" style="margin-top:10px;">
+          If Drive URLs are not showing, open Settings and use Test Connection.
         </div>
       </div>
-    </header>
+    </aside>
+  </main>
 
-    <!-- Tabs + Lead Type + Scan (dark style, Salesforce-ish layout but dark) -->
-    <nav class="top-nav">
-      <div class="top-nav-inner">
-        <div class="tabs">
-          <button class="nav-tab is-active" id="tabLeads" type="button">Leads</button>
-          <button class="nav-tab" id="tabSupplier" type="button">Supplier</button>
-          <button class="nav-tab" id="tabBuyer" type="button">Buyer</button>
-          <button class="nav-tab" id="tabSettings" type="button">Settings</button>
+  <!-- SETTINGS MODAL -->
+  <div class="overlay" id="settingsOverlay" aria-hidden="true">
+    <div class="modal">
+      <div class="modal__head">
+        <div>
+          <div class="modal__title">Settings</div>
+          <div class="mini muted">Apps Script Web App URL must end with /exec</div>
         </div>
-
-        <div class="nav-actions">
-          <div class="btn-group btn-group-sm" role="group" aria-label="Lead type">
-            <button class="btn btn-outline-light" id="btnSupplier" type="button">Supplier</button>
-            <button class="btn btn-outline-light" id="btnBuyer" type="button">Buyer</button>
-          </div>
-
-          <button class="btn btn-outline-light btn-sm ms-2" id="btnScan" type="button">
-            Scan QR (optional)
-          </button>
-        </div>
+        <button class="btn btn--ghost" id="closeSettings" type="button">Close</button>
       </div>
-    </nav>
 
-    <main class="app-main">
-
-      <!-- LEADS -->
-      <section id="viewLeads">
-        <div class="row g-3">
-          <div class="col-12 col-lg-8">
-            <div class="card-ui">
-              <div class="card-ui__header">
-                <h5 class="card-ui__title">Capture a lead</h5>
-                <div class="card-ui__subtitle">
-                  Select <strong>Supplier</strong> or <strong>Buyer</strong> above. Scan is optional (auto-fills vCard QR).
-                </div>
-              </div>
-              <div class="card-ui__body">
-                <div class="hint">
-                  Tip: Use <strong>Save &amp; New</strong> to move fast during the show.
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="col-12 col-lg-4">
-            <div class="card-ui">
-              <div class="card-ui__header">
-                <h5 class="card-ui__title">Session leads</h5>
-                <div class="card-ui__subtitle">This device only. Master record is stored in Google Sheet.</div>
-              </div>
-
-              <div class="card-ui__body">
-                <div class="summary-row">
-                  <div id="summary" class="muted">0 leads this session</div>
-                  <div id="status" class="micro"></div>
-                </div>
-
-                <div class="table-wrap mt-2">
-                  <table class="table table-sm table-dark table-striped align-middle" id="tbl">
-                    <thead>
-                      <tr>
-                        <th>Type</th>
-                        <th>Contact / Company</th>
-                        <th>Country</th>
-                        <th>Drive</th>
-                      </tr>
-                    </thead>
-                    <tbody></tbody>
-                  </table>
-                </div>
-
-                <div class="micro muted mt-2">
-                  If Drive URLs are not showing, go to <strong>Settings → Test Connection</strong>.
-                </div>
-              </div>
-            </div>
-          </div>
+      <div class="modal__body">
+        <label>Apps Script URL</label>
+        <input id="scriptUrlInput" type="text" />
+        <div class="actions" style="margin-top:12px;">
+          <button class="btn btn--primary" id="saveSettings" type="button">Save</button>
+          <button class="btn btn--ghost" id="testConnection" type="button">Test Connection</button>
         </div>
-      </section>
-
-      <!-- SUPPLIER -->
-      <section id="viewSupplier" class="d-none">
-        <div class="card-ui">
-          <div class="card-ui__header">
-            <h5 class="card-ui__title">Supplier details</h5>
-            <div class="card-ui__subtitle">
-              Creates a subfolder under your <strong>Suppliers</strong> Drive root and returns the folder + items sheet URLs.
-            </div>
-          </div>
-
-          <div class="card-ui__body">
-            <div class="row g-2">
-              <div class="col-12 col-md-6">
-                <label class="form-label">Company name <span class="req">*</span></label>
-                <input class="form-control" id="supCompany"/>
-              </div>
-              <div class="col-12 col-md-6">
-                <label class="form-label">Contact person</label>
-                <input class="form-control" id="supContact"/>
-              </div>
-
-              <div class="col-12 col-md-6">
-                <label class="form-label">Email</label>
-                <input class="form-control" id="supEmail" type="email"/>
-              </div>
-              <div class="col-12 col-md-6">
-                <label class="form-label">Phone / WhatsApp</label>
-                <input class="form-control" id="supPhone"/>
-              </div>
-
-              <div class="col-12 col-md-6">
-                <label class="form-label">Country</label>
-                <input class="form-control" id="supCountry"/>
-              </div>
-              <div class="col-12 col-md-6">
-                <label class="form-label">Product type</label>
-                <input class="form-control" id="supProductType" placeholder="Chips, powders, sweeteners..."/>
-              </div>
-
-              <div class="col-12">
-                <label class="form-label">What do they sell? (one per line) <span class="req">*</span></label>
-                <textarea class="form-control" id="supProducts" rows="3"></textarea>
-              </div>
-
-              <div class="col-12">
-                <label class="form-label">Attach catalog (optional · multiple)</label>
-                <input class="form-control" id="supCatalogFiles" type="file" multiple accept="image/*,application/pdf"/>
-              </div>
-
-              <div class="col-12">
-                <label class="form-label">Attach card image (optional)</label>
-                <input class="form-control" id="supCardFile" type="file" accept="image/*"/>
-              </div>
-
-              <div class="col-12 col-md-6">
-                <label class="form-label">Price — Ex-Factory</label>
-                <input class="form-control" id="supExFactory" placeholder="USD / unit"/>
-              </div>
-              <div class="col-12 col-md-6">
-                <label class="form-label">Price — FOB</label>
-                <input class="form-control" id="supFOB" placeholder="USD / unit"/>
-              </div>
-
-              <div class="col-12">
-                <label class="form-label">QR data (auto-filled if scanned)</label>
-                <textarea class="form-control" id="supQR" rows="2"></textarea>
-              </div>
-
-              <div class="col-12">
-                <label class="form-label">Notes</label>
-                <textarea class="form-control" id="supNotes" rows="2"></textarea>
-              </div>
-            </div>
-
-            <div class="form-actions">
-              <button class="btn btn-success btn-sm" id="saveSupplierNew" type="button">Save &amp; New</button>
-              <button class="btn btn-success btn-sm" id="saveSupplierClose" type="button">Save &amp; Close</button>
-              <button class="btn btn-outline-light btn-sm" id="clearSupplier" type="button">Clear</button>
-            </div>
-
-            <div class="micro muted mt-2" id="supResult"></div>
-          </div>
-        </div>
-      </section>
-
-      <!-- BUYER -->
-      <section id="viewBuyer" class="d-none">
-        <div class="card-ui">
-          <div class="card-ui__header">
-            <h5 class="card-ui__title">Buyer details</h5>
-            <div class="card-ui__subtitle">
-              Creates a subfolder under your <strong>Buyers</strong> Drive root and returns the folder + items sheet URLs.
-            </div>
-          </div>
-
-          <div class="card-ui__body">
-            <div class="row g-2">
-              <div class="col-12 col-md-6">
-                <label class="form-label">Contact name <span class="req">*</span></label>
-                <input class="form-control" id="buyContact"/>
-              </div>
-              <div class="col-12 col-md-6">
-                <label class="form-label">Company</label>
-                <input class="form-control" id="buyCompany"/>
-              </div>
-
-              <div class="col-12 col-md-6">
-                <label class="form-label">Email</label>
-                <input class="form-control" id="buyEmail" type="email"/>
-              </div>
-              <div class="col-12 col-md-6">
-                <label class="form-label">Phone / WhatsApp</label>
-                <input class="form-control" id="buyPhone"/>
-              </div>
-
-              <div class="col-12 col-md-6">
-                <label class="form-label">Country</label>
-                <input class="form-control" id="buyCountry"/>
-              </div>
-
-              <div class="col-12">
-                <label class="form-label">What do they want to buy? (one per line) <span class="req">*</span></label>
-                <textarea class="form-control" id="buyNeeds" rows="3"></textarea>
-              </div>
-
-              <div class="col-12">
-                <label class="form-label">Attach reference (optional · multiple)</label>
-                <input class="form-control" id="buyCatalogFiles" type="file" multiple accept="image/*,application/pdf"/>
-              </div>
-
-              <div class="col-12">
-                <label class="form-label">Attach card image (optional)</label>
-                <input class="form-control" id="buyCardFile" type="file" accept="image/*"/>
-              </div>
-
-              <div class="col-12 col-md-6">
-                <label class="form-label">Private label?</label>
-                <select class="form-select" id="buyPL">
-                  <option value=""></option>
-                  <option>Private label</option>
-                  <option>Own brand</option>
-                  <option>Both / open</option>
-                </select>
-              </div>
-
-              <div class="col-12 col-md-6">
-                <label class="form-label">Target markets</label>
-                <input class="form-control" id="buyMarkets" placeholder="GCC, EU, USA..."/>
-              </div>
-
-              <div class="col-12">
-                <label class="form-label">QR data (auto-filled if scanned)</label>
-                <textarea class="form-control" id="buyQR" rows="2"></textarea>
-              </div>
-
-              <div class="col-12">
-                <label class="form-label">Notes</label>
-                <textarea class="form-control" id="buyNotes" rows="2"></textarea>
-              </div>
-            </div>
-
-            <div class="form-actions">
-              <button class="btn btn-success btn-sm" id="saveBuyerNew" type="button">Save &amp; New</button>
-              <button class="btn btn-success btn-sm" id="saveBuyerClose" type="button">Save &amp; Close</button>
-              <button class="btn btn-outline-light btn-sm" id="clearBuyer" type="button">Clear</button>
-            </div>
-
-            <div class="micro muted mt-2" id="buyResult"></div>
-          </div>
-        </div>
-      </section>
-
-      <!-- SETTINGS -->
-      <section id="viewSettings" class="d-none">
-        <div class="card-ui">
-          <div class="card-ui__header">
-            <h5 class="card-ui__title">Settings</h5>
-            <div class="card-ui__subtitle">
-              Use this to verify your Apps Script endpoint and see errors.
-            </div>
-          </div>
-
-          <div class="card-ui__body">
-            <div class="row g-2">
-              <div class="col-12">
-                <label class="form-label">Apps Script Web App URL</label>
-                <input class="form-control" id="scriptUrlInput" />
-                <div class="micro muted mt-1">Must end with <code>/exec</code>.</div>
-              </div>
-            </div>
-
-            <div class="form-actions">
-              <button class="btn btn-outline-light btn-sm" id="saveSettings" type="button">Save Settings</button>
-              <button class="btn btn-outline-light btn-sm" id="testConnection" type="button">Test Connection</button>
-              <button class="btn btn-outline-light btn-sm" id="clearLogs" type="button">Clear Logs</button>
-            </div>
-
-            <div class="log-box mt-3" id="logBox"></div>
-          </div>
-        </div>
-      </section>
-
-    </main>
-  </div>
-
-  <!-- QR Overlay -->
-  <div id="qrScannerOverlay" aria-hidden="true">
-    <div id="qrScannerBox" role="dialog" aria-label="QR Scanner">
-      <div class="d-flex justify-content-between align-items-center mb-2">
-        <h6 class="mb-0">Scan badge / business card (optional)</h6>
-        <button type="button" class="btn btn-sm btn-outline-light" id="btnCloseQr">Close</button>
+        <pre class="log" id="logBox"></pre>
       </div>
-      <div class="micro muted mb-2">Allow camera permission when prompted. Point at QR to auto-fill.</div>
-      <div id="qr-reader"></div>
     </div>
   </div>
 
-  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  <!-- QR MODAL -->
+  <div class="overlay" id="qrOverlay" aria-hidden="true">
+    <div class="modal">
+      <div class="modal__head">
+        <div>
+          <div class="modal__title">Scan badge / business card</div>
+          <div class="mini muted">Allow camera permission. Scan is optional.</div>
+        </div>
+        <button class="btn btn--ghost" id="btnCloseQr" type="button">Close</button>
+      </div>
+      <div class="modal__body">
+        <div id="qr-reader" class="qrBox"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/html5-qrcode"></script>
   <script src="./app.js"></script>
 </body>
 </html>
