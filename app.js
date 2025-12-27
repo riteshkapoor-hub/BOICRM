@@ -324,12 +324,26 @@ function saveSettings(){
   setStatus("Settings saved ✓", true);
 }
 async function testConnection(){
-  const payload = { type:"buyer", contact:"Ping", productsOrNeeds:"Test", timestamp:Date.now() };
-  const res = await postEntry(payload);
-  if (res?.result === "success"){
-    alert("Connection OK. Check Buyers folder for a new test subfolder.");
-  } else {
+  const url = getScriptUrl();
+  const pingUrl = url + (url.includes("?") ? "&" : "?") + "ping=1";
+
+  try {
+    const res = await fetch(pingUrl, { method:"GET", mode:"cors" });
+    const text = await res.text();
+    log("PING RAW RESPONSE: " + text);
+
+    const json = JSON.parse(text);
+    if (json?.result === "success") {
+      alert("Connection OK ✅ Web App is reachable.");
+      setStatus("Connection OK ✓", true);
+    } else {
+      alert("Connection failed. " + (json?.message || ""));
+      setStatus("Connection failed", false);
+    }
+  } catch (e) {
     alert("Connection failed. Check Apps Script deployment permissions.");
+    setStatus("Connection failed", false);
+    log("PING ERROR: " + e.message);
   }
 }
 
@@ -372,3 +386,4 @@ window.addEventListener("DOMContentLoaded", () => {
 
   log("Loaded. Script URL: " + getScriptUrl());
 });
+
