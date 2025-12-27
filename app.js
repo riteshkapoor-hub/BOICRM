@@ -1,161 +1,6 @@
-const SHEET_NAME = 'Leads';
-
-// Your root folders (from your links)
-const BUYERS_ROOT_ID = '1pgE-VKGtc-_l6gpFIbqvfJfgO-MiaraW';
-const SUPPLIERS_ROOT_ID = '1pltrlpOsBJgUSb-4s1ZelpCQEOGuEs9c';
-
-/**
- * Run this ONCE manually from the script editor to trigger permissions
- * and confirm folder access.
- */
-function setupCheck() {
-  const b = DriveApp.getFolderById(BUYERS_ROOT_ID).getName();
-  const s = DriveApp.getFolderById(SUPPLIERS_ROOT_ID).getName();
-  Logger.log("Buyer folder OK: " + b);
-  Logger.log("Supplier folder OK: " + s);
-
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  Logger.log("Spreadsheet OK: " + ss.getName());
-}
-
-function doPost(e) {
-  try {
-    if (!e || !e.postData || !e.postData.contents) {
-      return jsonResponse({ result: 'error', message: 'No POST body received' }, 400);
-    }
-
-    const data = JSON.parse(e.postData.contents);
-
-    if (!data.type || (data.type !== 'buyer' && data.type !== 'supplier')) {
-      return jsonResponse({ result: 'error', message: 'Invalid type. Must be buyer or supplier.' }, 400);
-    }
-
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheet = ss.getSheetByName(SHEET_NAME);
-    if (!sheet) return jsonResponse({ result: 'error', message: `Sheet "${SHEET_NAME}" not found` }, 500);
-
-    const now = new Date();
-    const tz = Session.getScriptTimeZone();
-    const dateSlug = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
-    const timeSlug = Utilities.formatDate(now, tz, 'HHmm');
-
-    // Pick correct root folder
-    const rootId = (data.type === 'buyer') ? BUYERS_ROOT_ID : SUPPLIERS_ROOT_ID;
-    const rootFolder = DriveApp.getFolderById(rootId);
-
-    // Folder naming
-    const baseName = ((data.contact || data.company || '').trim()) || (data.type === 'buyer' ? 'Buyer' : 'Supplier');
-    const safeName = sanitize_(baseName).substring(0, 80);
-
-    const folderName =
-      (data.type === 'buyer' ? 'Buyer - ' : 'Supplier - ') +
-      safeName + ' - ' + dateSlug + ' ' + timeSlug;
-
-    // ✅ Create subfolder in correct root
-    const subfolder = rootFolder.createFolder(folderName);
-    const folderUrl = 'https://drive.google.com/drive/folders/' + subfolder.getId();
-
-    // ✅ Create Items Google Sheet inside subfolder
-    const itemsFileName =
-      (data.type === 'buyer' ? 'Buyer Items - ' : 'Supplier Items - ') +
-      safeName + ' - ' + dateSlug;
-
-    const itemsSS = SpreadsheetApp.create(itemsFileName);
-    DriveApp.getFileById(itemsSS.getId()).moveTo(subfolder);
-    const itemsSheetUrl = 'https://docs.google.com/spreadsheets/d/' + itemsSS.getId();
-
-    const sh = itemsSS.getSheets()[0];
-    sh.setName('Items');
-
-    // Headers
-    if (data.type === 'buyer') {
-      sh.getRange(1, 1, 1, 3).setValues([['Item wanted', 'Notes', 'From CRM (Timestamp)']]);
-    } else {
-      sh.getRange(1, 1, 1, 3).setValues([['Item sold', 'Notes', 'From CRM (Timestamp)']]);
-    }
-
-    // Write list lines
-    const lines = (data.productsOrNeeds || '')
-      .toString()
-      .split(/\r?\n/)
-      .map(s => s.trim())
-      .filter(Boolean);
-
-    if (lines.length) {
-      const ts = Utilities.formatDate(now, tz, 'yyyy-MM-dd HH:mm:ss');
-      sh.getRange(2, 1, lines.length, 3).setValues(lines.map(item => [item, '', ts]));
-    }
-
-    // ✅ Save files (catalog multiple + card optional)
-    saveUploadedFilesToFolder_(subfolder, data, safeName, dateSlug);
-
-    // ✅ Append row in master sheet
-    const row = [
-      now,                           // Timestamp
-      data.type || '',               // Type
-      data.company || '',            // Company
-      data.contact || '',            // Contact
-      data.email || '',              // Email
-      data.phone || '',              // Phone
-      data.country || '',            // Country
-      data.productType || '',        // ProductType
-      data.productsOrNeeds || '',    // ProductsOrNeeds
-      '',                            // AttachmentLink (not used)
-      data.exFactory || '',          // ExFactory
-      data.fob || '',                // FOB
-      data.privateLabel || '',       // PrivateLabel
-      data.markets || '',            // Markets
-      data.qrData || '',             // QRData
-      data.notes || '',              // Notes
-      folderUrl,                     // FolderUrl
-      itemsSheetUrl                  // ItemsSheetUrl
-    ];
-
-    sheet.appendRow(row);
-
-    return jsonResponse({ result: 'success', folderUrl, itemsSheetUrl }, 200);
-
-  } catch (err) {
-    Logger.log("ERROR: " + err + "\n" + (err && err.stack ? err.stack : ''));
-    return jsonResponse({ result: 'error', message: String(err) }, 500);
-  }
-}
-
-function saveUploadedFilesToFolder_(folder, data, safeName, dateSlug) {
-  // Card file (optional)
-  if (data.cardFile && data.cardFile.dataBase64) {
-    const blob = Utilities.newBlob(
-      Utilities.base64Decode(data.cardFile.dataBase64),
-      data.cardFile.mimeType || 'image/jpeg',
-      `Card - ${safeName} - ${dateSlug} - ${sanitize_(data.cardFile.name || 'card.jpg')}`
-    );
-    folder.createFile(blob);
-  }
-
-  // Catalog files (multiple optional)
-  if (Array.isArray(data.catalogFiles) && data.catalogFiles.length) {
-    data.catalogFiles.forEach((f, i) => {
-      if (!f || !f.dataBase64) return;
-      const blob = Utilities.newBlob(
-        Utilities.base64Decode(f.dataBase64),
-        f.mimeType || 'application/octet-stream',
-        `Catalog ${String(i + 1).padStart(2, '0')} - ${safeName} - ${dateSlug} - ${sanitize_(f.name || 'catalog')}`
-      );
-      folder.createFile(blob);
-    });
-  }
-}
-
-function sanitize_(name) {
-  return String(name).replace(/[\\/:*?"<>|]/g, ' ').trim().substring(0, 120);
-}
-
-function jsonResponse(obj, statusCode) {
-  return ContentService
-    .createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzrHBqp6ZcS3lvRir9EchBhsldBS1jRghuQCWhj7XOY4nyuy8NRQP6mz3J1WGNYm-cD/exec";
+// ---------------- SETTINGS ----------------
+const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzrHBqp6ZcS3lvRir9EchBhsldBS1jRghuQCWhj7XOY4nyuy8NRQP6mz3J1WGNYm-cD/exec";
+const LS_SCRIPT_URL_KEY = "boi_crm_script_url";
 
 let entries = [];
 let mode = null; // 'supplier' | 'buyer'
@@ -163,12 +8,27 @@ let html5QrCode = null;
 
 function $(id){ return document.getElementById(id); }
 
-function setStatus(msg, cls="text-info"){
+function getScriptUrl(){
+  return localStorage.getItem(LS_SCRIPT_URL_KEY) || DEFAULT_SCRIPT_URL;
+}
+
+function log(msg){
+  const box = $("logBox");
+  if (!box) return;
+  const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  box.textContent = (box.textContent ? box.textContent + "\n" : "") + line;
+  box.scrollTop = box.scrollHeight;
+}
+
+function setStatus(msg, cls=""){
   const el = $("status");
-  el.className = "small " + cls;
+  el.className = "micro " + (cls || "");
   el.textContent = msg || "";
 }
-function updateSummary(){ $("summary").textContent = `${entries.length} leads this session`; }
+
+function updateSummary(){
+  $("summary").textContent = `${entries.length} leads this session`;
+}
 
 function escapeHtml(s){
   return String(s || "")
@@ -176,36 +36,52 @@ function escapeHtml(s){
     .replaceAll('"',"&quot;").replaceAll("'","&#039;");
 }
 
-function addSessionEntry(e){
-  entries.push(e);
-  updateSummary();
-  const tbody = $("tbl").querySelector("tbody");
-  const tr = document.createElement("tr");
+// ---------------- NAV / VIEWS ----------------
+function setActiveTab(tabId){
+  ["tabLeads","tabSupplier","tabBuyer","tabSettings"].forEach(id => {
+    $(id).classList.toggle("is-active", id === tabId);
+  });
 
-  const badge = document.createElement("span");
-  badge.className = "badge text-capitalize " + (e.type === "supplier" ? "badge-supplier" : "badge-buyer");
-  badge.textContent = e.type;
-
-  tr.innerHTML = `
-    <td></td>
-    <td>${escapeHtml(e.contact || "(no contact)")}<br/><small class="text-muted">${escapeHtml(e.company || "")}</small></td>
-    <td>${escapeHtml(e.country || "")}</td>
-    <td>${new Date(e.timestamp).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}</td>
-  `;
-  tr.children[0].appendChild(badge);
-  tbody.prepend(tr);
+  $("viewLeads").classList.toggle("d-none", tabId !== "tabLeads");
+  $("viewSupplier").classList.toggle("d-none", tabId !== "tabSupplier");
+  $("viewBuyer").classList.toggle("d-none", tabId !== "tabBuyer");
+  $("viewSettings").classList.toggle("d-none", tabId !== "tabSettings");
 }
 
 function setMode(newMode){
   mode = newMode;
-  $("cardSupplier").classList.toggle("d-none", mode !== "supplier");
-  $("cardBuyer").classList.toggle("d-none", mode !== "buyer");
-
   $("btnSupplier").className = "btn btn-sm " + (mode === "supplier" ? "btn-primary" : "btn-outline-primary");
   $("btnBuyer").className = "btn btn-sm " + (mode === "buyer" ? "btn-primary" : "btn-outline-primary");
+
+  if (mode === "supplier"){
+    setActiveTab("tabSupplier");
+  } else if (mode === "buyer"){
+    setActiveTab("tabBuyer");
+  }
 }
 
-/* ---------- Files to Base64 ---------- */
+// ---------------- SESSION TABLE ----------------
+function addSessionEntry(e, serverResult){
+  entries.push({ ...e, serverResult });
+  updateSummary();
+
+  const tbody = $("tbl").querySelector("tbody");
+  const tr = document.createElement("tr");
+
+  const driveLink = serverResult?.folderUrl
+    ? `<a href="${escapeHtml(serverResult.folderUrl)}" target="_blank" rel="noopener">Open</a>`
+    : `<span class="text-danger">—</span>`;
+
+  tr.innerHTML = `
+    <td><span class="badge ${e.type === "supplier" ? "text-bg-success" : "text-bg-primary"}">${escapeHtml(e.type)}</span></td>
+    <td>${escapeHtml(e.contact || "(no contact)")}<br/><small class="text-muted">${escapeHtml(e.company || "")}</small></td>
+    <td>${escapeHtml(e.country || "")}</td>
+    <td>${driveLink}</td>
+  `;
+  tbody.prepend(tr);
+}
+
+// ---------------- FILES ----------------
 function fileToBase64(file){
   return new Promise((resolve, reject) => {
     const r = new FileReader();
@@ -241,10 +117,10 @@ async function collectFilesPayload(catalogInputId, cardInputId){
   return { catalogFiles, cardFile };
 }
 
-/* ---------- Optional QR Scan ---------- */
+// ---------------- QR (OPTIONAL) ----------------
 function openQr(){
   if (!mode){
-    alert("Select Supplier or Buyer first (scan is optional, but we need type to auto-fill correctly).");
+    alert("Select Supplier or Buyer first. Scan is optional, but we need the lead type to auto-fill correctly.");
     return;
   }
 
@@ -284,7 +160,6 @@ function closeQr(){
     } catch {}
   }
 }
-
 
 function parseVCard(text){
   const out = { fullName:"", company:"", email:"", phone:"", website:"" };
@@ -328,28 +203,44 @@ function applyScan(rawText){
   }
 }
 
-/* ---------- Submit ---------- */
+// ---------------- POST (READ JSON + URLs) ----------------
 async function postEntry(payload){
-  setStatus("Saving...", "text-info");
+  const url = getScriptUrl();
+  setStatus("Saving...", "text-primary");
+  log(`POST → ${url}`);
   try {
-    await fetch(SCRIPT_URL, {
+    const res = await fetch(url, {
       method: "POST",
-      mode: "no-cors",
+      mode: "cors",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    setStatus("Saved.", "text-success");
-    setTimeout(() => setStatus(""), 1400);
-    return true;
+
+    const json = await res.json().catch(() => null);
+
+    if (!res.ok){
+      const msg = json?.message || `HTTP ${res.status}`;
+      throw new Error(msg);
+    }
+
+    if (!json || json.result !== "success"){
+      throw new Error(json?.message || "Unknown error (no success response)");
+    }
+
+    setStatus("Saved successfully.", "text-success");
+    log(`SUCCESS. folderUrl=${json.folderUrl || "—"}`);
+    return json;
+
   } catch (e){
     console.error(e);
-    setStatus("Save failed. Check internet.", "text-danger");
-    alert("Save failed. Check connection and try again.");
-    return false;
+    setStatus(`Save failed: ${e.message}`, "text-danger");
+    log(`ERROR: ${e.message}`);
+    return null;
   }
 }
 
-async function saveSupplier(){
+// ---------------- SAVE FLOWS ----------------
+async function saveSupplier(closeAfter){
   const company = $("supCompany").value.trim();
   const productsOrNeeds = $("supProducts").value.trim();
   if (!company || !productsOrNeeds){
@@ -357,7 +248,7 @@ async function saveSupplier(){
     return;
   }
 
-  setStatus("Preparing files...", "text-info");
+  setStatus("Preparing files...", "text-primary");
   const filesPayload = await collectFilesPayload("supCatalogFiles", "supCardFile");
 
   const payload = {
@@ -380,11 +271,23 @@ async function saveSupplier(){
     cardFile: filesPayload.cardFile,
   };
 
-  const ok = await postEntry(payload);
-  if (ok){ addSessionEntry(payload); clearSupplier(); }
+  const result = await postEntry(payload);
+  if (!result) return;
+
+  $("supResult").innerHTML =
+    `Drive folder: <a href="${escapeHtml(result.folderUrl)}" target="_blank" rel="noopener">${escapeHtml(result.folderUrl)}</a><br/>
+     Items sheet: <a href="${escapeHtml(result.itemsSheetUrl)}" target="_blank" rel="noopener">${escapeHtml(result.itemsSheetUrl)}</a>`;
+
+  addSessionEntry(payload, result);
+  if (closeAfter){
+    clearSupplier();
+    setActiveTab("tabLeads");
+  } else {
+    clearSupplier();
+  }
 }
 
-async function saveBuyer(){
+async function saveBuyer(closeAfter){
   const contact = $("buyContact").value.trim();
   const productsOrNeeds = $("buyNeeds").value.trim();
   if (!contact || !productsOrNeeds){
@@ -392,7 +295,7 @@ async function saveBuyer(){
     return;
   }
 
-  setStatus("Preparing files...", "text-info");
+  setStatus("Preparing files...", "text-primary");
   const filesPayload = await collectFilesPayload("buyCatalogFiles", "buyCardFile");
 
   const payload = {
@@ -415,43 +318,122 @@ async function saveBuyer(){
     cardFile: filesPayload.cardFile,
   };
 
-  const ok = await postEntry(payload);
-  if (ok){ addSessionEntry(payload); clearBuyer(); }
+  const result = await postEntry(payload);
+  if (!result) return;
+
+  $("buyResult").innerHTML =
+    `Drive folder: <a href="${escapeHtml(result.folderUrl)}" target="_blank" rel="noopener">${escapeHtml(result.folderUrl)}</a><br/>
+     Items sheet: <a href="${escapeHtml(result.itemsSheetUrl)}" target="_blank" rel="noopener">${escapeHtml(result.itemsSheetUrl)}</a>`;
+
+  addSessionEntry(payload, result);
+  if (closeAfter){
+    clearBuyer();
+    setActiveTab("tabLeads");
+  } else {
+    clearBuyer();
+  }
 }
 
 function clearSupplier(){
   ["supCompany","supContact","supEmail","supPhone","supCountry","supProductType","supProducts","supExFactory","supFOB","supQR","supNotes"].forEach(id => $(id).value = "");
   $("supCatalogFiles").value = "";
   $("supCardFile").value = "";
+  $("supResult").textContent = "";
 }
 
 function clearBuyer(){
   ["buyContact","buyCompany","buyEmail","buyPhone","buyCountry","buyNeeds","buyPL","buyMarkets","buyQR","buyNotes"].forEach(id => $(id).value = "");
   $("buyCatalogFiles").value = "";
   $("buyCardFile").value = "";
+  $("buyResult").textContent = "";
 }
 
+// ---------------- SETTINGS ----------------
+function loadSettingsUI(){
+  $("scriptUrlInput").value = getScriptUrl();
+}
+function saveSettings(){
+  const v = $("scriptUrlInput").value.trim();
+  if (!v || !v.endsWith("/exec")){
+    alert("Please paste a valid Apps Script Web App URL ending with /exec");
+    return;
+  }
+  localStorage.setItem(LS_SCRIPT_URL_KEY, v);
+  log(`Saved Script URL: ${v}`);
+  setStatus("Settings saved.", "text-success");
+}
+
+async function testConnection(){
+  setStatus("Testing connection...", "text-primary");
+  log("Testing /exec ...");
+  const url = getScriptUrl();
+
+  // Send a tiny “ping” POST that should return JSON
+  const payload = { type:"buyer", contact:"Ping", productsOrNeeds:"Test", timestamp:Date.now() };
+
+  try{
+    const res = await fetch(url, {
+      method:"POST",
+      mode:"cors",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json().catch(() => null);
+    log(`Test response: HTTP ${res.status} ${JSON.stringify(json)}`);
+    if (res.ok && json?.result === "success"){
+      setStatus("Connection OK. Drive URLs should appear on save.", "text-success");
+    } else {
+      setStatus("Connection failed. Check Apps Script deployment settings.", "text-danger");
+    }
+  } catch(e){
+    log(`Test ERROR: ${e.message}`);
+    setStatus(`Test failed: ${e.message}`, "text-danger");
+  }
+}
+
+function clearLogs(){
+  $("logBox").textContent = "";
+}
+
+// ---------------- INIT ----------------
 window.addEventListener("DOMContentLoaded", () => {
+  // tabs
+  $("tabLeads").addEventListener("click", () => setActiveTab("tabLeads"));
+  $("tabSupplier").addEventListener("click", () => setActiveTab("tabSupplier"));
+  $("tabBuyer").addEventListener("click", () => setActiveTab("tabBuyer"));
+  $("tabSettings").addEventListener("click", () => { loadSettingsUI(); setActiveTab("tabSettings"); });
+
+  // lead type buttons (open the correct form)
   $("btnSupplier").addEventListener("click", () => setMode("supplier"));
   $("btnBuyer").addEventListener("click", () => setMode("buyer"));
+
+  // scan
   $("btnScan").addEventListener("click", openQr);
   $("btnCloseQr").addEventListener("click", closeQr);
 
-  $("saveSupplier").addEventListener("click", saveSupplier);
+  // close overlay by clicking background + ESC
+  $("qrScannerOverlay").addEventListener("click", (e) => {
+    if (e.target && e.target.id === "qrScannerOverlay") closeQr();
+  });
+  window.addEventListener("keydown", (e) => { if (e.key === "Escape") closeQr(); });
+
+  // supplier actions
+  $("saveSupplierNew").addEventListener("click", () => saveSupplier(false));
+  $("saveSupplierClose").addEventListener("click", () => saveSupplier(true));
   $("clearSupplier").addEventListener("click", clearSupplier);
-  $("saveBuyer").addEventListener("click", saveBuyer);
+
+  // buyer actions
+  $("saveBuyerNew").addEventListener("click", () => saveBuyer(false));
+  $("saveBuyerClose").addEventListener("click", () => saveBuyer(true));
   $("clearBuyer").addEventListener("click", clearBuyer);
-  // Close when clicking outside the box
-$("qrScannerOverlay").addEventListener("click", (e) => {
-  if (e.target && e.target.id === "qrScannerOverlay") closeQr();
-});
 
-// Close on ESC key
-window.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") closeQr();
-});
+  // settings actions
+  $("saveSettings").addEventListener("click", saveSettings);
+  $("testConnection").addEventListener("click", testConnection);
+  $("clearLogs").addEventListener("click", clearLogs);
+
+  setActiveTab("tabLeads");
   updateSummary();
+  log("App loaded.");
+  log(`Default Script URL: ${DEFAULT_SCRIPT_URL}`);
 });
-
-
-
