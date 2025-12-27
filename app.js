@@ -334,10 +334,10 @@ async function testConnection(){
 
     const json = JSON.parse(text);
     if (json?.result === "success") {
-      alert("Connection OK ✅ Web App is reachable.");
+      alert("Connection OK ✅ Web App reachable.");
       setStatus("Connection OK ✓", true);
     } else {
-      alert("Connection failed. " + (json?.message || ""));
+      alert("Connection failed: " + (json?.message || ""));
       setStatus("Connection failed", false);
     }
   } catch (e) {
@@ -386,4 +386,5 @@ window.addEventListener("DOMContentLoaded", () => {
 
   log("Loaded. Script URL: " + getScriptUrl());
 });
+
 
