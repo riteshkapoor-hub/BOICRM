@@ -2,255 +2,340 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>BOI CRM – IndusFood</title>
+  <title>BOI CRM — IndusFood 2026</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
   <link rel="stylesheet" href="./styles.css" />
 </head>
+
 <body>
   <div class="app-shell">
-  <header class="app-header">
-  <div class="header-inner">
-    
-    <!-- LEFT: Brand -->
-    <div class="brand-block">
-      <div class="brand-logo">
-        <img src="./boi-logo.png" alt="Blue Orbit International LLP" />
-      </div>
-      <div class="brand-text">
-        <div class="brand-title">BOI CRM — IndusFood 2026</div>
-        <div class="brand-subtitle">
-          Blue Orbit International LLP · Trade & Partner Lead Capture
-        </div>
-      </div>
-    </div>
 
-    <!-- RIGHT: Status -->
-    <div class="header-status">
-      <span class="status-pill">Secure · Internal Use</span>
-      <div class="status-note">Data stored in Google Workspace</div>
-    </div>
-
-  </div>
-</header>
-
-
-    <main class="p-2 p-sm-3">
-      <div class="card mb-3">
-        <div class="card-body d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2">
-          <div class="d-flex flex-wrap align-items-center gap-2">
-            <div class="pill-label">Lead type</div>
-            <div class="btn-group btn-group-sm" role="group">
-              <button class="btn btn-outline-primary" id="btnSupplier">Supplier</button>
-              <button class="btn btn-outline-primary" id="btnBuyer">Buyer</button>
-            </div>
-            <div class="small-muted ms-1">Scan is optional. It auto-fills if used.</div>
+    <!-- Clean SAP/Salesforce-style header -->
+    <header class="app-header">
+      <div class="header-inner">
+        <div class="brand-block">
+          <div class="brand-logo" aria-label="Blue Orbit International LLP">
+            <img
+              src="./boi-logo.png"
+              alt="Blue Orbit International LLP"
+              onerror="this.onerror=null;this.style.display='none'; this.parentElement.innerHTML='<span class=&quot;logo-fallback&quot;>BOI</span>';"
+            />
           </div>
 
-          <div class="d-flex flex-wrap align-items-center gap-2">
-            <button class="btn btn-outline-light btn-qr-main" id="btnScan">Scan QR (optional)</button>
-            <div class="text-end">
-              <div id="summary" class="small-muted">0 leads this session</div>
-              <div id="status" class="small text-info"></div>
-            </div>
+          <div class="brand-text">
+            <div class="brand-title">BOI CRM</div>
+            <div class="brand-subtitle">IndusFood 2026 · Lead Capture</div>
           </div>
         </div>
-      </div>
 
-      <div class="row g-3">
-        <div class="col-12 col-lg-8">
-
-          <!-- Supplier -->
-          <div class="card d-none" id="cardSupplier">
-            <div class="card-header"><h5>Supplier details</h5></div>
-            <div class="card-body">
-              <div class="small-muted mb-2">Fill manually or scan badge. Attach catalog/card images if available.</div>
-
-              <div class="row g-2">
-                <div class="col-12 col-md-6">
-                  <label class="form-label">Company name *</label>
-                  <input class="form-control" id="supCompany"/>
-                </div>
-                <div class="col-12 col-md-6">
-                  <label class="form-label">Contact person</label>
-                  <input class="form-control" id="supContact"/>
-                </div>
-                <div class="col-12 col-md-6">
-                  <label class="form-label">Email</label>
-                  <input class="form-control" id="supEmail" type="email"/>
-                </div>
-                <div class="col-12 col-md-6">
-                  <label class="form-label">Phone / WhatsApp</label>
-                  <input class="form-control" id="supPhone"/>
-                </div>
-                <div class="col-12 col-md-6">
-                  <label class="form-label">Country</label>
-                  <input class="form-control" id="supCountry"/>
-                </div>
-                <div class="col-12 col-md-6">
-                  <label class="form-label">Product type</label>
-                  <input class="form-control" id="supProductType" placeholder="Chips, powders, sweeteners..."/>
-                </div>
-
-                <div class="col-12">
-                  <label class="form-label">What do they sell? (one per line) *</label>
-                  <textarea class="form-control" id="supProducts" rows="3"></textarea>
-                </div>
-
-                <div class="col-12">
-                  <label class="form-label">Attach catalog (optional, multiple files)</label>
-                  <input class="form-control" id="supCatalogFiles" type="file" multiple accept="image/*,application/pdf"/>
-                </div>
-
-                <div class="col-12">
-                  <label class="form-label">Attach card image (optional)</label>
-                  <input class="form-control" id="supCardFile" type="file" accept="image/*"/>
-                </div>
-
-                <div class="col-12 col-md-6">
-                  <label class="form-label">Price – Ex-Factory</label>
-                  <input class="form-control" id="supExFactory"/>
-                </div>
-                <div class="col-12 col-md-6">
-                  <label class="form-label">Price – FOB</label>
-                  <input class="form-control" id="supFOB"/>
-                </div>
-
-                <div class="col-12">
-                  <label class="form-label">QR data (auto-filled if scanned)</label>
-                  <textarea class="form-control" id="supQR" rows="2"></textarea>
-                </div>
-
-                <div class="col-12">
-                  <label class="form-label">Notes</label>
-                  <textarea class="form-control" id="supNotes" rows="2"></textarea>
-                </div>
-              </div>
-
-              <div class="d-flex gap-2 mt-3">
-                <button class="btn btn-success btn-sm" id="saveSupplier">Save</button>
-                <button class="btn btn-outline-secondary btn-sm" id="clearSupplier">Clear</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Buyer -->
-          <div class="card d-none" id="cardBuyer">
-            <div class="card-header"><h5>Buyer details</h5></div>
-            <div class="card-body">
-              <div class="small-muted mb-2">Fill manually or scan badge. Attach files if available.</div>
-
-              <div class="row g-2">
-                <div class="col-12 col-md-6">
-                  <label class="form-label">Contact name *</label>
-                  <input class="form-control" id="buyContact"/>
-                </div>
-                <div class="col-12 col-md-6">
-                  <label class="form-label">Company</label>
-                  <input class="form-control" id="buyCompany"/>
-                </div>
-                <div class="col-12 col-md-6">
-                  <label class="form-label">Email</label>
-                  <input class="form-control" id="buyEmail" type="email"/>
-                </div>
-                <div class="col-12 col-md-6">
-                  <label class="form-label">Phone / WhatsApp</label>
-                  <input class="form-control" id="buyPhone"/>
-                </div>
-                <div class="col-12 col-md-6">
-                  <label class="form-label">Country</label>
-                  <input class="form-control" id="buyCountry"/>
-                </div>
-
-                <div class="col-12">
-                  <label class="form-label">What do they want to buy? (one per line) *</label>
-                  <textarea class="form-control" id="buyNeeds" rows="3"></textarea>
-                </div>
-
-                <div class="col-12">
-                  <label class="form-label">Attach catalog / reference (optional, multiple files)</label>
-                  <input class="form-control" id="buyCatalogFiles" type="file" multiple accept="image/*,application/pdf"/>
-                </div>
-
-                <div class="col-12">
-                  <label class="form-label">Attach card image (optional)</label>
-                  <input class="form-control" id="buyCardFile" type="file" accept="image/*"/>
-                </div>
-
-                <div class="col-12 col-md-6">
-                  <label class="form-label">Private label?</label>
-                  <select class="form-select" id="buyPL">
-                    <option value=""></option>
-                    <option>Private label</option>
-                    <option>Own brand</option>
-                    <option>Both / open</option>
-                  </select>
-                </div>
-
-                <div class="col-12 col-md-6">
-                  <label class="form-label">Target markets</label>
-                  <input class="form-control" id="buyMarkets"/>
-                </div>
-
-                <div class="col-12">
-                  <label class="form-label">QR data (auto-filled if scanned)</label>
-                  <textarea class="form-control" id="buyQR" rows="2"></textarea>
-                </div>
-
-                <div class="col-12">
-                  <label class="form-label">Notes</label>
-                  <textarea class="form-control" id="buyNotes" rows="2"></textarea>
-                </div>
-              </div>
-
-              <div class="d-flex gap-2 mt-3">
-                <button class="btn btn-success btn-sm" id="saveBuyer">Save</button>
-                <button class="btn btn-outline-secondary btn-sm" id="clearBuyer">Clear</button>
-              </div>
-            </div>
-          </div>
-
-        </div>
-
-        <!-- Right -->
-        <div class="col-12 col-lg-4">
-          <div class="card">
-            <div class="card-header"><h5>Session leads</h5></div>
-            <div class="card-body">
-              <div class="small-muted mb-2">This device only. Master is in Google Sheet.</div>
-              <div class="lead-table-wrapper">
-                <table class="table table-sm table-striped align-middle" id="tbl">
-                  <thead><tr><th>Type</th><th>Contact / Company</th><th>Country</th><th>Time</th></tr></thead>
-                  <tbody></tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <div class="small-muted mt-2">Camera permission pops up when you tap “Scan QR”.</div>
+        <div class="header-status">
+          <span class="status-pill status-pill--secure">Secure · Internal</span>
+          <span class="status-pill status-pill--cloud">Google Workspace</span>
         </div>
       </div>
+    </header>
+
+    <!-- Top navigation tabs (Salesforce-like) -->
+    <nav class="top-nav">
+      <div class="top-nav-inner">
+        <button class="nav-tab is-active" id="tabLeads" type="button">Leads</button>
+        <button class="nav-tab" id="tabSupplier" type="button">Suppliers</button>
+        <button class="nav-tab" id="tabBuyer" type="button">Buyers</button>
+        <button class="nav-tab" id="tabSettings" type="button">Settings</button>
+
+        <div class="nav-actions">
+          <div class="btn-group btn-group-sm" role="group" aria-label="Lead type">
+            <button class="btn btn-outline-primary" id="btnSupplier">Supplier</button>
+            <button class="btn btn-outline-primary" id="btnBuyer">Buyer</button>
+          </div>
+
+          <button class="btn btn-primary btn-sm ms-2" id="btnScan" type="button">
+            Scan QR (optional)
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <main class="app-main">
+
+      <!-- LEADS VIEW -->
+      <section id="viewLeads">
+        <div class="row g-3">
+          <div class="col-12 col-lg-8">
+            <div class="card-ui">
+              <div class="card-ui__header">
+                <h5 class="card-ui__title">Capture a lead</h5>
+                <div class="card-ui__subtitle">
+                  Select <strong>Supplier</strong> or <strong>Buyer</strong> above to open the correct form. Scan is optional.
+                </div>
+              </div>
+              <div class="card-ui__body">
+                <div class="alert alert-light border mb-0 small">
+                  Tip: For fastest entry during IndusFood, use <strong>Save &amp; New</strong>.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-12 col-lg-4">
+            <div class="card-ui">
+              <div class="card-ui__header">
+                <h5 class="card-ui__title">Session leads</h5>
+                <div class="card-ui__subtitle">This device only. Master record is stored in Google Sheet.</div>
+              </div>
+
+              <div class="card-ui__body">
+                <div class="summary-row">
+                  <div id="summary" class="muted">0 leads this session</div>
+                  <div id="status" class="micro"></div>
+                </div>
+
+                <div class="table-wrap mt-2">
+                  <table class="table table-sm table-striped align-middle" id="tbl">
+                    <thead>
+                      <tr>
+                        <th>Type</th>
+                        <th>Contact / Company</th>
+                        <th>Country</th>
+                        <th>Drive</th>
+                      </tr>
+                    </thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+
+                <div class="micro muted mt-2">
+                  If Drive URLs are not showing, open Settings and click <strong>Test Connection</strong>.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SUPPLIER FORM VIEW -->
+      <section id="viewSupplier" class="d-none">
+        <div class="card-ui">
+          <div class="card-ui__header">
+            <h5 class="card-ui__title">Supplier details</h5>
+            <div class="card-ui__subtitle">
+              Creates a subfolder under your <strong>Suppliers</strong> root folder and returns the folder URL.
+            </div>
+          </div>
+
+          <div class="card-ui__body">
+            <div class="row g-2">
+              <div class="col-12 col-md-6">
+                <label class="form-label">Company name <span class="req">*</span></label>
+                <input class="form-control" id="supCompany"/>
+              </div>
+              <div class="col-12 col-md-6">
+                <label class="form-label">Contact person</label>
+                <input class="form-control" id="supContact"/>
+              </div>
+
+              <div class="col-12 col-md-6">
+                <label class="form-label">Email</label>
+                <input class="form-control" id="supEmail" type="email"/>
+              </div>
+              <div class="col-12 col-md-6">
+                <label class="form-label">Phone / WhatsApp</label>
+                <input class="form-control" id="supPhone"/>
+              </div>
+
+              <div class="col-12 col-md-6">
+                <label class="form-label">Country</label>
+                <input class="form-control" id="supCountry"/>
+              </div>
+              <div class="col-12 col-md-6">
+                <label class="form-label">Product type</label>
+                <input class="form-control" id="supProductType" placeholder="Chips, powders, sweeteners..."/>
+              </div>
+
+              <div class="col-12">
+                <label class="form-label">What do they sell? (one per line) <span class="req">*</span></label>
+                <textarea class="form-control" id="supProducts" rows="3"></textarea>
+              </div>
+
+              <div class="col-12">
+                <label class="form-label">Attach catalog (optional · multiple)</label>
+                <input class="form-control" id="supCatalogFiles" type="file" multiple accept="image/*,application/pdf"/>
+                <div class="micro muted">Saved into the supplier’s Drive subfolder.</div>
+              </div>
+
+              <div class="col-12">
+                <label class="form-label">Attach card image (optional)</label>
+                <input class="form-control" id="supCardFile" type="file" accept="image/*"/>
+              </div>
+
+              <div class="col-12 col-md-6">
+                <label class="form-label">Price — Ex-Factory</label>
+                <input class="form-control" id="supExFactory" placeholder="USD / unit"/>
+              </div>
+              <div class="col-12 col-md-6">
+                <label class="form-label">Price — FOB</label>
+                <input class="form-control" id="supFOB" placeholder="USD / unit"/>
+              </div>
+
+              <div class="col-12">
+                <label class="form-label">QR data (auto-filled if scanned)</label>
+                <textarea class="form-control" id="supQR" rows="2"></textarea>
+              </div>
+
+              <div class="col-12">
+                <label class="form-label">Notes</label>
+                <textarea class="form-control" id="supNotes" rows="2"></textarea>
+              </div>
+            </div>
+
+            <div class="form-actions">
+              <button class="btn btn-success btn-sm" id="saveSupplierNew" type="button">Save &amp; New</button>
+              <button class="btn btn-success btn-sm" id="saveSupplierClose" type="button">Save &amp; Close</button>
+              <button class="btn btn-outline-secondary btn-sm" id="clearSupplier" type="button">Clear</button>
+            </div>
+
+            <div class="micro muted mt-2" id="supResult"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- BUYER FORM VIEW -->
+      <section id="viewBuyer" class="d-none">
+        <div class="card-ui">
+          <div class="card-ui__header">
+            <h5 class="card-ui__title">Buyer details</h5>
+            <div class="card-ui__subtitle">
+              Creates a subfolder under your <strong>Buyers</strong> root folder and returns the folder URL.
+            </div>
+          </div>
+
+          <div class="card-ui__body">
+            <div class="row g-2">
+              <div class="col-12 col-md-6">
+                <label class="form-label">Contact name <span class="req">*</span></label>
+                <input class="form-control" id="buyContact"/>
+              </div>
+              <div class="col-12 col-md-6">
+                <label class="form-label">Company</label>
+                <input class="form-control" id="buyCompany"/>
+              </div>
+
+              <div class="col-12 col-md-6">
+                <label class="form-label">Email</label>
+                <input class="form-control" id="buyEmail" type="email"/>
+              </div>
+              <div class="col-12 col-md-6">
+                <label class="form-label">Phone / WhatsApp</label>
+                <input class="form-control" id="buyPhone"/>
+              </div>
+
+              <div class="col-12 col-md-6">
+                <label class="form-label">Country</label>
+                <input class="form-control" id="buyCountry"/>
+              </div>
+
+              <div class="col-12">
+                <label class="form-label">What do they want to buy? (one per line) <span class="req">*</span></label>
+                <textarea class="form-control" id="buyNeeds" rows="3"></textarea>
+              </div>
+
+              <div class="col-12">
+                <label class="form-label">Attach reference (optional · multiple)</label>
+                <input class="form-control" id="buyCatalogFiles" type="file" multiple accept="image/*,application/pdf"/>
+              </div>
+
+              <div class="col-12">
+                <label class="form-label">Attach card image (optional)</label>
+                <input class="form-control" id="buyCardFile" type="file" accept="image/*"/>
+              </div>
+
+              <div class="col-12 col-md-6">
+                <label class="form-label">Private label?</label>
+                <select class="form-select" id="buyPL">
+                  <option value=""></option>
+                  <option>Private label</option>
+                  <option>Own brand</option>
+                  <option>Both / open</option>
+                </select>
+              </div>
+
+              <div class="col-12 col-md-6">
+                <label class="form-label">Target markets</label>
+                <input class="form-control" id="buyMarkets" placeholder="GCC, EU, USA..."/>
+              </div>
+
+              <div class="col-12">
+                <label class="form-label">QR data (auto-filled if scanned)</label>
+                <textarea class="form-control" id="buyQR" rows="2"></textarea>
+              </div>
+
+              <div class="col-12">
+                <label class="form-label">Notes</label>
+                <textarea class="form-control" id="buyNotes" rows="2"></textarea>
+              </div>
+            </div>
+
+            <div class="form-actions">
+              <button class="btn btn-success btn-sm" id="saveBuyerNew" type="button">Save &amp; New</button>
+              <button class="btn btn-success btn-sm" id="saveBuyerClose" type="button">Save &amp; Close</button>
+              <button class="btn btn-outline-secondary btn-sm" id="clearBuyer" type="button">Clear</button>
+            </div>
+
+            <div class="micro muted mt-2" id="buyResult"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SETTINGS VIEW -->
+      <section id="viewSettings" class="d-none">
+        <div class="card-ui">
+          <div class="card-ui__header">
+            <h5 class="card-ui__title">Settings</h5>
+            <div class="card-ui__subtitle">
+              Use this to verify your Apps Script endpoint and see detailed errors (recommended before the show).
+            </div>
+          </div>
+
+          <div class="card-ui__body">
+            <div class="row g-2">
+              <div class="col-12">
+                <label class="form-label">Apps Script Web App URL</label>
+                <input class="form-control" id="scriptUrlInput" />
+                <div class="micro muted mt-1">
+                  Must end with <code>/exec</code>. (We store this in your browser locally.)
+                </div>
+              </div>
+            </div>
+
+            <div class="form-actions">
+              <button class="btn btn-primary btn-sm" id="saveSettings" type="button">Save Settings</button>
+              <button class="btn btn-outline-primary btn-sm" id="testConnection" type="button">Test Connection</button>
+              <button class="btn btn-outline-danger btn-sm" id="clearLogs" type="button">Clear Logs</button>
+            </div>
+
+            <div class="log-box mt-3" id="logBox"></div>
+          </div>
+        </div>
+      </section>
+
     </main>
   </div>
 
-<!-- QR Overlay -->
-<div id="qrScannerOverlay" aria-hidden="true">
-  <div id="qrScannerBox" role="dialog" aria-label="QR Scanner">
-    <div class="d-flex justify-content-between align-items-center mb-2">
-      <h6 class="mb-0">Scan badge / business card (optional)</h6>
-      <button type="button" class="btn btn-sm btn-outline-light" id="btnCloseQr">Close</button>
+  <!-- QR Overlay -->
+  <div id="qrScannerOverlay" aria-hidden="true">
+    <div id="qrScannerBox" role="dialog" aria-label="QR Scanner">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="mb-0">Scan badge / business card (optional)</h6>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="btnCloseQr">Close</button>
+      </div>
+      <div class="micro muted mb-2">Allow camera permission when prompted. Point at QR to auto-fill.</div>
+      <div id="qr-reader"></div>
     </div>
-    <div class="small-muted mb-2">Allow camera permission when prompted. Point at QR to auto-fill.</div>
-    <div id="qr-reader"></div>
   </div>
-</div>
 
-
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
   <script src="./app.js"></script>
 </body>
 </html>
-
-
-
