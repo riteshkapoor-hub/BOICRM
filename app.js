@@ -91,7 +91,9 @@ function openQr(){
     return;
   }
 
-  $("qrScannerOverlay").style.display = "flex";
+  const overlay = $("qrScannerOverlay");
+  overlay.classList.add("is-open");
+  overlay.setAttribute("aria-hidden", "false");
 
   if (!window.Html5Qrcode){
     alert("QR library didn't load. Check internet connection.");
@@ -114,7 +116,10 @@ function openQr(){
 }
 
 function closeQr(){
-  $("qrScannerOverlay").style.display = "none";
+  const overlay = $("qrScannerOverlay");
+  overlay.classList.remove("is-open");
+  overlay.setAttribute("aria-hidden", "true");
+
   if (html5QrCode){
     try {
       const p = html5QrCode.stop();
@@ -122,6 +127,7 @@ function closeQr(){
     } catch {}
   }
 }
+
 
 function parseVCard(text){
   const out = { fullName:"", company:"", email:"", phone:"", website:"" };
@@ -281,3 +287,4 @@ window.addEventListener("DOMContentLoaded", () => {
 
   updateSummary();
 });
+
