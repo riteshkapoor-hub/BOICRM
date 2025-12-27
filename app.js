@@ -1,9 +1,9 @@
-// ✅ FRONTEND ONLY (GitHub Pages). No DriveApp / SpreadsheetApp in this file.
+// FRONTEND ONLY (GitHub Pages). No DriveApp/SpreadsheetApp here.
 
 const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzrHBqp6ZcS3lvRir9EchBhsldBS1jRghuQCWhj7XOY4nyuy8NRQP6mz3J1WGNYm-cD/exec";
 const LS_SCRIPT_URL_KEY = "boi_crm_script_url";
 
-let mode = "supplier"; // default
+let mode = "supplier";
 let entries = [];
 let qr = null;
 
@@ -47,7 +47,7 @@ function escapeHtml(s){
     .replaceAll('"',"&quot;").replaceAll("'","&#039;");
 }
 
-/* ---------- FILE HELPERS ---------- */
+/* FILES */
 function fileToBase64(file){
   return new Promise((resolve, reject) => {
     const r = new FileReader();
@@ -82,7 +82,7 @@ async function collectFilesPayload(catalogInputId, cardInputId){
   return { catalogFiles, cardFile };
 }
 
-/* ---------- QR ---------- */
+/* QR */
 function openQr(){
   if (!window.Html5Qrcode){
     alert("QR library failed to load.");
@@ -145,14 +145,14 @@ function applyScan(rawText){
   }
 }
 
-/* ---------- POST (NO PREFLIGHT → avoids CORS failures) ---------- */
+/* POST — reads TEXT first, then JSON.parse (fixes your exact error) */
 async function postEntry(payload){
   const url = getScriptUrl();
   setStatus("Saving…", null);
   log(`POST → ${url}`);
 
   try{
-    // Critical: form-urlencoded keeps it a "simple request" (no OPTIONS preflight)
+    // IMPORTANT: x-www-form-urlencoded avoids CORS preflight from GitHub Pages
     const form = new URLSearchParams();
     form.set("payload", JSON.stringify(payload));
 
@@ -163,13 +163,21 @@ async function postEntry(payload){
       body: form.toString()
     });
 
-    const json = await res.json();
-    log(`Response: ${JSON.stringify(json)}`);
+    const text = await res.text();
+    log("RAW RESPONSE: " + text);
+
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      throw new Error("Server did not return JSON. Raw: " + text.slice(0, 200));
+    }
 
     if (!json || json.result !== "success") throw new Error(json?.message || "Save failed");
 
     setStatus("Saved ✓", true);
     return json;
+
   } catch (e){
     console.error(e);
     setStatus(`Save failed: ${e.message}`, false);
@@ -178,7 +186,7 @@ async function postEntry(payload){
   }
 }
 
-/* ---------- SESSION TABLE ---------- */
+/* SESSION TABLE */
 function addSessionEntry(payload, result){
   entries.push({ payload, result });
   updateSummary();
@@ -199,7 +207,7 @@ function addSessionEntry(payload, result){
   tbody.prepend(tr);
 }
 
-/* ---------- SAVE / CLEAR ---------- */
+/* CLEAR */
 function clearSupplier(){
   ["supCompany","supContact","supEmail","supPhone","supCountry","supProductType","supProducts","supExFactory","supFOB","supQR","supNotes"]
     .forEach(id => $(id).value = "");
@@ -216,6 +224,7 @@ function clearBuyer(){
   $("buyResult").innerHTML = "";
 }
 
+/* SAVE */
 async function saveSupplier(closeAfter){
   const company = $("supCompany").value.trim();
   const items = $("supProducts").value.trim();
@@ -253,6 +262,7 @@ async function saveSupplier(closeAfter){
 
   addSessionEntry(payload, result);
   clearSupplier();
+
   if (closeAfter) window.scrollTo({ top:0, behavior:"smooth" });
 }
 
@@ -292,10 +302,11 @@ async function saveBuyer(closeAfter){
 
   addSessionEntry(payload, result);
   clearBuyer();
+
   if (closeAfter) window.scrollTo({ top:0, behavior:"smooth" });
 }
 
-/* ---------- SETTINGS ---------- */
+/* SETTINGS */
 function openSettings(){
   $("settingsOverlay").classList.add("open");
   $("settingsOverlay").setAttribute("aria-hidden","false");
@@ -312,28 +323,25 @@ function saveSettings(){
   log("Saved Script URL: " + v);
   setStatus("Settings saved ✓", true);
 }
-
 async function testConnection(){
   const payload = { type:"buyer", contact:"Ping", productsOrNeeds:"Test", timestamp:Date.now() };
   const res = await postEntry(payload);
   if (res?.result === "success"){
-    alert("Connection OK. Check your Buyers Drive root for a new folder.");
+    alert("Connection OK. Check Buyers folder for a new test subfolder.");
   } else {
     alert("Connection failed. Check Apps Script deployment permissions.");
   }
 }
 
-/* ---------- INIT ---------- */
+/* INIT */
 window.addEventListener("DOMContentLoaded", () => {
-  // Default view
   setMode("supplier");
   updateSummary();
+  setStatus("", null);
 
-  // Mode buttons
   $("btnSupplier").addEventListener("click", () => setMode("supplier"));
   $("btnBuyer").addEventListener("click", () => setMode("buyer"));
 
-  // Save/Clear
   $("saveSupplierNew").addEventListener("click", () => saveSupplier(false));
   $("saveSupplierClose").addEventListener("click", () => saveSupplier(true));
   $("clearSupplier").addEventListener("click", clearSupplier);
@@ -342,7 +350,6 @@ window.addEventListener("DOMContentLoaded", () => {
   $("saveBuyerClose").addEventListener("click", () => saveBuyer(true));
   $("clearBuyer").addEventListener("click", clearBuyer);
 
-  // QR
   $("btnScan").addEventListener("click", openQr);
   $("btnCloseQr").addEventListener("click", closeQr);
 
@@ -350,7 +357,6 @@ window.addEventListener("DOMContentLoaded", () => {
     if (e.target.id === "qrOverlay") closeQr();
   });
 
-  // Settings
   $("btnSettings").addEventListener("click", openSettings);
   $("closeSettings").addEventListener("click", closeSettings);
   $("saveSettings").addEventListener("click", saveSettings);
