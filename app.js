@@ -284,7 +284,16 @@ window.addEventListener("DOMContentLoaded", () => {
   $("clearSupplier").addEventListener("click", clearSupplier);
   $("saveBuyer").addEventListener("click", saveBuyer);
   $("clearBuyer").addEventListener("click", clearBuyer);
+  // Close when clicking outside the box
+$("qrScannerOverlay").addEventListener("click", (e) => {
+  if (e.target && e.target.id === "qrScannerOverlay") closeQr();
+});
 
+// Close on ESC key
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeQr();
+});
   updateSummary();
 });
+
 
