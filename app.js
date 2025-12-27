@@ -1,3 +1,160 @@
+const SHEET_NAME = 'Leads';
+
+// Your root folders (from your links)
+const BUYERS_ROOT_ID = '1pgE-VKGtc-_l6gpFIbqvfJfgO-MiaraW';
+const SUPPLIERS_ROOT_ID = '1pltrlpOsBJgUSb-4s1ZelpCQEOGuEs9c';
+
+/**
+ * Run this ONCE manually from the script editor to trigger permissions
+ * and confirm folder access.
+ */
+function setupCheck() {
+  const b = DriveApp.getFolderById(BUYERS_ROOT_ID).getName();
+  const s = DriveApp.getFolderById(SUPPLIERS_ROOT_ID).getName();
+  Logger.log("Buyer folder OK: " + b);
+  Logger.log("Supplier folder OK: " + s);
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  Logger.log("Spreadsheet OK: " + ss.getName());
+}
+
+function doPost(e) {
+  try {
+    if (!e || !e.postData || !e.postData.contents) {
+      return jsonResponse({ result: 'error', message: 'No POST body received' }, 400);
+    }
+
+    const data = JSON.parse(e.postData.contents);
+
+    if (!data.type || (data.type !== 'buyer' && data.type !== 'supplier')) {
+      return jsonResponse({ result: 'error', message: 'Invalid type. Must be buyer or supplier.' }, 400);
+    }
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(SHEET_NAME);
+    if (!sheet) return jsonResponse({ result: 'error', message: `Sheet "${SHEET_NAME}" not found` }, 500);
+
+    const now = new Date();
+    const tz = Session.getScriptTimeZone();
+    const dateSlug = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+    const timeSlug = Utilities.formatDate(now, tz, 'HHmm');
+
+    // Pick correct root folder
+    const rootId = (data.type === 'buyer') ? BUYERS_ROOT_ID : SUPPLIERS_ROOT_ID;
+    const rootFolder = DriveApp.getFolderById(rootId);
+
+    // Folder naming
+    const baseName = ((data.contact || data.company || '').trim()) || (data.type === 'buyer' ? 'Buyer' : 'Supplier');
+    const safeName = sanitize_(baseName).substring(0, 80);
+
+    const folderName =
+      (data.type === 'buyer' ? 'Buyer - ' : 'Supplier - ') +
+      safeName + ' - ' + dateSlug + ' ' + timeSlug;
+
+    // ✅ Create subfolder in correct root
+    const subfolder = rootFolder.createFolder(folderName);
+    const folderUrl = 'https://drive.google.com/drive/folders/' + subfolder.getId();
+
+    // ✅ Create Items Google Sheet inside subfolder
+    const itemsFileName =
+      (data.type === 'buyer' ? 'Buyer Items - ' : 'Supplier Items - ') +
+      safeName + ' - ' + dateSlug;
+
+    const itemsSS = SpreadsheetApp.create(itemsFileName);
+    DriveApp.getFileById(itemsSS.getId()).moveTo(subfolder);
+    const itemsSheetUrl = 'https://docs.google.com/spreadsheets/d/' + itemsSS.getId();
+
+    const sh = itemsSS.getSheets()[0];
+    sh.setName('Items');
+
+    // Headers
+    if (data.type === 'buyer') {
+      sh.getRange(1, 1, 1, 3).setValues([['Item wanted', 'Notes', 'From CRM (Timestamp)']]);
+    } else {
+      sh.getRange(1, 1, 1, 3).setValues([['Item sold', 'Notes', 'From CRM (Timestamp)']]);
+    }
+
+    // Write list lines
+    const lines = (data.productsOrNeeds || '')
+      .toString()
+      .split(/\r?\n/)
+      .map(s => s.trim())
+      .filter(Boolean);
+
+    if (lines.length) {
+      const ts = Utilities.formatDate(now, tz, 'yyyy-MM-dd HH:mm:ss');
+      sh.getRange(2, 1, lines.length, 3).setValues(lines.map(item => [item, '', ts]));
+    }
+
+    // ✅ Save files (catalog multiple + card optional)
+    saveUploadedFilesToFolder_(subfolder, data, safeName, dateSlug);
+
+    // ✅ Append row in master sheet
+    const row = [
+      now,                           // Timestamp
+      data.type || '',               // Type
+      data.company || '',            // Company
+      data.contact || '',            // Contact
+      data.email || '',              // Email
+      data.phone || '',              // Phone
+      data.country || '',            // Country
+      data.productType || '',        // ProductType
+      data.productsOrNeeds || '',    // ProductsOrNeeds
+      '',                            // AttachmentLink (not used)
+      data.exFactory || '',          // ExFactory
+      data.fob || '',                // FOB
+      data.privateLabel || '',       // PrivateLabel
+      data.markets || '',            // Markets
+      data.qrData || '',             // QRData
+      data.notes || '',              // Notes
+      folderUrl,                     // FolderUrl
+      itemsSheetUrl                  // ItemsSheetUrl
+    ];
+
+    sheet.appendRow(row);
+
+    return jsonResponse({ result: 'success', folderUrl, itemsSheetUrl }, 200);
+
+  } catch (err) {
+    Logger.log("ERROR: " + err + "\n" + (err && err.stack ? err.stack : ''));
+    return jsonResponse({ result: 'error', message: String(err) }, 500);
+  }
+}
+
+function saveUploadedFilesToFolder_(folder, data, safeName, dateSlug) {
+  // Card file (optional)
+  if (data.cardFile && data.cardFile.dataBase64) {
+    const blob = Utilities.newBlob(
+      Utilities.base64Decode(data.cardFile.dataBase64),
+      data.cardFile.mimeType || 'image/jpeg',
+      `Card - ${safeName} - ${dateSlug} - ${sanitize_(data.cardFile.name || 'card.jpg')}`
+    );
+    folder.createFile(blob);
+  }
+
+  // Catalog files (multiple optional)
+  if (Array.isArray(data.catalogFiles) && data.catalogFiles.length) {
+    data.catalogFiles.forEach((f, i) => {
+      if (!f || !f.dataBase64) return;
+      const blob = Utilities.newBlob(
+        Utilities.base64Decode(f.dataBase64),
+        f.mimeType || 'application/octet-stream',
+        `Catalog ${String(i + 1).padStart(2, '0')} - ${safeName} - ${dateSlug} - ${sanitize_(f.name || 'catalog')}`
+      );
+      folder.createFile(blob);
+    });
+  }
+}
+
+function sanitize_(name) {
+  return String(name).replace(/[\\/:*?"<>|]/g, ' ').trim().substring(0, 120);
+}
+
+function jsonResponse(obj, statusCode) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzrHBqp6ZcS3lvRir9EchBhsldBS1jRghuQCWhj7XOY4nyuy8NRQP6mz3J1WGNYm-cD/exec";
 
 let entries = [];
@@ -295,5 +452,6 @@ window.addEventListener("keydown", (e) => {
 });
   updateSummary();
 });
+
 
 
