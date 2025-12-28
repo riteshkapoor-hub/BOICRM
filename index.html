@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>BOI CRM — IndusFood</title>
   <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="favicon.ico" />
+  <!-- Calendar (FullCalendar) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.15/index.global.min.css">
 </head>
 <body>
   <header class="topbar">
@@ -27,6 +30,7 @@
       <button id="tabCapture" class="tab isActive">Capture</button>
       <button id="tabDashboard" class="tab">Dashboard</button>
       <button id="tabLeads" class="tab">Leads</button>
+      <button id="tabCalendar" class="tab">Calendar</button>
 
       <div class="tabs__spacer"></div>
 
@@ -43,6 +47,7 @@
       <div id="summary" class="summary">0 leads this session</div>
     </nav>
 
+    <!-- CAPTURE -->
     <section id="viewCapture" class="view">
       <div class="grid">
         <div class="card">
@@ -182,6 +187,7 @@
                 <button id="supFUQueueBtn" type="button" class="btn btn--ghost">Add Follow-up</button>
                 <div id="supFULast" class="hint"></div>
               </div>
+              <div class="hint">If you add a follow-up here, it will be created when you save the lead.</div>
             </div>
 
             <!-- Buttons: Save & Close LAST -->
@@ -314,6 +320,7 @@
                 <button id="buyFUQueueBtn" type="button" class="btn btn--ghost">Add Follow-up</button>
                 <div id="buyFULast" class="hint"></div>
               </div>
+              <div class="hint">If you add a follow-up here, it will be created when you save the lead.</div>
             </div>
 
             <div class="btnrow">
@@ -345,6 +352,7 @@
       </div>
     </section>
 
+    <!-- DASHBOARD -->
     <section id="viewDashboard" class="view" style="display:none;">
       <div class="card">
         <div class="card__hdr">
@@ -371,29 +379,36 @@
             <label>Search (contains)</label>
             <input id="dashQ" type="text" placeholder="company, contact, email…" />
           </div>
-
           <button id="btnDashRefresh" class="btn btn--ghost" type="button">Refresh</button>
         </div>
 
-        <div class="tablewrap">
-          <table class="table" id="dashTable">
-            <thead>
-              <tr>
-                <th>Time (IST)</th><th>Type</th><th>Company</th><th>Contact</th>
-                <th>Country</th><th>Markets</th><th>Product Type</th><th>Entered By</th><th>Drive</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
+        <div class="split">
+          <div class="tablewrap">
+            <table class="table" id="dashTable">
+              <thead>
+                <tr>
+                  <th>Time (IST)</th><th>Type</th><th>Company</th><th>Contact</th>
+                  <th>Country</th><th>Markets</th><th>Product Type</th><th>Entered By</th><th>Drive</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+
+          <div class="sidepanel">
+            <div class="sidepanel__hdr">Upcoming follow-ups</div>
+            <div id="upcomingFollowups" class="list"></div>
+          </div>
         </div>
       </div>
     </section>
 
+    <!-- LEADS -->
     <section id="viewLeads" class="view" style="display:none;">
       <div class="card">
         <div class="card__hdr">
           <div class="card__title">Leads</div>
-          <div class="card__sub">Full list (same filters as dashboard)</div>
+          <div class="card__sub">Full list (same filters as dashboard). Tap Edit to update or add follow-up.</div>
         </div>
 
         <div class="filters">
@@ -422,12 +437,29 @@
             <thead>
               <tr>
                 <th>Time (IST)</th><th>Type</th><th>Company</th><th>Contact</th>
+                <th>Actions</th>
                 <th>Email</th><th>Phone</th><th>Country</th><th>Markets</th><th>Product Type</th>
-                <th>Entered By</th><th>Drive</th>
+                <th>Entered By</th><th>Drive</th><th>Edit</th>
               </tr>
             </thead>
             <tbody></tbody>
           </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- CALENDAR -->
+    <section id="viewCalendar" class="view" style="display:none;">
+      <div class="card">
+        <div class="card__hdr">
+          <div class="card__title">Follow-ups calendar</div>
+          <div class="card__sub">Shows all scheduled follow-ups saved in your FollowUps tab (IST).</div>
+        </div>
+        <div class="calendarwrap">
+          <div id="calendar"></div>
+        </div>
+        <div class="footerline hint">
+          Calendar events are created in your Google Calendar by Apps Script when you save a lead with a follow-up (30 min duration).
         </div>
       </div>
     </section>
@@ -488,7 +520,127 @@
     </div>
   </div>
 
-  <script src="https://unpkg.com/html5-qrcode@2.3.10/minified/html5-qrcode.min.js"></script>
+  <!-- edit lead overlay -->
+  <div id="editOverlay" class="overlay" aria-hidden="true">
+    <div class="modal">
+      <div class="modal__hdr">
+        <div>
+          <div class="modal__title">Edit lead</div>
+          <div class="modal__sub">Update fields, add notes, and (optionally) schedule a follow-up.</div>
+        </div>
+        <button id="btnCloseEdit" class="btn btn--ghost" type="button">Close</button>
+      </div>
+      <div class="form" id="editForm">
+        <div class="row2">
+          <div class="field">
+            <label>Lead ID</label>
+            <input id="editLeadId" type="text" disabled />
+          </div>
+          <div class="field">
+            <label>Type</label>
+            <input id="editType" type="text" disabled />
+          </div>
+        </div>
+
+        <div class="row2">
+          <div class="field">
+            <label>Company</label>
+            <input id="editCompany" type="text" />
+          </div>
+          <div class="field">
+            <label>Contact</label>
+            <input id="editContact" type="text" />
+          </div>
+        </div>
+
+        <div class="row2">
+          <div class="field">
+            <label>Email</label>
+            <input id="editEmail" type="email" />
+          </div>
+          <div class="field">
+            <label>Phone</label>
+            <input id="editPhone" type="tel" placeholder="+91 …" />
+          </div>
+        </div>
+
+        <div class="row2">
+          <div class="field">
+            <label>Country</label>
+            <div id="editCountryCombo"></div>
+          </div>
+          <div class="field">
+            <label>Markets / Notes</label>
+            <div id="editMarketsCombo"></div>
+          </div>
+        </div>
+
+        <div class="row2">
+          <div class="field">
+            <label>Product Type</label>
+            <div id="editPTCombo"></div>
+          </div>
+          <div class="field">
+            <label>Private label?</label>
+            <select id="editPL">
+              <option value=""></option>
+              <option>Private label</option>
+              <option>Own brand</option>
+              <option>Both</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Products / Needs (one per line)</label>
+          <textarea id="editProductsOrNeeds" rows="4"></textarea>
+        </div>
+
+        <div class="field">
+          <label>Notes</label>
+          <textarea id="editNotes" rows="3"></textarea>
+        </div>
+
+        <div class="follow">
+          <div class="follow__hdr">Schedule follow-up (IST)</div>
+          <div class="row2">
+            <div class="field">
+              <label>Date</label>
+              <input id="editFUDate" type="date" />
+            </div>
+            <div class="field">
+              <label>Time</label>
+              <input id="editFUTime" type="time" />
+            </div>
+          </div>
+          <div class="field">
+            <label>Follow-up note</label>
+            <input id="editFUNotes" type="text" placeholder="Call / WhatsApp / send catalog / pricing…" />
+          </div>
+          <div class="hint">If filled, a Google Calendar invite will be sent automatically (30 mins).</div>
+        </div>
+
+        <div class="btnrow">
+          <button id="btnSaveEdit" type="button" class="btn btn--primary">Save changes</button>
+          <button id="btnSaveEditAndFollow" type="button" class="btn btn--scan">Save + add follow-up</button>
+        </div>
+
+        <div id="editResult" class="result"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- QR library (primary + fallback) -->
+  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.10/minified/html5-qrcode.min.js"></script>
+  <script>window.__qrLoaded = typeof Html5Qrcode !== 'undefined';</script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.10/minified/html5-qrcode.min.js" onload="window.__qrLoaded = true;"></script>
+
+  <!-- FullCalendar -->
+  <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.15/index.global.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/daygrid@6.1.15/index.global.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/timegrid@6.1.15/index.global.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/interaction@6.1.15/index.global.min.js"></script>
+
   <script src="app.js"></script>
 </body>
 </html>
