@@ -1,35 +1,99 @@
-// BOI CRM Frontend (Dark + Product Type categories + IST display)
+// BOI CRM — app.js (Dark + Combo boxes + Global Lists + FollowUps + IST)
 
 const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzrHBqp6ZcS3lvRir9EchBhsldBS1jRghuQCWhj7XOY4nyuy8NRQP6mz3J1WGNYm-cD/exec";
 const LS_SCRIPT_URL = "boi_crm_script_url";
 const LS_USER = "boi_crm_user";
 
-// Product type categories (saved per device)
-const LS_SUP_PT = "boi_sup_product_types";
-const LS_BUY_PT = "boi_buy_product_types";
-
 let leadType = "supplier";
 let html5Qr = null;
 let sessionCount = 0;
 
-// For Add Product Type modal
-let ptTarget = null; // "supplier" or "buyer"
+let GLOBAL_LISTS = { productTypes: [], markets: [] };
+
+// last saved leadId for follow-ups
+let lastSupplierLeadId = "";
+let lastBuyerLeadId = "";
+
+// ----- Country list + calling code map (core set; can expand anytime)
+const COUNTRIES = [
+  "India","United States","United Arab Emirates","Saudi Arabia","Qatar","Oman","Kuwait","Bahrain",
+  "United Kingdom","Germany","France","Netherlands","Italy","Spain","Belgium","Sweden","Norway","Denmark",
+  "Canada","Australia","New Zealand","Singapore","Malaysia","Indonesia","Thailand","Vietnam","Philippines",
+  "Japan","South Korea","China","Hong Kong","Taiwan",
+  "South Africa","Kenya","Nigeria","Egypt","Morocco",
+  "Brazil","Mexico","Argentina","Chile",
+  "Russia","Ukraine","Belarus","Poland","Czech Republic","Romania","Greece","Turkey"
+];
+
+const CALLING = {
+  "India":"91",
+  "United States":"1",
+  "Canada":"1",
+  "United Kingdom":"44",
+  "United Arab Emirates":"971",
+  "Saudi Arabia":"966",
+  "Qatar":"974",
+  "Oman":"968",
+  "Kuwait":"965",
+  "Bahrain":"973",
+  "Germany":"49",
+  "France":"33",
+  "Netherlands":"31",
+  "Italy":"39",
+  "Spain":"34",
+  "Belgium":"32",
+  "Sweden":"46",
+  "Norway":"47",
+  "Denmark":"45",
+  "Australia":"61",
+  "New Zealand":"64",
+  "Singapore":"65",
+  "Malaysia":"60",
+  "Indonesia":"62",
+  "Thailand":"66",
+  "Vietnam":"84",
+  "Philippines":"63",
+  "Japan":"81",
+  "South Korea":"82",
+  "China":"86",
+  "Hong Kong":"852",
+  "Taiwan":"886",
+  "South Africa":"27",
+  "Kenya":"254",
+  "Nigeria":"234",
+  "Egypt":"20",
+  "Morocco":"212",
+  "Brazil":"55",
+  "Mexico":"52",
+  "Argentina":"54",
+  "Chile":"56",
+  "Russia":"7",
+  "Ukraine":"380",
+  "Belarus":"375",
+  "Poland":"48",
+  "Czech Republic":"420",
+  "Romania":"40",
+  "Greece":"30",
+  "Turkey":"90"
+};
 
 const $ = (id) => document.getElementById(id);
 
-function getScriptUrl() {
-  return (localStorage.getItem(LS_SCRIPT_URL) || DEFAULT_SCRIPT_URL).trim();
-}
-
-function setStatus(msg) { $("status").textContent = msg || ""; }
-function updateSummary() { $("summary").textContent = `${sessionCount} leads this session`; }
-function setUserPill() {
-  const u = (localStorage.getItem(LS_USER) || "").trim();
+// ---------- URL / Session ----------
+function getScriptUrl(){ return (localStorage.getItem(LS_SCRIPT_URL) || DEFAULT_SCRIPT_URL).trim(); }
+function setStatus(msg){ $("status").textContent = msg || ""; }
+function updateSummary(){ $("summary").textContent = `${sessionCount} leads this session`; }
+function setUserPill(){
+  const u = (localStorage.getItem(LS_USER)||"").trim();
   $("userPill").textContent = `User: ${u || "—"}`;
 }
-
 function openOverlay(id){ $(id).classList.add("open"); $(id).setAttribute("aria-hidden","false"); }
 function closeOverlay(id){ $(id).classList.remove("open"); $(id).setAttribute("aria-hidden","true"); }
+function ensureUser(){
+  const u=(localStorage.getItem(LS_USER)||"").trim();
+  if(u){ closeOverlay("userOverlay"); setUserPill(); return; }
+  openOverlay("userOverlay"); setUserPill();
+}
 
 function showTab(which){
   ["Capture","Dashboard","Leads"].forEach(t=>{
@@ -55,119 +119,67 @@ function showBuyer(){
   $("cardSupplier").style.display="none";
 }
 
-/* ---------- USER ---------- */
-function ensureUser(){
-  const u=(localStorage.getItem(LS_USER)||"").trim();
-  if(u){ closeOverlay("userOverlay"); setUserPill(); return; }
-  openOverlay("userOverlay"); setUserPill();
-}
-
-/* ---------- SETTINGS ---------- */
-function openSettings(){
-  $("scriptUrlInput").value = getScriptUrl();
-  $("logBox").textContent = "";
-  openOverlay("settingsOverlay");
-}
-function saveSettings(){
-  const u=$("scriptUrlInput").value.trim();
-  if(!u.endsWith("/exec")){ alert("Apps Script URL must end with /exec"); return; }
-  localStorage.setItem(LS_SCRIPT_URL,u);
-  $("logBox").textContent = `Saved:\n${u}`;
-}
-async function testSettings(){
+// ---------- IST label for session table ----------
+function istNowLabel(){
   try{
-    const url = new URL(getScriptUrl());
-    url.searchParams.set("action","ping");
-    const res = await fetch(url.toString(), { method:"GET" });
-    const txt = await res.text();
-    $("logBox").textContent = `Ping response:\n${txt}`;
-  }catch(e){
-    $("logBox").textContent = `Ping failed:\n${e.message}`;
-  }
-}
-
-/* ---------- PRODUCT TYPE CATEGORIES ---------- */
-function defaultSupplierPT(){
-  return ["Chips","Dehydrated powders","Sweeteners","Spices","Snacks","Private label"];
-}
-function defaultBuyerPT(){
-  return ["Chips","Dehydrated powders","Sweeteners","Spices","Snacks","Private label"];
-}
-function loadPT(key, defaultsFn){
-  try{
-    const raw = localStorage.getItem(key);
-    if(!raw) return defaultsFn();
-    const arr = JSON.parse(raw);
-    if(!Array.isArray(arr) || !arr.length) return defaultsFn();
-    return arr.map(x=>String(x)).filter(Boolean);
+    const d=new Date();
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone:"Asia/Kolkata",
+      month:"2-digit",day:"2-digit",year:"2-digit",
+      hour:"2-digit",minute:"2-digit",hour12:true
+    }).format(d);
   }catch{
-    return defaultsFn();
+    return new Date().toLocaleString();
   }
 }
-function savePT(key, arr){
-  const clean = Array.from(new Set(arr.map(x=>String(x).trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
-  localStorage.setItem(key, JSON.stringify(clean));
-  return clean;
-}
-function renderPTSelect(selectEl, values, includeAllLabel){
-  selectEl.innerHTML = "";
-  if(includeAllLabel){
-    const opt=document.createElement("option");
-    opt.value="";
-    opt.textContent=includeAllLabel;
-    selectEl.appendChild(opt);
-  }else{
-    const opt=document.createElement("option");
-    opt.value="";
-    opt.textContent="";
-    selectEl.appendChild(opt);
-  }
-  values.forEach(v=>{
-    const opt=document.createElement("option");
-    opt.value=v;
-    opt.textContent=v;
-    selectEl.appendChild(opt);
-  });
+
+function addSessionRow(type, main, country){
+  const tbody=$("tbl").querySelector("tbody");
+  const tr=document.createElement("tr");
+  tr.innerHTML = `<td>${esc(type)}</td><td>${esc(main)}</td><td>${esc(country||"")}</td><td>${esc(istNowLabel())}</td>`;
+  tbody.prepend(tr);
 }
 
-function refreshAllPTDropdowns(){
-  const sup = loadPT(LS_SUP_PT, defaultSupplierPT);
-  const buy = loadPT(LS_BUY_PT, defaultBuyerPT);
-
-  renderPTSelect($("supProductType"), sup, null);
-  renderPTSelect($("buyProductType"), buy, null);
-
-  // Filters (use combined list to filter everything)
-  const union = Array.from(new Set([...sup, ...buy])).sort((a,b)=>a.localeCompare(b));
-  renderPTSelect($("filterProductType"), union, "All product types");
-  renderPTSelect($("leadsProductType"), union, "All product types");
+function esc(s){
+  return String(s||"")
+    .replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;").replaceAll("'","&#039;");
 }
 
-function openAddPT(which){
-  ptTarget = which; // supplier|buyer
-  $("ptInput").value = "";
-  openOverlay("ptOverlay");
-  $("ptInput").focus();
-}
-function saveNewPT(){
-  const v = $("ptInput").value.trim();
-  if(!v){ alert("Enter a product type"); return; }
+// ---------- Network ----------
+async function postPayload(obj){
+  setStatus("Saving…");
+  const body = new URLSearchParams();
+  body.set("payload", JSON.stringify(obj));
 
-  if(ptTarget==="supplier"){
-    const sup = loadPT(LS_SUP_PT, defaultSupplierPT);
-    const next = savePT(LS_SUP_PT, [...sup, v]);
-    renderPTSelect($("supProductType"), next, null);
-  }else{
-    const buy = loadPT(LS_BUY_PT, defaultBuyerPT);
-    const next = savePT(LS_BUY_PT, [...buy, v]);
-    renderPTSelect($("buyProductType"), next, null);
-  }
-
-  refreshAllPTDropdowns();
-  closeOverlay("ptOverlay");
+  const res = await fetch(getScriptUrl(), { method:"POST", body });
+  const text = await res.text();
+  let json;
+  try{ json = JSON.parse(text); }
+  catch{ throw new Error("Server did not return JSON: " + text.slice(0,160)); }
+  if(json.result !== "success") throw new Error(json.message || "Request failed");
+  setStatus("Saved ✓");
+  return json;
 }
 
-/* ---------- FILES ---------- */
+async function getJson(url){
+  const res = await fetch(url, { method:"GET" });
+  const text = await res.text();
+  let json;
+  try{ json = JSON.parse(text); }
+  catch{ throw new Error("Server did not return JSON: " + text.slice(0,160)); }
+  if(json.result !== "success") throw new Error(json.message || "Request failed");
+  return json;
+}
+
+async function loadGlobalLists(){
+  const url = new URL(getScriptUrl());
+  url.searchParams.set("action","lists");
+  const data = await getJson(url.toString());
+  GLOBAL_LISTS = data.lists || { productTypes: [], markets: [] };
+}
+
+// ---------- File uploads ----------
 function fileToBase64(file){
   return new Promise((resolve,reject)=>{
     const r=new FileReader();
@@ -192,66 +204,16 @@ async function collectUploads(catalogInputId, cardInputId){
       });
     }
   }
-
   let cardFile=null;
   const card=$(cardInputId);
   if(card?.files?.length){
     const f=card.files[0];
-    cardFile={
-      name:f.name,
-      mimeType:f.type||"image/jpeg",
-      dataBase64: await fileToBase64(f)
-    };
+    cardFile={ name:f.name, mimeType:f.type||"image/jpeg", dataBase64: await fileToBase64(f) };
   }
-  return {catalogFiles, cardFile};
+  return { catalogFiles, cardFile };
 }
 
-/* ---------- NETWORK ---------- */
-async function postLead(payloadObj){
-  setStatus("Saving…");
-  const payloadStr = JSON.stringify(payloadObj);
-
-  try{
-    const body = new URLSearchParams();
-    body.set("payload", payloadStr);
-
-    const res = await fetch(getScriptUrl(), { method:"POST", body });
-    const text = await res.text();
-
-    let json;
-    try{ json = JSON.parse(text); }
-    catch{ throw new Error("Server did not return JSON: " + text.slice(0,160)); }
-
-    if(json.result!=="success"){
-      throw new Error(json.message || "Save failed");
-    }
-    setStatus("Saved ✓");
-    return json;
-  }catch(e){
-    console.error(e);
-    setStatus("Save failed");
-    alert("Save failed: " + e.message);
-    return null;
-  }
-}
-
-async function getLeads(params={}){
-  const url = new URL(getScriptUrl());
-  url.searchParams.set("action","list");
-  Object.entries(params).forEach(([k,v])=>{
-    if(v!==undefined && v!==null && String(v).trim()!=="") url.searchParams.set(k,String(v));
-  });
-
-  const res = await fetch(url.toString(), { method:"GET" });
-  const text = await res.text();
-  let json;
-  try{ json = JSON.parse(text); }
-  catch{ throw new Error("Server did not return JSON: " + text.slice(0,160)); }
-  if(json.result!=="success") throw new Error(json.message || "List failed");
-  return json;
-}
-
-/* ---------- QR ---------- */
+// ---------- QR ----------
 function parseVCard(text){
   const out={fullName:"",company:"",email:"",phone:""};
   const t=String(text||"").trim();
@@ -287,7 +249,6 @@ function openQr(){
   openOverlay("qrOverlay");
   if(!window.Html5Qrcode){ alert("QR library not loaded"); closeQr(); return; }
   if(!html5Qr) html5Qr = new Html5Qrcode("qr-reader");
-
   html5Qr.start(
     { facingMode:"environment" },
     { fps:10, qrbox:250 },
@@ -304,59 +265,181 @@ function closeQr(){
   if(html5Qr){ try{ html5Qr.stop().catch(()=>{}); }catch{} }
 }
 
-/* ---------- UI helpers ---------- */
-function esc(s){
-  return String(s||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
-}
+// ---------- Combo Box Component ----------
+function createCombo(containerId, options, placeholder, allowEmptyLabel){
+  const root = document.getElementById(containerId);
+  root.classList.add("combo");
 
-// show session time as IST (client side)
-function istNowLabel(){
-  try{
-    const d = new Date();
-    const fmt = new Intl.DateTimeFormat("en-IN", {
-      timeZone: "Asia/Kolkata",
-      day:"2-digit",month:"2-digit",year:"2-digit",
-      hour:"numeric",minute:"2-digit",hour12:true
-    });
-    return fmt.format(d);
-  }catch{
-    return new Date().toLocaleString();
+  const input = document.createElement("input");
+  input.type="text";
+  input.placeholder = placeholder || "";
+  input.autocomplete="off";
+
+  const btn = document.createElement("button");
+  btn.type="button";
+  btn.className="combo__btn";
+  btn.textContent="▾";
+
+  const list = document.createElement("div");
+  list.className="combo__list";
+
+  let value = ""; // selected exact value
+
+  function open(){ root.classList.add("open"); render(input.value); }
+  function close(){ root.classList.remove("open"); }
+  function set(v){
+    value = v || "";
+    input.value = v || "";
+    close();
+    root.dispatchEvent(new CustomEvent("combo:change", { detail: { value } }));
   }
+  function render(filter){
+    list.innerHTML = "";
+    const f = (filter||"").trim().toLowerCase();
+
+    let filtered = options.slice();
+    if(f) filtered = options.filter(x=> String(x).toLowerCase().includes(f));
+
+    if(allowEmptyLabel){
+      const it = document.createElement("div");
+      it.className="combo__item";
+      it.textContent = allowEmptyLabel;
+      it.addEventListener("click", ()=> set(""));
+      list.appendChild(it);
+    }
+
+    filtered.slice(0, 200).forEach(opt=>{
+      const it=document.createElement("div");
+      it.className="combo__item";
+      it.textContent = opt;
+      it.addEventListener("click", ()=> set(opt));
+      list.appendChild(it);
+    });
+
+    if(!filtered.length){
+      const it=document.createElement("div");
+      it.className="combo__item";
+      it.textContent = "No matches";
+      it.style.opacity = "0.7";
+      list.appendChild(it);
+    }
+  }
+
+  input.addEventListener("focus", open);
+  input.addEventListener("input", ()=>{ open(); render(input.value); });
+  btn.addEventListener("click", ()=> root.classList.contains("open") ? close() : open());
+
+  document.addEventListener("click",(e)=>{
+    if(!root.contains(e.target)) close();
+  });
+
+  root.appendChild(input);
+  root.appendChild(btn);
+  root.appendChild(list);
+
+  render("");
+
+  return {
+    get value(){ return value; },
+    setValue(v){ set(v); },
+    setOptions(newOpts){
+      options = Array.from(new Set(newOpts.map(String).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
+      render(input.value);
+    },
+    inputEl: input
+  };
 }
 
-function addSessionRow(type, main, country){
-  const tbody=$("tbl").querySelector("tbody");
-  const tr=document.createElement("tr");
-  tr.innerHTML = `<td>${esc(type)}</td><td>${esc(main)}</td><td>${esc(country||"")}</td><td>${esc(istNowLabel())}</td>`;
-  tbody.prepend(tr);
+// ---------- Phone auto-fix with country code ----------
+function digitsOnly(s){ return String(s||"").replace(/[^\d]/g,""); }
+
+function formatPhoneWithCountry(countryName, raw){
+  const cc = CALLING[countryName] || "";
+  let num = digitsOnly(raw);
+
+  if(!num) return "";
+
+  // strip leading 00
+  if(num.startsWith("00")) num = num.slice(2);
+
+  // If already starts with country code, remove it and re-add with +
+  if(cc && num.startsWith(cc)) num = num.slice(cc.length);
+
+  // remove leading 0s (common local prefix)
+  num = num.replace(/^0+/, "");
+
+  return cc ? `+${cc} ${num}` : `+${num}`;
 }
 
-/* ---------- Clear ---------- */
+function wirePhoneAutoFix(countryCombo, phoneId1, phoneId2){
+  const p1 = $(phoneId1);
+  const p2 = $(phoneId2);
+
+  function fix(){
+    const c = countryCombo.value;
+    if(c){
+      if(p1.value.trim()) p1.value = formatPhoneWithCountry(c, p1.value);
+      if(p2.value.trim()) p2.value = formatPhoneWithCountry(c, p2.value);
+    }
+  }
+
+  // fix on blur (user finishes typing)
+  p1.addEventListener("blur", fix);
+  p2.addEventListener("blur", fix);
+
+  // fix when country changes
+  countryComboRoot(countryCombo).addEventListener("combo:change", fix);
+}
+
+function countryComboRoot(comboObj){
+  // our combo object doesn't expose root; easiest: use input parent
+  return comboObj.inputEl.parentElement;
+}
+
+// ---------- Global List Add (ProductType / Market) ----------
+async function addGlobalListItem(listType, value){
+  const createdBy = (localStorage.getItem(LS_USER)||"Unknown").trim() || "Unknown";
+  await postPayload({ action:"addListItem", listType, value, createdBy });
+  await loadGlobalLists();
+  refreshAllCombos();
+}
+
+// ---------- Clear ----------
 function clearSupplier(){
   ["supCompany","supContact","supTitle","supEmail","supPhone","supPhone2","supWebsite","supSocial",
-   "supCountry","supProducts","supExFactory","supFOB","supQR","supNotes"
+   "supExFactory","supFOB","supProducts","supQR","supNotes"
   ].forEach(id=>$(id).value="");
-  $("supProductType").value="";
+  $("supPL").value="";
   $("supCatalogFiles").value="";
   $("supCardFile").value="";
   $("supResult").innerHTML="";
+  $("supFULast").textContent="";
+  // keep combos selected? clear:
+  supCountry.setValue(""); supMarkets.setValue(""); supProductType.setValue("");
 }
 function clearBuyer(){
   ["buyContact","buyCompany","buyTitle","buyEmail","buyPhone","buyPhone2","buyWebsite","buySocial",
-   "buyCountry","buyMarkets","buyNeeds","buyQR","buyNotes"
+   "buyNeeds","buyQR","buyNotes"
   ].forEach(id=>$(id).value="");
-  $("buyProductType").value="";
   $("buyPL").value="";
   $("buyCatalogFiles").value="";
   $("buyCardFile").value="";
   $("buyResult").innerHTML="";
+  $("buyFULast").textContent="";
+  buyCountry.setValue(""); buyMarkets.setValue(""); buyProductType.setValue("");
 }
 
-/* ---------- Save ---------- */
+// ---------- Save Lead ----------
 async function saveSupplier(closeAfter){
   const company=$("supCompany").value.trim();
   const products=$("supProducts").value.trim();
-  if(!company || !products){ alert("Fill Company name and What do they sell."); return; }
+  if(!company || !products){ alert("Fill Company and What do they sell."); return; }
+
+  // phone fix on save too
+  if(supCountry.value){
+    if($("supPhone").value.trim()) $("supPhone").value = formatPhoneWithCountry(supCountry.value, $("supPhone").value);
+    if($("supPhone2").value.trim()) $("supPhone2").value = formatPhoneWithCountry(supCountry.value, $("supPhone2").value);
+  }
 
   const uploads = await collectUploads("supCatalogFiles","supCardFile");
   const enteredBy=(localStorage.getItem(LS_USER)||"Unknown").trim() || "Unknown";
@@ -372,8 +455,10 @@ async function saveSupplier(closeAfter){
     phone2:$("supPhone2").value.trim(),
     website:$("supWebsite").value.trim(),
     social:$("supSocial").value.trim(),
-    country:$("supCountry").value.trim(),
-    productType:$("supProductType").value.trim(),
+    country:supCountry.value,
+    markets:supMarkets.value,
+    privateLabel:$("supPL").value.trim(),
+    productType:supProductType.value,
     productsOrNeeds:products,
     exFactory:$("supExFactory").value.trim(),
     fob:$("supFOB").value.trim(),
@@ -383,15 +468,21 @@ async function saveSupplier(closeAfter){
     cardFile:uploads.cardFile
   };
 
-  const res=await postLead(payload);
-  if(!res) return;
+  const res = await postPayload(payload);
 
   $("supResult").innerHTML =
-    `Drive folder: <a target="_blank" rel="noopener" href="${esc(res.folderUrl)}">${esc(res.folderUrl)}</a><br>`+
-    `Items sheet: <a target="_blank" rel="noopener" href="${esc(res.itemsSheetUrl)}">${esc(res.itemsSheetUrl)}</a>`;
+    `Lead ID: <b>${esc(res.leadId)}</b><br>` +
+    `Drive folder: <a target="_blank" rel="noopener" href="${esc(res.folderUrl)}">Open folder</a><br>` +
+    `Items sheet: <a target="_blank" rel="noopener" href="${esc(res.itemsSheetUrl)}">Open items</a>`;
+
+  lastSupplierLeadId = res.leadId;
 
   sessionCount++; updateSummary();
   addSessionRow("Supplier", `${company}${payload.contact? " / "+payload.contact:""}`, payload.country);
+
+  // refresh dashboard lists quickly (markets/product types might have changed)
+  await loadGlobalLists();
+  refreshAllCombos();
 
   clearSupplier();
   if(closeAfter) window.scrollTo({top:0,behavior:"smooth"});
@@ -400,7 +491,12 @@ async function saveSupplier(closeAfter){
 async function saveBuyer(closeAfter){
   const contact=$("buyContact").value.trim();
   const needs=$("buyNeeds").value.trim();
-  if(!contact || !needs){ alert("Fill Contact name and What do they want to buy."); return; }
+  if(!contact || !needs){ alert("Fill Contact and What do they want to buy."); return; }
+
+  if(buyCountry.value){
+    if($("buyPhone").value.trim()) $("buyPhone").value = formatPhoneWithCountry(buyCountry.value, $("buyPhone").value);
+    if($("buyPhone2").value.trim()) $("buyPhone2").value = formatPhoneWithCountry(buyCountry.value, $("buyPhone2").value);
+  }
 
   const uploads = await collectUploads("buyCatalogFiles","buyCardFile");
   const enteredBy=(localStorage.getItem(LS_USER)||"Unknown").trim() || "Unknown";
@@ -416,10 +512,10 @@ async function saveBuyer(closeAfter){
     phone2:$("buyPhone2").value.trim(),
     website:$("buyWebsite").value.trim(),
     social:$("buySocial").value.trim(),
-    country:$("buyCountry").value.trim(),
-    markets:$("buyMarkets").value.trim(),
+    country:buyCountry.value,
+    markets:buyMarkets.value,
     privateLabel:$("buyPL").value.trim(),
-    productType:$("buyProductType").value.trim(),
+    productType:buyProductType.value,
     productsOrNeeds:needs,
     qrData:$("buyQR").value.trim(),
     notes:$("buyNotes").value.trim(),
@@ -427,21 +523,82 @@ async function saveBuyer(closeAfter){
     cardFile:uploads.cardFile
   };
 
-  const res=await postLead(payload);
-  if(!res) return;
+  const res = await postPayload(payload);
 
   $("buyResult").innerHTML =
-    `Drive folder: <a target="_blank" rel="noopener" href="${esc(res.folderUrl)}">${esc(res.folderUrl)}</a><br>`+
-    `Items sheet: <a target="_blank" rel="noopener" href="${esc(res.itemsSheetUrl)}">${esc(res.itemsSheetUrl)}</a>`;
+    `Lead ID: <b>${esc(res.leadId)}</b><br>` +
+    `Drive folder: <a target="_blank" rel="noopener" href="${esc(res.folderUrl)}">Open folder</a><br>` +
+    `Items sheet: <a target="_blank" rel="noopener" href="${esc(res.itemsSheetUrl)}">Open items</a>`;
+
+  lastBuyerLeadId = res.leadId;
 
   sessionCount++; updateSummary();
   addSessionRow("Buyer", `${contact}${payload.company? " / "+payload.company:""}`, payload.country);
+
+  await loadGlobalLists();
+  refreshAllCombos();
 
   clearBuyer();
   if(closeAfter) window.scrollTo({top:0,behavior:"smooth"});
 }
 
-/* ---------- Dashboard + Leads ---------- */
+// ---------- Follow-up Scheduler ----------
+function toIstStringFromInputs(dateVal, timeVal){
+  // dateVal = YYYY-MM-DD, timeVal = HH:MM
+  if(!dateVal || !timeVal) return "";
+  const [y,m,d] = dateVal.split("-").map(n=>parseInt(n,10));
+  const [hh,mm] = timeVal.split(":").map(n=>parseInt(n,10));
+
+  // Create local date; we only need formatted in IST
+  const dt = new Date(y, m-1, d, hh, mm, 0);
+
+  // Format as IST MM/DD/YY hh:mm AM/PM
+  try{
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone:"Asia/Kolkata",
+      month:"2-digit",day:"2-digit",year:"2-digit",
+      hour:"2-digit",minute:"2-digit",hour12:true
+    }).format(dt).replace(",", "");
+  }catch{
+    return dt.toLocaleString();
+  }
+}
+
+async function addFollowUpForLead(leadId, dateId, timeId, notesId, outId){
+  if(!leadId){
+    alert("Save the lead first (so it has a Lead ID), then schedule follow-up.");
+    return;
+  }
+  const dateVal = $(dateId).value;
+  const timeVal = $(timeId).value;
+  const notes = $(notesId).value.trim();
+  const scheduledAtIST = toIstStringFromInputs(dateVal, timeVal);
+  if(!scheduledAtIST){
+    alert("Select follow-up date and time.");
+    return;
+  }
+
+  const enteredBy=(localStorage.getItem(LS_USER)||"Unknown").trim() || "Unknown";
+
+  await postPayload({
+    action:"addFollowUp",
+    leadId,
+    scheduledAtIST,
+    status:"Scheduled",
+    notes,
+    enteredBy
+  });
+
+  $(outId).textContent = `Follow-up scheduled: ${scheduledAtIST}`;
+  $(dateId).value = "";
+  $(timeId).value = "";
+  $(notesId).value = "";
+
+  // refresh dashboard
+  if($("viewDashboard").style.display !== "none") refreshDashboard();
+}
+
+// ---------- Dashboard + Leads ----------
 function setDashRow(tbody, r){
   const driveLink = r.folderUrl ? `<a target="_blank" rel="noopener" href="${esc(r.folderUrl)}">Open</a>` : "";
   const tr=document.createElement("tr");
@@ -449,10 +606,48 @@ function setDashRow(tbody, r){
     <td>${esc(r.timestampIST||"")}</td>
     <td>${esc(r.type||"")}</td>
     <td>${esc(r.productType||"")}</td>
+    <td>${esc(r.markets||"")}</td>
     <td>${esc(r.enteredBy||"")}</td>
     <td>${esc((r.company||"") || (r.contact||""))}</td>
     <td>${esc(r.country||"")}</td>
     <td>${driveLink}</td>
+    <td>${esc(r.leadId||"")}</td>
+  `;
+  tbody.appendChild(tr);
+}
+
+function setLeadRow(tbody, r){
+  const driveLink = r.folderUrl ? `<a target="_blank" rel="noopener" href="${esc(r.folderUrl)}">Open</a>` : "";
+  const tr=document.createElement("tr");
+  tr.innerHTML = `
+    <td>${esc(r.timestampIST||"")}</td>
+    <td>${esc(r.type||"")}</td>
+    <td>${esc(r.productType||"")}</td>
+    <td>${esc(r.markets||"")}</td>
+    <td>${esc(r.enteredBy||"")}</td>
+    <td>${esc(r.company||"")}</td>
+    <td>${esc(r.contact||"")}</td>
+    <td>${esc(r.email||"")}</td>
+    <td>${esc(r.phone||"")}</td>
+    <td>${esc(r.country||"")}</td>
+    <td>${driveLink}</td>
+    <td>${esc(r.leadId||"")}</td>
+  `;
+  tbody.appendChild(tr);
+}
+
+function setFU.row(tbody, r){
+  const tr=document.createElement("tr");
+  tr.innerHTML = `
+    <td>${esc(r.scheduledAtIST||"")}</td>
+    <td>${esc(r.status||"")}</td>
+    <td>${esc(r.type||"")}</td>
+    <td>${esc((r.company||"") || (r.contact||""))}</td>
+    <td>${esc(r.country||"")}</td>
+    <td>${esc(r.markets||"")}</td>
+    <td>${esc(r.productType||"")}</td>
+    <td>${esc(r.enteredBy||"")}</td>
+    <td>${esc(r.notes||"")}</td>
   `;
   tbody.appendChild(tr);
 }
@@ -460,11 +655,21 @@ function setDashRow(tbody, r){
 async function refreshDashboard(){
   try{
     setStatus("Loading dashboard…");
+
+    const url = new URL(getScriptUrl());
+    url.searchParams.set("action","listLeads");
+    url.searchParams.set("limit","50");
+
     const user = $("filterUser").value.trim();
     const type = $("filterType").value.trim();
-    const productType = $("filterProductType").value.trim();
+    if(user) url.searchParams.set("user", user);
+    if(type) url.searchParams.set("type", type);
 
-    const data = await getLeads({ limit: 50, user, type, productType });
+    if(dashCountry.value) url.searchParams.set("country", dashCountry.value);
+    if(dashMarket.value) url.searchParams.set("market", dashMarket.value); // contains match
+    if(dashPT.value) url.searchParams.set("productType", dashPT.value);
+
+    const data = await getJson(url.toString());
 
     $("kpiTotal").textContent = data.kpis.total;
     $("kpiSup").textContent = data.kpis.suppliers;
@@ -475,7 +680,25 @@ async function refreshDashboard(){
     tbody.innerHTML="";
     data.rows.forEach(r=>setDashRow(tbody,r));
 
-    $("dashNote").textContent = `Loaded ${data.rows.length} rows.`;
+    // Follow-ups
+    const fuUrl = new URL(getScriptUrl());
+    fuUrl.searchParams.set("action","listFollowUps");
+    fuUrl.searchParams.set("limit","50");
+    if(dashCountry.value) fuUrl.searchParams.set("country", dashCountry.value);
+    if(dashMarket.value) fuUrl.searchParams.set("market", dashMarket.value);
+    if(dashPT.value) fuUrl.searchParams.set("productType", dashPT.value);
+
+    const fuData = await getJson(fuUrl.toString());
+    $("fuTotal").textContent = fuData.kpis.total;
+    $("fuToday").textContent = fuData.kpis.dueToday;
+    $("fuOver").textContent = fuData.kpis.overdue;
+    $("fuUp").textContent = fuData.kpis.upcoming;
+
+    const futBody = $("fuTable").querySelector("tbody");
+    futBody.innerHTML="";
+    fuData.rows.forEach(r=> setFUrow(futBody, r));
+
+    $("dashNote").textContent = `Loaded ${data.rows.length} leads and ${fuData.rows.length} follow-ups.`;
     setStatus("Ready");
   }catch(e){
     console.error(e);
@@ -487,31 +710,22 @@ async function refreshDashboard(){
 async function refreshLeads(){
   try{
     setStatus("Loading leads…");
-    const q = $("searchLeads").value.trim();
-    const productType = $("leadsProductType").value.trim();
+    const url = new URL(getScriptUrl());
+    url.searchParams.set("action","listLeads");
+    url.searchParams.set("limit","500");
 
-    const data = await getLeads({ limit: 500, q, productType });
+    const q = $("searchLeads").value.trim();
+    if(q) url.searchParams.set("q", q);
+
+    if(leadsCountry.value) url.searchParams.set("country", leadsCountry.value);
+    if(leadsMarket.value) url.searchParams.set("market", leadsMarket.value);
+    if(leadsPT.value) url.searchParams.set("productType", leadsPT.value);
+
+    const data = await getJson(url.toString());
 
     const tbody = $("leadsTable").querySelector("tbody");
     tbody.innerHTML="";
-
-    data.rows.forEach(r=>{
-      const driveLink = r.folderUrl ? `<a target="_blank" rel="noopener" href="${esc(r.folderUrl)}">Open</a>` : "";
-      const tr=document.createElement("tr");
-      tr.innerHTML = `
-        <td>${esc(r.timestampIST||"")}</td>
-        <td>${esc(r.type||"")}</td>
-        <td>${esc(r.productType||"")}</td>
-        <td>${esc(r.enteredBy||"")}</td>
-        <td>${esc(r.company||"")}</td>
-        <td>${esc(r.contact||"")}</td>
-        <td>${esc(r.email||"")}</td>
-        <td>${esc(r.phone||"")}</td>
-        <td>${esc(r.country||"")}</td>
-        <td>${driveLink}</td>
-      `;
-      tbody.appendChild(tr);
-    });
+    data.rows.forEach(r=>setLeadRow(tbody,r));
 
     setStatus("Ready");
   }catch(e){
@@ -521,8 +735,97 @@ async function refreshLeads(){
   }
 }
 
-/* ---------- Init ---------- */
-document.addEventListener("DOMContentLoaded", ()=>{
+// ---------- Settings ----------
+function openSettings(){
+  $("scriptUrlInput").value = getScriptUrl();
+  $("logBox").textContent = "";
+  openOverlay("settingsOverlay");
+}
+function saveSettings(){
+  const u=$("scriptUrlInput").value.trim();
+  if(!u.endsWith("/exec")){ alert("Apps Script URL must end with /exec"); return; }
+  localStorage.setItem(LS_SCRIPT_URL,u);
+  $("logBox").textContent = `Saved:\n${u}`;
+}
+async function testSettings(){
+  try{
+    const url = new URL(getScriptUrl());
+    url.searchParams.set("action","ping");
+    const json = await getJson(url.toString());
+    $("logBox").textContent = `Ping OK:\n${JSON.stringify(json,null,2)}`;
+  }catch(e){
+    $("logBox").textContent = `Ping failed:\n${e.message}`;
+  }
+}
+
+// ---------- Combo instances ----------
+let supCountry, buyCountry, supMarkets, buyMarkets, supProductType, buyProductType;
+let dashCountry, dashMarket, dashPT;
+let leadsCountry, leadsMarket, leadsPT;
+
+function refreshAllCombos(){
+  // update options
+  const productTypes = GLOBAL_LISTS.productTypes || [];
+  const markets = GLOBAL_LISTS.markets || [];
+
+  supProductType.setOptions(productTypes);
+  buyProductType.setOptions(productTypes);
+
+  supMarkets.setOptions(markets);
+  buyMarkets.setOptions(markets);
+
+  dashPT.setOptions(productTypes);
+  leadsPT.setOptions(productTypes);
+
+  dashMarket.setOptions(markets);
+  leadsMarket.setOptions(markets);
+}
+
+function attachAddButtons(){
+  // Add Market buttons
+  const supMarketsRoot = supMarkets.inputEl.parentElement;
+  const buyMarketsRoot = buyMarkets.inputEl.parentElement;
+  const supPTRoot = supProductType.inputEl.parentElement;
+  const buyPTRoot = buyProductType.inputEl.parentElement;
+
+  // add buttons injected
+  function addPlus(root, label, onClick){
+    const wrap = document.createElement("div");
+    wrap.className = "combo__add";
+    const b = document.createElement("button");
+    b.type="button";
+    b.className="btn btn--ghost btn--sm";
+    b.textContent = label;
+    b.addEventListener("click", onClick);
+    wrap.appendChild(b);
+    root.appendChild(wrap);
+  }
+
+  addPlus(supMarketsRoot, "+ Add Market", async ()=>{
+    const v = prompt("Add new Market/Notes value (example: GCC, UAE, EU):");
+    if(!v) return;
+    await addGlobalListItem("market", v.trim());
+  });
+  addPlus(buyMarketsRoot, "+ Add Market", async ()=>{
+    const v = prompt("Add new Market/Notes value:");
+    if(!v) return;
+    await addGlobalListItem("market", v.trim());
+  });
+
+  addPlus(supPTRoot, "+ Add Product Type", async ()=>{
+    const v = prompt("Add new Product Type:");
+    if(!v) return;
+    await addGlobalListItem("productType", v.trim());
+  });
+  addPlus(buyPTRoot, "+ Add Product Type", async ()=>{
+    const v = prompt("Add new Product Type:");
+    if(!v) return;
+    await addGlobalListItem("productType", v.trim());
+  });
+}
+
+// ---------- Init ----------
+document.addEventListener("DOMContentLoaded", async ()=>{
   // tabs
   $("tabCapture").addEventListener("click", ()=>showTab("Capture"));
   $("tabDashboard").addEventListener("click", ()=>showTab("Dashboard"));
@@ -561,6 +864,39 @@ document.addEventListener("DOMContentLoaded", ()=>{
     ensureUser();
   });
 
+  // create combos
+  supCountry = createCombo("supCountryCombo", COUNTRIES, "Search country…", "All countries");
+  buyCountry = createCombo("buyCountryCombo", COUNTRIES, "Search country…", "All countries");
+
+  // Markets/ProductType use global lists (loaded below)
+  supMarkets = createCombo("supMarketsCombo", [], "Search market…", "All markets");
+  buyMarkets = createCombo("buyMarketsCombo", [], "Search market…", "All markets");
+
+  supProductType = createCombo("supProductTypeCombo", [], "Search product type…", "All product types");
+  buyProductType = createCombo("buyProductTypeCombo", [], "Search product type…", "All product types");
+
+  dashCountry = createCombo("dashCountryCombo", COUNTRIES, "Country filter…", "All countries");
+  dashMarket = createCombo("dashMarketCombo", [], "Market filter…", "All markets");
+  dashPT = createCombo("dashPTCombo", [], "Product type filter…", "All product types");
+
+  leadsCountry = createCombo("leadsCountryCombo", COUNTRIES, "Country filter…", "All countries");
+  leadsMarket = createCombo("leadsMarketCombo", [], "Market filter…", "All markets");
+  leadsPT = createCombo("leadsPTCombo", [], "Product type filter…", "All product types");
+
+  // phone auto-fix
+  wirePhoneAutoFix(supCountry, "supPhone", "supPhone2");
+  wirePhoneAutoFix(buyCountry, "buyPhone", "buyPhone2");
+
+  // load global lists + update combos
+  try{
+    await loadGlobalLists();
+  }catch(e){
+    console.warn("Lists load failed, using fallback in UI", e);
+    GLOBAL_LISTS = { productTypes:["Chips","Dehydrated powders","Sweeteners","Spices","Snacks","Private label"], markets:["GCC","UAE","EU","USA","India"] };
+  }
+  refreshAllCombos();
+  attachAddButtons();
+
   // save buttons
   $("saveSupplierNew").addEventListener("click", ()=>saveSupplier(false));
   $("saveSupplierClose").addEventListener("click", ()=>saveSupplier(true));
@@ -570,27 +906,22 @@ document.addEventListener("DOMContentLoaded", ()=>{
   $("saveBuyerClose").addEventListener("click", ()=>saveBuyer(true));
   $("clearBuyer").addEventListener("click", clearBuyer);
 
+  // followup buttons
+  $("btnSupAddFU").addEventListener("click", ()=>addFollowUpForLead(lastSupplierLeadId, "supFUDate","supFUTime","supFUNotes","supFULast"));
+  $("btnBuyAddFU").addEventListener("click", ()=>addFollowUpForLead(lastBuyerLeadId, "buyFUDate","buyFUTime","buyFUNotes","buyFULast"));
+
   // dashboard/leads refresh
   $("btnRefreshDash").addEventListener("click", refreshDashboard);
   $("btnRefreshLeads").addEventListener("click", refreshLeads);
-
-  // product types
-  refreshAllPTDropdowns();
-  $("btnAddSupPT").addEventListener("click", ()=>openAddPT("supplier"));
-  $("btnAddBuyPT").addEventListener("click", ()=>openAddPT("buyer"));
-  $("btnClosePT").addEventListener("click", ()=>closeOverlay("ptOverlay"));
-  $("btnSavePT").addEventListener("click", saveNewPT);
-  $("ptOverlay").addEventListener("click",(e)=>{ if(e.target.id==="ptOverlay") closeOverlay("ptOverlay"); });
-
-  setStatus("Ready");
-  updateSummary();
 
   // esc closes modals
   window.addEventListener("keydown",(e)=>{
     if(e.key==="Escape"){
       closeQr();
       closeOverlay("settingsOverlay");
-      closeOverlay("ptOverlay");
     }
   });
+
+  setStatus("Ready");
+  updateSummary();
 });
