@@ -113,13 +113,16 @@
               </div>
               <div>
                 <label>Product type</label>
-                <input id="supProductType" type="text" placeholder="Chips, powders, sweeteners…" />
+                <div class="combo">
+                  <select id="supProductType"></select>
+                  <button class="btn btn--ghost btn--sm" id="btnAddSupPT" type="button">+ Add</button>
+                </div>
               </div>
             </div>
 
             <div>
               <label>What do they sell? (one per line) <span class="req">*</span></label>
-              <textarea id="supProducts" rows="3" placeholder="Example: Mango powder&#10;Vacuum cooked chips&#10;Jaggery"></textarea>
+              <textarea id="supProducts" rows="3"></textarea>
             </div>
 
             <div class="row2">
@@ -221,17 +224,19 @@
                 <input id="buyCountry" type="text" />
               </div>
               <div>
-                <label>Markets / notes</label>
-                <input id="buyMarkets" type="text" placeholder="GCC, EU, USA…" />
+                <label>Product type</label>
+                <div class="combo">
+                  <select id="buyProductType"></select>
+                  <button class="btn btn--ghost btn--sm" id="btnAddBuyPT" type="button">+ Add</button>
+                </div>
               </div>
             </div>
 
-            <div>
-              <label>What do they want to buy? (one per line) <span class="req">*</span></label>
-              <textarea id="buyNeeds" rows="3" placeholder="Example: Pineapple powder&#10;Moringa powder&#10;Vacuum cooked chips"></textarea>
-            </div>
-
             <div class="row2">
+              <div>
+                <label>Markets / notes</label>
+                <input id="buyMarkets" type="text" placeholder="GCC, EU, USA…" />
+              </div>
               <div>
                 <label>Private label?</label>
                 <select id="buyPL">
@@ -241,7 +246,11 @@
                   <option>Both / open</option>
                 </select>
               </div>
-              <div></div>
+            </div>
+
+            <div>
+              <label>What do they want to buy? (one per line) <span class="req">*</span></label>
+              <textarea id="buyNeeds" rows="3"></textarea>
             </div>
 
             <div>
@@ -294,7 +303,7 @@
                     <th>Type</th>
                     <th>Contact / Company</th>
                     <th>Country</th>
-                    <th>Time</th>
+                    <th>Time (IST)</th>
                   </tr>
                 </thead>
                 <tbody></tbody>
@@ -315,26 +324,14 @@
         <div class="kpi card">
           <div class="card__head">
             <div class="card__title">Dashboard</div>
-            <div class="card__sub">Live from master sheet</div>
+            <div class="card__sub">Live from master sheet (IST)</div>
           </div>
           <div class="kpiBody">
             <div class="kpiRow">
-              <div class="kpiBox">
-                <div class="kpiLabel">Total leads</div>
-                <div class="kpiValue" id="kpiTotal">—</div>
-              </div>
-              <div class="kpiBox">
-                <div class="kpiLabel">Suppliers</div>
-                <div class="kpiValue" id="kpiSup">—</div>
-              </div>
-              <div class="kpiBox">
-                <div class="kpiLabel">Buyers</div>
-                <div class="kpiValue" id="kpiBuy">—</div>
-              </div>
-              <div class="kpiBox">
-                <div class="kpiLabel">Today</div>
-                <div class="kpiValue" id="kpiToday">—</div>
-              </div>
+              <div class="kpiBox"><div class="kpiLabel">Total leads</div><div class="kpiValue" id="kpiTotal">—</div></div>
+              <div class="kpiBox"><div class="kpiLabel">Suppliers</div><div class="kpiValue" id="kpiSup">—</div></div>
+              <div class="kpiBox"><div class="kpiLabel">Buyers</div><div class="kpiValue" id="kpiBuy">—</div></div>
+              <div class="kpiBox"><div class="kpiLabel">Today (IST)</div><div class="kpiValue" id="kpiToday">—</div></div>
             </div>
 
             <div class="filters">
@@ -344,6 +341,7 @@
                 <option value="supplier">Supplier</option>
                 <option value="buyer">Buyer</option>
               </select>
+              <select id="filterProductType"></select>
               <button class="btn btn--primary" id="btnRefreshDash" type="button">Refresh</button>
             </div>
 
@@ -361,8 +359,9 @@
             <table class="table" id="dashTable">
               <thead>
                 <tr>
-                  <th>Time</th>
+                  <th>Time (IST)</th>
                   <th>Type</th>
+                  <th>Product Type</th>
                   <th>Entered By</th>
                   <th>Company / Contact</th>
                   <th>Country</th>
@@ -381,11 +380,12 @@
       <div class="card">
         <div class="card__head">
           <div class="card__title">All leads</div>
-          <div class="card__sub">Search and review saved leads</div>
+          <div class="card__sub">Search and filter</div>
         </div>
 
         <div class="leadTools">
           <input id="searchLeads" placeholder="Search name/company/email/phone…" />
+          <select id="leadsProductType"></select>
           <button class="btn btn--primary" id="btnRefreshLeads" type="button">Refresh</button>
         </div>
 
@@ -393,8 +393,9 @@
           <table class="table" id="leadsTable">
             <thead>
               <tr>
-                <th>Time</th>
+                <th>Time (IST)</th>
                 <th>Type</th>
+                <th>Product Type</th>
                 <th>Entered By</th>
                 <th>Company</th>
                 <th>Contact</th>
@@ -465,6 +466,26 @@
           <button class="btn btn--ghost" id="btnTestSettings" type="button">Test</button>
         </div>
         <pre class="log" id="logBox"></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADD PRODUCT TYPE MODAL -->
+  <div class="overlay" id="ptOverlay" aria-hidden="true">
+    <div class="modal modal--small">
+      <div class="modal__head">
+        <div>
+          <div class="modal__title">Add Product Type</div>
+          <div class="mini muted">Saved locally on this device.</div>
+        </div>
+        <button class="btn btn--ghost btn--sm" id="btnClosePT" type="button">Close</button>
+      </div>
+      <div class="modal__body">
+        <label>New Product Type</label>
+        <input id="ptInput" type="text" placeholder="Example: Dehydrated powders" />
+        <div class="actions" style="margin-top:12px;">
+          <button class="btn btn--accent" id="btnSavePT" type="button">Save</button>
+        </div>
       </div>
     </div>
   </div>
