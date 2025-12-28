@@ -100,6 +100,10 @@ input,textarea,select{
   background:rgba(2,6,23,.62);color:var(--txt);padding:10px 11px;outline:none;
 }
 textarea{resize:vertical}
+.combo{display:flex;gap:8px;align-items:center}
+.combo select{flex:1}
+.combo .btn{white-space:nowrap}
+
 input:focus,textarea:focus,select:focus{
   border-color:rgba(79,70,229,.55);
   box-shadow:0 0 0 4px rgba(79,70,229,.18);
