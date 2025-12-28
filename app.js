@@ -1,759 +1,745 @@
-/* BOI CRM — frontend app.js (GitHub Pages) */
-(() => {
-  'use strict';
+// BOI CRM — Frontend (GitHub Pages)
+// Uses hidden-iframe POST to Apps Script (no CORS), Apps Script responds with postMessage(JSON)
 
-  // ====== Local config ======
-  const LS = {
-    scriptUrl: 'boi_crm_scriptUrl',
-    user: 'boi_crm_user',
-    session: 'boi_crm_session_leads'
-  };
+const STORAGE = {
+  user: 'boi_user_name',
+  scriptUrl: 'boi_script_url',
+};
 
-  // IMPORTANT: do NOT declare the same const twice. Keep a single default.
-  const DEFAULT_SCRIPT_URL = ''; // leave blank; set in Settings UI
+let state = {
+  leadType: 'supplier', // supplier|buyer
+  sessionLeads: [],
+  allLeads: [],
+  followups: [],
+  lists: { countries: [], productTypes: [], markets: [] },
+  configured: false,
+};
 
-  // ====== Helpers ======
-  const $ = (sel) => document.querySelector(sel);
-  const $$ = (sel) => Array.from(document.querySelectorAll(sel));
-  const nowIsoDate = () => new Date().toISOString().slice(0,10);
+function el(id){ return document.getElementById(id); }
+function qsa(sel){ return Array.from(document.querySelectorAll(sel)); }
+function show(id){ el(id).classList.remove('hidden'); }
+function hide(id){ el(id).classList.add('hidden'); }
+function setStatus(msg){ el('statusText').textContent = msg; }
 
-  const readCfg = () => ({
-    scriptUrl: localStorage.getItem(LS.scriptUrl) || DEFAULT_SCRIPT_URL,
-    user: localStorage.getItem(LS.user) || ''
+function normalizeScriptUrl(url){
+  if(!url) return '';
+  url = String(url).trim();
+  // remove trailing whitespace or stray quotes
+  url = url.replace(/^"+|"+$/g,'');
+  // strip trailing slash
+  url = url.replace(/\/+$/,'');
+  return url;
+}
+function isExecUrl(url){
+  url = normalizeScriptUrl(url);
+  return /^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/i.test(url);
+}
+
+function getUser(){ return localStorage.getItem(STORAGE.user) || ''; }
+function setUser(v){ localStorage.setItem(STORAGE.user, v || ''); }
+function getScriptUrl(){ return localStorage.getItem(STORAGE.scriptUrl) || ''; }
+function setScriptUrl(v){ localStorage.setItem(STORAGE.scriptUrl, normalizeScriptUrl(v)); }
+
+function refreshHeader(){
+  const u = getUser();
+  el('userNameLabel').textContent = u ? u : '—';
+}
+
+function setConfigured(ok){
+  state.configured = ok;
+  el('btnScan').disabled = !ok;
+  setStatus(ok ? 'Ready' : 'Not configured');
+}
+
+function switchTab(tab){
+  qsa('.tab').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
+  hide('tab-capture'); hide('tab-dashboard'); hide('tab-leads'); hide('tab-calendar');
+  show('tab-'+tab);
+  if(tab==='dashboard') renderDashboard();
+  if(tab==='leads') renderLeads();
+  if(tab==='calendar') renderCalendar();
+}
+
+function setLeadType(t){
+  state.leadType = t;
+  el('btnTypeSupplier').classList.toggle('active', t==='supplier');
+  el('btnTypeBuyer').classList.toggle('active', t==='buyer');
+  el('captureTitle').textContent = t==='supplier' ? 'Supplier details' : 'Buyer details';
+  el('productsLabel').innerHTML = (t==='supplier' ? 'What do they sell?' : 'What do they want to buy?') + ' (one per line) <span class="req">*</span>';
+  // Scan button only enabled after selecting type + configured
+  el('btnScan').disabled = !state.configured || !t;
+}
+
+function resetForm(){
+  ['company','contact','title','email','country','markets','phone1','phone2','website','social','productType','privateLabel','exFactory','fob','productsOrNeeds','qrData','notes'].forEach(id=>{
+    const node = el(id);
+    if(!node) return;
+    if(node.tagName==='SELECT') node.value='';
+    else node.value='';
   });
+  el('catalogFiles').value = '';
+  el('cardFile').value = '';
+  el('followEnabled').checked = false;
+  el('followDate').value = '';
+  el('followTime').value = '';
+  el('followNote').value = '';
+}
 
-  const setStatus = (el, msg, ok=null) => {
-    if(!el) return;
-    el.textContent = msg || '';
-    el.classList.remove('ok','bad');
-    if(ok === true) el.classList.add('ok');
-    if(ok === false) el.classList.add('bad');
+function getFormData(){
+  const lead = {
+    type: state.leadType,
+    enteredBy: getUser() || '',
+    company: el('company').value.trim(),
+    contact: el('contact').value.trim(),
+    title: el('title').value.trim(),
+    email: el('email').value.trim(),
+    phone: el('phone1').value.trim(),
+    phone2: el('phone2').value.trim(),
+    website: el('website').value.trim(),
+    social: el('social').value.trim(),
+    country: el('country').value.trim(),
+    markets: el('markets').value.trim(),
+    privateLabel: el('privateLabel').value.trim(),
+    productType: el('productType').value.trim(),
+    productsOrNeeds: el('productsOrNeeds').value.trim(),
+    exFactory: el('exFactory').value.trim(),
+    fob: el('fob').value.trim(),
+    qrData: el('qrData').value.trim(),
+    notes: el('notes').value.trim(),
   };
 
-  const safe = (v) => (v ?? '').toString().trim();
+  // follow-up (store only)
+  const followEnabled = el('followEnabled').checked;
+  const follow = followEnabled ? {
+    date: el('followDate').value,
+    time: el('followTime').value,
+    note: el('followNote').value.trim(),
+    durationMinutes: 30
+  } : null;
 
-  const loadSession = () => {
-    try { return JSON.parse(localStorage.getItem(LS.session) || '[]'); }
-    catch { return []; }
-  };
-  const saveSession = (arr) => localStorage.setItem(LS.session, JSON.stringify(arr.slice(0,50)));
+  return { lead, follow };
+}
 
-  const toast = (msg) => alert(msg);
+function fileToBase64(file){
+  return new Promise((resolve,reject)=>{
+    if(!file) return resolve(null);
+    const r=new FileReader();
+    r.onload=()=> resolve(String(r.result).split(',')[1] || '');
+    r.onerror=()=> reject(r.error || new Error('File read error'));
+    r.readAsDataURL(file);
+  });
+}
 
-  // ====== UI State ======
-  let leadType = 'supplier';
-  let editingLeadId = null;
-  let leadsCache = [];
-  let followupsCache = [];
+async function collectFiles(){
+  const card = el('cardFile').files && el('cardFile').files[0] ? el('cardFile').files[0] : null;
+  const catalogs = el('catalogFiles').files ? Array.from(el('catalogFiles').files) : [];
+  const cardObj = card ? {
+    name: card.name,
+    mimeType: card.type || 'application/octet-stream',
+    dataBase64: await fileToBase64(card),
+  } : null;
 
-  // ====== Datalists (countries) ======
-  const COUNTRIES = [
-    {name:'India', code:'+91'},
-    {name:'United States', code:'+1'},
-    {name:'United Arab Emirates', code:'+971'},
-    {name:'Qatar', code:'+974'},
-    {name:'Saudi Arabia', code:'+966'},
-    {name:'Oman', code:'+968'},
-    {name:'Kuwait', code:'+965'},
-    {name:'Bahrain', code:'+973'},
-    {name:'United Kingdom', code:'+44'},
-    {name:'Germany', code:'+49'},
-    {name:'France', code:'+33'},
-    {name:'Netherlands', code:'+31'},
-    {name:'Spain', code:'+34'},
-    {name:'Italy', code:'+39'},
-    {name:'Canada', code:'+1'},
-    {name:'Australia', code:'+61'}
-  ];
-
-  function fillCountries(){
-    const dl = $('#dlCountries');
-    if(!dl) return;
-    dl.innerHTML = COUNTRIES.map(c => `<option value="${c.name}"></option>`).join('');
-  }
-
-  function countryDialCode(name){
-    const found = COUNTRIES.find(c => c.name.toLowerCase() === safe(name).toLowerCase());
-    return found ? found.code : '';
-  }
-
-  function ensurePrefix(phoneEl, countryName){
-    if(!phoneEl) return;
-    const v = safe(phoneEl.value);
-    if(!v) return;
-    if(v.startsWith('+')) return;
-    const code = countryDialCode(countryName);
-    if(!code) return;
-    phoneEl.value = `${code} ${v}`.trim();
-  }
-
-  // ====== Tabs ======
-  function setTab(tab){
-    $$('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-    $$('.tabpanel').forEach(p => p.classList.add('hidden'));
-    const panel = $(`#tab-${tab}`);
-    if(panel) panel.classList.remove('hidden');
-
-    if(tab === 'dashboard') refreshDashboard();
-    if(tab === 'leads') refreshLeads();
-    if(tab === 'calendar') refreshCalendar();
-  }
-
-  // ====== Overlay helpers ======
-  function openOverlay(id){
-    const o = $(id);
-    if(!o) return;
-    o.classList.remove('hidden');
-    o.setAttribute('aria-hidden','false');
-  }
-  function closeOverlay(id){
-    const o = $(id);
-    if(!o) return;
-    o.classList.add('hidden');
-    o.setAttribute('aria-hidden','true');
-  }
-
-  // ====== Settings / User ======
-  function applyHeader(){
-    const cfg = readCfg();
-    $('#sessionUser').textContent = cfg.user || '—';
-    $('#connStatus').textContent = cfg.scriptUrl ? 'Configured' : 'Not configured';
-  }
-
-  async function apiPost(action, payload){
-    const cfg = readCfg();
-    if(!cfg.scriptUrl || !cfg.scriptUrl.endsWith('/exec')){
-      throw new Error('Apps Script URL missing or not ending with /exec');
-    }
-    // Use x-www-form-urlencoded to avoid CORS preflight.
-    const body = new URLSearchParams();
-    body.set('action', action);
-    body.set('payload', JSON.stringify(payload || {}));
-
-    const res = await fetch(cfg.scriptUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-      body
+  const catalogObjs = [];
+  for(const f of catalogs){
+    catalogObjs.push({
+      name: f.name,
+      mimeType: f.type || 'application/octet-stream',
+      dataBase64: await fileToBase64(f),
     });
-
-    const text = await res.text();
-    let data;
-    try { data = JSON.parse(text); }
-    catch(e){
-      // helpful debug
-      throw new Error('Server returned non-JSON: ' + text.slice(0,120));
-    }
-    if(!data.ok) throw new Error(data.error || 'Request failed');
-    return data;
   }
+  return { cardFile: cardObj, catalogFiles: catalogObjs };
+}
 
-  async function apiGet(action, payload){
-    const cfg = readCfg();
-    if(!cfg.scriptUrl || !cfg.scriptUrl.endsWith('/exec')){
-      throw new Error('Apps Script URL missing or not ending with /exec');
-    }
-    const u = new URL(cfg.scriptUrl);
-    u.searchParams.set('action', action);
-    if(payload) u.searchParams.set('payload', JSON.stringify(payload));
-    const res = await fetch(u.toString(), { method: 'GET' });
-    const text = await res.text();
-    let data;
-    try { data = JSON.parse(text); }
-    catch{ throw new Error('Server returned non-JSON: ' + text.slice(0,120)); }
-    if(!data.ok) throw new Error(data.error || 'Request failed');
-    return data;
-  }
+// ---------- Apps Script bridge (no CORS) ----------
+let pending = new Map();
 
-  // ====== QR scanning ======
-  let qrScanner = null;
-  async function openQr(){
-    // require lead type chosen (it always is)
-    if(typeof window.Html5Qrcode === 'undefined'){
-      toast('QR library not loaded yet. Refresh and try again.');
-      return;
-    }
-    openOverlay('#qrOverlay');
-    setStatus($('#qrStatus'), 'Starting camera...', null);
+function postToAppsScript(action, payload){
+  return new Promise((resolve,reject)=>{
+    const url = getScriptUrl();
+    if(!isExecUrl(url)) return reject(new Error('Apps Script URL missing or not ending with /exec'));
 
-    const readerId = 'qrReader';
-    try{
-      qrScanner = new Html5Qrcode(readerId);
-      const cams = await Html5Qrcode.getCameras();
-      if(!cams || !cams.length) throw new Error('No camera found');
-      await qrScanner.start(
-        { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 260, height: 260 } },
-        (decodedText) => {
-          $('#qrData').value = decodedText;
-          fillFromQr(decodedText);
-          closeQr();
-        }
-      );
-      setStatus($('#qrStatus'), 'Scanning... (point at QR)', true);
-    }catch(e){
-      setStatus($('#qrStatus'), 'Camera error: ' + e.message, false);
-    }
-  }
+    const id = 'req_' + Date.now() + '_' + Math.random().toString(16).slice(2);
+    pending.set(id, { resolve, reject, t: Date.now() });
 
-  async function closeQr(){
-    try{
-      if(qrScanner){
-        await qrScanner.stop();
-        await qrScanner.clear();
-      }
-    }catch(_){}
-    qrScanner = null;
-    closeOverlay('#qrOverlay');
-  }
+    const iframe = document.createElement('iframe');
+    iframe.name = 'if_' + id;
+    iframe.style.display = 'none';
+    document.body.appendChild(iframe);
 
-  function parseVCard(text){
-    // minimal vCard parsing for FN, ORG, EMAIL, TEL, TITLE, URL
-    const lines = text.split(/\r?\n/);
-    const out = {};
-    for(const raw of lines){
-      const line = raw.trim();
-      const up = line.toUpperCase();
-      if(up.startsWith('FN:')) out.contact = line.slice(3).trim();
-      else if(up.startsWith('ORG:')) out.company = line.slice(4).trim();
-      else if(up.startsWith('TITLE:')) out.title = line.slice(6).trim();
-      else if(up.startsWith('EMAIL')) {
-        const idx = line.indexOf(':');
-        if(idx>-1) out.email = line.slice(idx+1).trim();
-      } else if(up.startsWith('TEL')) {
-        const idx = line.indexOf(':');
-        if(idx>-1){
-          const phone = line.slice(idx+1).trim();
-          out.phone = out.phone || phone;
-        }
-      } else if(up.startsWith('URL:')) out.website = line.slice(4).trim();
-    }
-    return out;
-  }
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = url;
+    form.target = iframe.name;
 
-  function fillFromQr(text){
-    if(!text) return;
-    if(text.toUpperCase().includes('BEGIN:VCARD')){
-      const v = parseVCard(text);
-      if(v.company) $('#company').value = v.company;
-      if(v.contact) $('#contact').value = v.contact;
-      if(v.title) $('#title').value = v.title;
-      if(v.email) $('#email').value = v.email;
-      if(v.phone) $('#phone').value = v.phone;
-      if(v.website) $('#website').value = v.website;
-    }else{
-      // if plain text, store only in qrData
-    }
-  }
-
-  // ====== Capture form ======
-  function setLeadType(t){
-    leadType = t;
-    $$('.pill').forEach(p => p.classList.toggle('active', p.dataset.leadtype === t));
-    $('#productsLabel').textContent = t === 'supplier'
-      ? 'What do they sell? (one per line) *'
-      : 'What do they want to buy? (one per line) *';
-    $('#productsOrNeeds').placeholder = t === 'supplier'
-      ? 'Example:\nMango powder\nDehydrated onion flakes\nJaggery blocks'
-      : 'Example:\nMango powder\nBanana chips\nJaggery';
-  }
-
-  function clearForm(keepType=true){
-    if(!keepType) setLeadType('supplier');
-    $('#leadForm').reset();
-    $('#qrData').value = '';
-    setStatus($('#saveStatus'), '');
-  }
-
-  async function fileToBase64(file){
-    const buf = await file.arrayBuffer();
-    let binary = '';
-    const bytes = new Uint8Array(buf);
-    const chunk = 0x8000;
-    for(let i=0;i<bytes.length;i+=chunk){
-      binary += String.fromCharCode.apply(null, bytes.subarray(i, i+chunk));
-    }
-    return btoa(binary);
-  }
-
-  async function collectPayload(){
-    const cfg = readCfg();
-    if(!cfg.user) throw new Error('Set user first (Switch User).');
-
-    const country = safe($('#country').value);
-    ensurePrefix($('#phone'), country);
-    ensurePrefix($('#phone2'), country);
-
-    const payload = {
-      type: leadType,
-      enteredBy: cfg.user,
-      company: safe($('#company').value),
-      contact: safe($('#contact').value),
-      title: safe($('#title').value),
-      email: safe($('#email').value),
-      phone: safe($('#phone').value),
-      phone2: safe($('#phone2').value),
-      website: safe($('#website').value),
-      social: safe($('#social').value),
-      country,
-      markets: safe($('#markets').value),
-      privateLabel: safe($('#privateLabel').value),
-      productType: safe($('#productType').value),
-      productsOrNeeds: safe($('#productsOrNeeds').value),
-      exFactory: safe($('#exFactory').value),
-      fob: safe($('#fob').value),
-      qrData: safe($('#qrData').value),
-      notes: safe($('#notes').value),
-      followup: null
+    const add = (k,v)=>{
+      const i=document.createElement('input');
+      i.type='hidden';
+      i.name=k;
+      i.value=v;
+      form.appendChild(i);
     };
 
-    // followup optional
-    const fuOn = $('#fuEnabled').checked;
-    const fuDate = safe($('#fuDate').value);
-    const fuTime = safe($('#fuTime').value);
-    const fuNote = safe($('#fuNote').value);
-    if(fuOn && fuDate && fuTime){
-      payload.followup = { date: fuDate, time: fuTime, note: fuNote };
-    }
+    add('reqId', id);
+    add('action', action);
+    add('payload', JSON.stringify(payload || {}));
 
-    // Files (optional)
-    const card = $('#cardFile').files[0] || null;
-    if(card){
-      payload.cardFile = {
-        name: card.name,
-        mimeType: card.type || 'application/octet-stream',
-        dataBase64: await fileToBase64(card)
-      };
-    }
+    document.body.appendChild(form);
+    form.submit();
+    form.remove();
 
-    const catalogs = Array.from($('#catalogFiles').files || []);
-    if(catalogs.length){
-      payload.catalogFiles = [];
-      for(const f of catalogs){
-        payload.catalogFiles.push({
-          name: f.name,
-          mimeType: f.type || 'application/octet-stream',
-          dataBase64: await fileToBase64(f)
-        });
+    // timeout
+    setTimeout(()=>{
+      if(pending.has(id)){
+        pending.delete(id);
+        iframe.remove();
+        reject(new Error('Request timeout'));
       }
+    }, 45000);
+  });
+}
+
+window.addEventListener('message', (ev)=>{
+  const data = ev.data;
+  if(!data || typeof data !== 'object') return;
+  const { reqId, ok, result, error } = data;
+  if(!reqId || !pending.has(reqId)) return;
+  const p = pending.get(reqId);
+  pending.delete(reqId);
+  try{
+    p.resolve({ ok, result, error });
+  } catch(e){}
+});
+
+// ---------- Settings ----------
+async function testConnection(){
+  el('settingsMsg').textContent = '';
+  const input = el('settingsScriptUrl').value;
+  const url = normalizeScriptUrl(input);
+  if(!isExecUrl(url)){
+    el('settingsMsg').textContent = 'Connection failed: Apps Script URL missing or not ending with /exec';
+    return false;
+  }
+  setScriptUrl(url);
+  try{
+    const res = await postToAppsScript('ping', { t: Date.now() });
+    if(res.ok){
+      el('settingsMsg').textContent = 'Connected ✓';
+      setConfigured(true);
+      // load lists & data
+      await hydrateAll();
+      return true;
     }
+    el('settingsMsg').textContent = 'Connection failed: ' + (res.error || 'Unknown error');
+    setConfigured(false);
+    return false;
+  }catch(err){
+    el('settingsMsg').textContent = 'Connection failed: ' + (err.message || err);
+    setConfigured(false);
+    return false;
+  }
+}
 
-    return payload;
+function saveSettings(){
+  const url = normalizeScriptUrl(el('settingsScriptUrl').value);
+  if(!isExecUrl(url)){
+    el('settingsMsg').textContent = 'Please paste a full /exec URL.';
+    return;
+  }
+  setScriptUrl(url);
+  el('settingsMsg').textContent = 'Saved ✓';
+  setConfigured(true);
+  hydrateAll().catch(()=>{});
+}
+
+// ---------- Data loading ----------
+async function hydrateAll(){
+  const res = await postToAppsScript('getAll', { });
+  if(!res.ok) throw new Error(res.error || 'Failed to load');
+  const { leads, followups, lists } = res.result || {};
+  state.allLeads = Array.isArray(leads) ? leads : [];
+  state.followups = Array.isArray(followups) ? followups : [];
+  state.lists = lists || state.lists;
+  renderDatalists();
+  renderDashboard();
+  renderLeads();
+  renderCalendar();
+}
+
+function renderDatalists(){
+  const fill = (id, arr)=>{
+    const dl = el(id);
+    if(!dl) return;
+    dl.innerHTML = '';
+    (arr||[]).forEach(v=>{
+      const o=document.createElement('option');
+      o.value=v;
+      dl.appendChild(o);
+    });
+  };
+  fill('dlCountries', state.lists.countries || []);
+  fill('dlProductTypes', state.lists.productTypes || []);
+  fill('dlMarkets', state.lists.markets || []);
+}
+
+// ---------- Save lead ----------
+function showSaving(on){
+  const s = el('savingIndicator');
+  s.classList.toggle('show', !!on);
+}
+
+async function saveLead(closeAfter){
+  // basic validation
+  const { lead, follow } = getFormData();
+  if(!lead.company){
+    alert('Company name is required.');
+    return;
+  }
+  if(!lead.productsOrNeeds){
+    alert((state.leadType==='supplier'?'Products sold':'Products needed') + ' is required.');
+    return;
+  }
+  if(!getUser()){
+    alert('Please set a User (Switch button) before saving.');
+    openUser();
+    return;
+  }
+  if(!isExecUrl(getScriptUrl())){
+    alert('Please set your Apps Script URL in Settings.');
+    openSettings();
+    return;
   }
 
-  async function saveLead(mode){
-    const st = $('#saveStatus');
-    try{
-      setStatus(st, 'Saving...', null);
-      const payload = await collectPayload();
-      if(!payload.company) throw new Error('Company name is required.');
-      if(!payload.productsOrNeeds) throw new Error('Products / Needs is required.');
+  // collect files
+  showSaving(true);
+  try{
+    const files = await collectFiles();
+    const res = await postToAppsScript('saveLead', { lead, follow, files });
+    if(!res.ok) throw new Error(res.error || 'Save failed');
 
-      const resp = await apiPost('saveLead', payload);
+    // update session list
+    const saved = res.result && res.result.lead ? res.result.lead : lead;
+    state.sessionLeads.unshift(saved);
+    state.sessionLeads = state.sessionLeads.slice(0, 15);
+    renderSession();
 
-      // update session
-      const session = loadSession();
-      session.unshift({ type: payload.type, company: payload.company, time: resp.data.timeIst || '' });
-      saveSession(session);
-      renderSession();
+    // refresh global datasets
+    await hydrateAll();
 
-      // refresh caches in background
-      refreshLists().catch(()=>{});
-      refreshDashboard().catch(()=>{});
-      refreshLeads().catch(()=>{});
-      refreshCalendar().catch(()=>{});
-
-      setStatus(st, 'Saved ✓ (Folder created)', true);
-
-      if(mode === 'new') clearForm(true);
-      if(mode === 'close') setTab('dashboard');
-    }catch(e){
-      setStatus(st, 'Save failed: ' + e.message, false);
-      toast('Save failed: ' + e.message);
+    if(closeAfter){
+      // stay on capture but clear
+      resetForm();
+      alert('Saved ✓');
+    }else{
+      resetForm();
     }
+  }catch(err){
+    alert('Save failed: ' + (err.message || err));
+  }finally{
+    showSaving(false);
   }
+}
 
-  // ====== Lists for dropdowns ======
-  async function refreshLists(){
-    const data = await apiGet('getLists');
-    const { productTypes, markets } = data.data;
+function renderSession(){
+  const tbody = el('sessionTable').querySelector('tbody');
+  tbody.innerHTML='';
+  state.sessionLeads.forEach(r=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML = `<td>${escapeHtml(r.type||'')}</td>
+      <td>${escapeHtml(r.company||'')}</td>
+      <td>${escapeHtml(r.country||'')}</td>
+      <td>${escapeHtml(r.timeIST||r.timestampIST||'')}</td>`;
+    tbody.appendChild(tr);
+  });
+  el('sessionCount').textContent = `${state.sessionLeads.length} leads this session`;
+}
 
-    const dlPT = $('#dlProductTypes');
-    if(dlPT) dlPT.innerHTML = (productTypes || []).map(x => `<option value="${escapeHtml(x)}"></option>`).join('');
+function escapeHtml(s){
+  return String(s||'').replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;'}[c]));
+}
 
-    const dlM = $('#dlMarkets');
-    if(dlM) dlM.innerHTML = (markets || []).map(x => `<option value="${escapeHtml(x)}"></option>`).join('');
-  }
+// ---------- Dashboard ----------
+function filterMatch(row, f){
+  if(!f) return true;
+  const v = String(row||'').toLowerCase();
+  return v.includes(String(f).toLowerCase());
+}
+function applyFilters(arr, prefix){
+  const c = el(prefix+'Country').value.trim();
+  const p = el(prefix+'ProductType').value.trim();
+  const m = el(prefix+'Markets').value.trim();
+  return (arr||[]).filter(r =>
+    filterMatch(r.country, c) &&
+    filterMatch(r.productType, p) &&
+    filterMatch(r.markets, m)
+  );
+}
 
-  function escapeHtml(s){
-    return String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-  }
+function renderDashboard(){
+  if(!state.configured) return;
+  const filtered = applyFilters(state.allLeads, 'f');
+  el('kpiTotal').textContent = filtered.length;
+  el('kpiSuppliers').textContent = filtered.filter(x=>String(x.type).toLowerCase()==='supplier').length;
+  el('kpiBuyers').textContent = filtered.filter(x=>String(x.type).toLowerCase()==='buyer').length;
 
-  // ====== Dashboard ======
-  async function refreshDashboard(){
-    try{
-      const f = {
-        country: safe($('#dashCountry').value),
-        productType: safe($('#dashProductType').value),
-        markets: safe($('#dashMarkets').value)
-      };
-      const data = await apiGet('getDashboard', f);
-      $('#kpiTotal').textContent = data.data.kpis.total;
-      $('#kpiSup').textContent = data.data.kpis.suppliers;
-      $('#kpiBuy').textContent = data.data.kpis.buyers;
-      $('#kpiFU').textContent = data.data.kpis.upcomingFollowups;
+  // followups (no filters except match by lead fields)
+  const follow = (state.followups||[]).filter(fu=>{
+    const lead = state.allLeads.find(l=>l.leadId===fu.leadId) || {};
+    return filterMatch(lead.country, el('fCountry').value.trim()) &&
+           filterMatch(lead.productType, el('fProductType').value.trim()) &&
+           filterMatch(lead.markets, el('fMarkets').value.trim());
+  });
 
-      const tb = $('#tblUpcoming tbody');
-      tb.innerHTML = '';
-      (data.data.upcoming || []).forEach(r => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${escapeHtml(r.when)}</td>
-          <td>${badge(r.type)}</td>
-          <td>${escapeHtml(r.company)}</td>
-          <td>${escapeHtml(r.contact)}</td>
-          <td>${escapeHtml(r.note)}</td>
-          <td>${r.calendarUrl ? `<a class="link" href="${r.calendarUrl}" target="_blank" rel="noopener">Open</a>` : '—'}</td>
-        `;
-        tb.appendChild(tr);
-      });
-    }catch(_){}
-  }
+  el('kpiFollowups').textContent = follow.length;
 
-  function badge(type){
-    const t = (type||'').toLowerCase();
-    const cls = t === 'supplier' ? 'sup' : 'buy';
-    return `<span class="badge ${cls}">${escapeHtml(type)}</span>`;
-  }
+  // upcoming followups table
+  const tbody = el('followupsTable').querySelector('tbody');
+  tbody.innerHTML='';
+  follow.slice(0, 20).forEach(fu=>{
+    const lead = state.allLeads.find(l=>l.leadId===fu.leadId) || {};
+    const tr=document.createElement('tr');
+    const cal = fu.calendarUrl ? `<a class="link" href="${fu.calendarUrl}" target="_blank">Open</a>` : '';
+    tr.innerHTML = `<td>${escapeHtml(fu.whenIST||'')}</td>
+      <td>${escapeHtml(lead.type||'')}</td>
+      <td>${escapeHtml(lead.company||'')}</td>
+      <td>${escapeHtml(fu.note||'')}</td>
+      <td>${cal}</td>`;
+    tbody.appendChild(tr);
+  });
 
-  // ====== Leads list & edit ======
-  async function refreshLeads(){
-    try{
-      const data = await apiGet('getLeads');
-      leadsCache = data.data.leads || [];
-      renderLeads();
-    }catch(e){
-      // ignore
-    }
-  }
+  // recent leads
+  const tbody2 = el('recentLeadsTable').querySelector('tbody');
+  tbody2.innerHTML='';
+  filtered.slice(0, 20).forEach(l=>{
+    const drive = l.folderUrl ? `<a class="link" href="${l.folderUrl}" target="_blank">Drive</a>` : '';
+    const tr=document.createElement('tr');
+    tr.innerHTML = `<td>${escapeHtml(l.whenIST||l.timestampIST||'')}</td>
+      <td>${escapeHtml(l.type||'')}</td>
+      <td>${escapeHtml(l.company||'')}</td>
+      <td>${escapeHtml(l.country||'')}</td>
+      <td>${drive}</td>`;
+    tbody2.appendChild(tr);
+  });
+}
 
-  function filterContains(value, needle){
-    const v = safe(value).toLowerCase();
-    const n = safe(needle).toLowerCase();
-    if(!n) return true;
-    return v.includes(n);
-  }
+// ---------- Leads ----------
+function leadActionsHtml(l){
+  const tel = l.phone ? `tel:${encodeURI(l.phone)}` : '';
+  const wa = l.phone ? `https://wa.me/${encodeURIComponent(l.phone.replace(/\D/g,''))}` : '';
+  const mail = l.email ? `mailto:${encodeURIComponent(l.email)}?subject=${encodeURIComponent('IndusFood follow-up')}` : '';
+  const drive = l.folderUrl || '';
+  const btn = (href, label)=> href ? `<a class="chip" href="${href}" target="_blank">${label}</a>` : '';
+  return `<div class="chips">
+    ${btn(tel,'Call')}
+    ${btn(wa,'WhatsApp')}
+    ${btn(mail,'Email')}
+    ${btn(drive,'Drive')}
+    <button class="chip" data-edit="${escapeHtml(l.leadId||'')}">Edit</button>
+  </div>`;
+}
 
-  function renderLeads(){
-    const tb = $('#tblLeads tbody');
-    if(!tb) return;
+function renderLeads(){
+  if(!state.configured) return;
+  const filtered = applyFilters(state.allLeads, 'l');
+  const tbody = el('leadsTable').querySelector('tbody');
+  tbody.innerHTML='';
+  filtered.slice(0, 300).forEach(l=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML = `<td>${escapeHtml(l.whenIST||l.timestampIST||'')}</td>
+      <td>${escapeHtml(l.type||'')}</td>
+      <td>${escapeHtml(l.company||'')}</td>
+      <td>${escapeHtml(l.contact||'')}</td>
+      <td>${escapeHtml(l.country||'')}</td>
+      <td>${escapeHtml(l.productType||'')}</td>
+      <td>${escapeHtml(l.markets||'')}</td>
+      <td>${escapeHtml(l.enteredBy||'')}</td>
+      <td>${leadActionsHtml(l)}</td>`;
+    tbody.appendChild(tr);
+  });
 
-    const fCountry = safe($('#leadCountry').value);
-    const fPT = safe($('#leadProductType').value);
-    const fMk = safe($('#leadMarkets').value);
-    const q = safe($('#leadSearch').value);
+  // attach edit handlers
+  tbody.querySelectorAll('button[data-edit]').forEach(btn=>{
+    btn.addEventListener('click', ()=> openEdit(btn.getAttribute('data-edit')));
+  });
+}
 
-    tb.innerHTML = '';
-    const rows = leadsCache.filter(r =>
-      filterContains(r.country, fCountry) &&
-      filterContains(r.productType, fPT) &&
-      filterContains(r.markets, fMk) &&
-      (
-        filterContains(r.company, q) ||
-        filterContains(r.contact, q) ||
-        filterContains(r.email, q) ||
-        filterContains(r.notes, q)
-      )
-    );
-
-    rows.forEach(r => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${escapeHtml(r.timeIst)}</td>
-        <td>${badge(r.type)}</td>
-        <td>${escapeHtml(r.company)}</td>
-        <td>${escapeHtml(r.contact)}</td>
-        <td>${escapeHtml(r.country)}</td>
-        <td>${escapeHtml(r.productType)}</td>
-        <td>${escapeHtml(r.markets)}</td>
-        <td>${escapeHtml(r.enteredBy)}</td>
-        <td>
-          <button class="btn btn-outline btn-xs" data-edit="${escapeHtml(r.leadId)}">Edit</button>
-          ${actionLinks(r)}
-        </td>
-      `;
-      tb.appendChild(tr);
-    });
-
-    // bind edit clicks
-    $$('[data-edit]').forEach(btn => {
-      btn.addEventListener('click', () => openEdit(btn.getAttribute('data-edit')));
-    });
-  }
-
-  function actionLinks(r){
-    const phone = safe(r.phone).replace(/\s+/g,'');
-    const email = safe(r.email);
-    const links = [];
-    if(phone){
-      links.push(`<a class="link" href="tel:${encodeURIComponent(phone)}">Call</a>`);
-      links.push(`<a class="link" href="https://wa.me/${encodeURIComponent(phone.replace('+',''))}" target="_blank" rel="noopener">WhatsApp</a>`);
-    }
-    if(email){
-      links.push(`<a class="link" href="mailto:${encodeURIComponent(email)}">Email</a>`);
-    }
-    if(r.folderUrl){
-      links.push(`<a class="link" href="${r.folderUrl}" target="_blank" rel="noopener">Drive</a>`);
-    }
-    return links.length ? `<span class="links">${links.join(' • ')}</span>` : '';
-  }
-
-  function openEdit(leadId){
-    const r = leadsCache.find(x => x.leadId === leadId);
-    if(!r) return;
-
-    editingLeadId = leadId;
-    $('#e_company').value = r.company || '';
-    $('#e_contact').value = r.contact || '';
-    $('#e_title').value = r.title || '';
-    $('#e_email').value = r.email || '';
-    $('#e_phone').value = r.phone || '';
-    $('#e_phone2').value = r.phone2 || '';
-    $('#e_website').value = r.website || '';
-    $('#e_social').value = r.social || '';
-    $('#e_country').value = r.country || '';
-    $('#e_markets').value = r.markets || '';
-    $('#e_productType').value = r.productType || '';
-    $('#e_privateLabel').value = r.privateLabel || '';
-    $('#e_exFactory').value = r.exFactory || '';
-    $('#e_fob').value = r.fob || '';
-    $('#e_productsOrNeeds').value = r.productsOrNeeds || '';
-    $('#e_notes').value = r.notes || '';
-    $('#e_fuEnabled').checked = false;
-    $('#e_fuDate').value = '';
-    $('#e_fuTime').value = '';
-    $('#e_fuNote').value = '';
-    setStatus($('#editStatus'), '');
-
-    openOverlay('#editOverlay');
-  }
-
-  async function saveEdit(){
-    const st = $('#editStatus');
-    try{
-      if(!editingLeadId) throw new Error('No lead selected');
-      const payload = {
-        leadId: editingLeadId,
-        company: safe($('#e_company').value),
-        contact: safe($('#e_contact').value),
-        title: safe($('#e_title').value),
-        email: safe($('#e_email').value),
-        phone: safe($('#e_phone').value),
-        phone2: safe($('#e_phone2').value),
-        website: safe($('#e_website').value),
-        social: safe($('#e_social').value),
-        country: safe($('#e_country').value),
-        markets: safe($('#e_markets').value),
-        privateLabel: safe($('#e_privateLabel').value),
-        productType: safe($('#e_productType').value),
-        productsOrNeeds: safe($('#e_productsOrNeeds').value),
-        exFactory: safe($('#e_exFactory').value),
-        fob: safe($('#e_fob').value),
-        notes: safe($('#e_notes').value),
-        followup: null
-      };
-      if($('#e_fuEnabled').checked && $('#e_fuDate').value && $('#e_fuTime').value){
-        payload.followup = {
-          date: safe($('#e_fuDate').value),
-          time: safe($('#e_fuTime').value),
-          note: safe($('#e_fuNote').value)
-        };
-      }
-
-      setStatus(st, 'Saving...', null);
-      await apiPost('updateLead', payload);
-      setStatus(st, 'Saved ✓', true);
-
-      closeOverlay('#editOverlay');
-      editingLeadId = null;
-      await refreshLeads();
-      await refreshCalendar();
-      await refreshDashboard();
-      await refreshLists();
-    }catch(e){
-      setStatus(st, 'Save failed: ' + e.message, false);
-    }
-  }
-
-  // ====== Calendar ======
-  async function refreshCalendar(){
-    try{
-      const from = $('#calFrom').value || '';
-      const to = $('#calTo').value || '';
-      const search = safe($('#calSearch').value);
-
-      const data = await apiGet('getFollowups', { from, to, search });
-      followupsCache = data.data.followups || [];
-      renderCalendar();
-    }catch(_){}
-  }
-
-  function renderCalendar(){
-    const tb = $('#tblFollowups tbody');
-    if(!tb) return;
-    const search = safe($('#calSearch').value);
-
-    tb.innerHTML = '';
-    followupsCache
-      .filter(r => !search || (safe(r.company+r.note+r.email).toLowerCase().includes(search.toLowerCase())))
-      .forEach(r => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${escapeHtml(r.when)}</td>
-          <td>${escapeHtml(r.company)}</td>
-          <td>${badge(r.type)}</td>
-          <td>${escapeHtml(r.note)}</td>
-          <td>${r.calendarUrl ? `<a class="link" href="${r.calendarUrl}" target="_blank" rel="noopener">Open</a>` : '—'}</td>
-        `;
-        tb.appendChild(tr);
-      });
-  }
-
-  // ====== Session table ======
-  function renderSession(){
-    const session = loadSession();
-    $('#sessionCount').textContent = String(session.length || 0);
-    const tb = $('#tblSession tbody');
-    tb.innerHTML = '';
-    session.forEach(r => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${badge(r.type)}</td><td>${escapeHtml(r.company)}</td><td>${escapeHtml(r.time)}</td>`;
-      tb.appendChild(tr);
-    });
-  }
-
-  // ====== Init ======
-  function bind(){
-    // Tabs
-    $$('.tab').forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
-
-    // Lead type pills
-    $$('.pill').forEach(p => p.addEventListener('click', () => setLeadType(p.dataset.leadtype)));
-
-    // Scan
-    $('#btnScanQr').addEventListener('click', openQr);
-    $('#btnCloseQr').addEventListener('click', closeQr);
-
-    // Capture actions
-    $('#btnSaveNew').addEventListener('click', () => saveLead('new'));
-    $('#btnSaveClose').addEventListener('click', () => saveLead('close'));
-    $('#btnClear').addEventListener('click', () => clearForm(true));
-
-    // Settings
-    $('#btnSettings').addEventListener('click', () => {
-      const cfg = readCfg();
-      $('#cfgScriptUrl').value = cfg.scriptUrl || '';
-      setStatus($('#settingsStatus'), '');
-      openOverlay('#settingsOverlay');
-    });
-    $('#btnSettingsClose').addEventListener('click', () => closeOverlay('#settingsOverlay'));
-    $('#btnSaveSettings').addEventListener('click', () => {
-      const url = safe($('#cfgScriptUrl').value);
-      localStorage.setItem(LS.scriptUrl, url);
-      applyHeader();
-      setStatus($('#settingsStatus'), 'Saved.', true);
-      refreshLists().catch(()=>{});
-      testConn().catch(()=>{});
-    });
-    $('#btnTestConn').addEventListener('click', () => testConn());
-
-    // User
-    $('#btnSwitchUser').addEventListener('click', () => {
-      const cfg = readCfg();
-      $('#cfgUser').value = cfg.user || '';
-      openOverlay('#userOverlay');
-    });
-    $('#btnUserClose').addEventListener('click', () => closeOverlay('#userOverlay'));
-    $('#btnSaveUser').addEventListener('click', () => {
-      const u = safe($('#cfgUser').value);
-      localStorage.setItem(LS.user, u);
-      applyHeader();
-      closeOverlay('#userOverlay');
-    });
-
-    // Dashboard
-    $('#btnDashRefresh').addEventListener('click', refreshDashboard);
-
-    // Leads
-    $('#btnLeadsRefresh').addEventListener('click', refreshLeads);
-    ['#leadCountry','#leadProductType','#leadMarkets','#leadSearch'].forEach(sel => {
-      const el = $(sel);
-      if(el) el.addEventListener('input', renderLeads);
-    });
-
-    // Calendar
-    $('#btnCalRefresh').addEventListener('click', refreshCalendar);
-    ['#calFrom','#calTo','#calSearch'].forEach(sel => {
-      const el = $(sel);
-      if(el) el.addEventListener('input', () => refreshCalendar());
-    });
-
-    // Country change => prefix phones
-    $('#country').addEventListener('change', () => {
-      const c = safe($('#country').value);
-      if(c){
-        const code = countryDialCode(c);
-        if(code){
-          if(!safe($('#phone').value)) $('#phone').value = code + ' ';
-          if(!safe($('#phone2').value)) $('#phone2').value = code + ' ';
-        }
-      }
-    });
-
-    // Edit modal
-    $('#btnEditClose').addEventListener('click', () => closeOverlay('#editOverlay'));
-    $('#btnEditSave').addEventListener('click', saveEdit);
-
-    // Set defaults
-    $('#calFrom').value = nowIsoDate();
-    const d = new Date(); d.setDate(d.getDate()+14);
-    $('#calTo').value = d.toISOString().slice(0,10);
-  }
-
-  async function testConn(){
-    try{
-      setStatus($('#settingsStatus'), 'Testing...', null);
-      const data = await apiGet('ping');
-      $('#connStatus').textContent = 'Connected';
-      setStatus($('#settingsStatus'), 'Connected ✓', true);
-      // load lists too
-      await refreshLists();
-    }catch(e){
-      $('#connStatus').textContent = 'Not connected';
-      setStatus($('#settingsStatus'), 'Connection failed: ' + e.message, false);
-    }
-  }
-
-  function wireProductsRequired(){
-    // keep required for productsOrNeeds always
-    $('#productsOrNeeds').setAttribute('required','required');
-  }
-
-  // Boot
-  fillCountries();
-  bind();
-  wireProductsRequired();
-  applyHeader();
-  renderSession();
-
-  // If configured, pull lists and data
-  const cfg = readCfg();
-  if(cfg.scriptUrl){
-    testConn().catch(()=>{});
-    refreshDashboard().catch(()=>{});
-    refreshLeads().catch(()=>{});
-    refreshCalendar().catch(()=>{});
-  }
-
-  // Expose for debugging
-  window.BOICRM = { setTab };
+// simple chips css injection via class names in existing css (add minimal here)
+(function injectChipCss(){
+  const st=document.createElement('style');
+  st.textContent = `
+  .chips{ display:flex; gap:6px; flex-wrap:wrap; }
+  .chip{ border:1px solid rgba(255,255,255,.14); background:rgba(255,255,255,.03); color:rgba(230,237,247,.9);
+    padding:6px 10px; border-radius:999px; font-size:12px; cursor:pointer; text-decoration:none; }
+  .chip:hover{ background:rgba(59,130,246,.08); }
+  a.link{ color: rgba(147,197,253,.95); text-decoration:none; }
+  a.link:hover{ text-decoration:underline; }
+  `;
+  document.head.appendChild(st);
 })();
+
+async function refreshLeads(){
+  try{
+    await hydrateAll();
+  }catch(e){
+    alert('Refresh failed: ' + (e.message||e));
+  }
+}
+
+// ---------- Edit lead (simple prompt-based to keep UI minimal) ----------
+async function openEdit(leadId){
+  const lead = state.allLeads.find(x=>x.leadId===leadId);
+  if(!lead) return;
+  const newNotes = prompt('Update notes for: ' + lead.company, lead.notes||'');
+  if(newNotes === null) return;
+  const updated = { leadId, notes: newNotes };
+  try{
+    showSaving(true);
+    const res = await postToAppsScript('updateLead', { updated });
+    if(!res.ok) throw new Error(res.error||'Update failed');
+    await hydrateAll();
+    alert('Updated ✓');
+  }catch(e){
+    alert('Update failed: ' + (e.message||e));
+  }finally{
+    showSaving(false);
+  }
+}
+
+// ---------- Calendar ----------
+function renderCalendar(){
+  if(!state.configured) return;
+
+  const tbody = el('calendarTable').querySelector('tbody');
+  tbody.innerHTML='';
+  (state.followups||[]).slice(0,300).forEach(fu=>{
+    const lead = state.allLeads.find(l=>l.leadId===fu.leadId) || {};
+    const cal = fu.calendarUrl ? `<a class="link" href="${fu.calendarUrl}" target="_blank">Open</a>` : '';
+    const tr=document.createElement('tr');
+    tr.innerHTML = `<td>${escapeHtml(fu.whenIST||'')}</td>
+      <td>${escapeHtml(lead.company||'')}</td>
+      <td>${escapeHtml(lead.type||'')}</td>
+      <td>${escapeHtml(fu.note||'')}</td>
+      <td>${cal}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// ---------- QR scanning ----------
+function openQr(){
+  show('qrOverlay');
+  el('qrMsg').textContent = '';
+  ensureQrLibrary()
+    .then(()=> startQr())
+    .catch(err=>{
+      el('qrMsg').textContent = String(err.message||err);
+      alert('QR library not loaded yet. Refresh and try again.');
+    });
+}
+function closeQr(){
+  stopQr().finally(()=> hide('qrOverlay'));
+}
+
+function ensureQrLibrary(){
+  // Already loaded?
+  if(window.Html5Qrcode) return Promise.resolve(true);
+
+  return new Promise((resolve,reject)=>{
+    const sources = [
+      'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.10/minified/html5-qrcode.min.js',
+      'https://unpkg.com/html5-qrcode@2.3.10/minified/html5-qrcode.min.js'
+    ];
+    let idx=0;
+
+    const loadNext=()=>{
+      if(idx>=sources.length) return reject(new Error('Unable to load QR library (CDN blocked).'));
+      const src=sources[idx++];
+      const s=document.createElement('script');
+      s.src=src;
+      s.async=true;
+      s.onload=()=> window.Html5Qrcode ? resolve(true) : loadNext();
+      s.onerror=()=> loadNext();
+      document.head.appendChild(s);
+    };
+    loadNext();
+  });
+}
+
+let qr = null;
+
+async function startQr(){
+  if(!window.Html5Qrcode) throw new Error('QR library not loaded.');
+  const regionId = 'qrReader';
+  el(regionId).innerHTML = '';
+  qr = new Html5Qrcode(regionId);
+  const cfg = { fps: 10, qrbox: { width: 260, height: 260 } };
+
+  try{
+    await qr.start(
+      { facingMode: "environment" },
+      cfg,
+      (decodedText)=>{
+        // fill QR raw
+        el('qrData').value = decodedText;
+        // Try parse vCard
+        autofillFromVCard(decodedText);
+        el('qrMsg').textContent = 'Captured ✓';
+        // stop after first scan
+        closeQr();
+      },
+      ()=>{}
+    );
+  }catch(e){
+    el('qrMsg').textContent = 'Camera error: ' + (e.message||e);
+    throw e;
+  }
+}
+
+async function stopQr(){
+  try{
+    if(qr){
+      await qr.stop();
+      await qr.clear();
+    }
+  }catch(e){}
+  qr = null;
+}
+
+function autofillFromVCard(text){
+  if(!text || !/BEGIN:VCARD/i.test(text)) return;
+  // basic vCard parse
+  const lines = text.split(/\r?\n/);
+  const get = (prefix)=>{
+    const line = lines.find(l=>l.toUpperCase().startsWith(prefix));
+    if(!line) return '';
+    return line.split(':').slice(1).join(':').trim();
+  };
+  const fn = get('FN');
+  const org = get('ORG');
+  const email = get('EMAIL');
+  const tel = get('TEL');
+  if(fn && !el('contact').value) el('contact').value = fn;
+  if(org && !el('company').value) el('company').value = org;
+  if(email && !el('email').value) el('email').value = email;
+  if(tel && !el('phone1').value) el('phone1').value = tel;
+}
+
+// ---------- Phone auto-prefix ----------
+function countryDialCode(country){
+  // minimal mapping; backend also normalizes
+  const map = {
+    'India': '+91',
+    'United States': '+1',
+    'USA': '+1',
+    'United Arab Emirates': '+971',
+    'UAE': '+971',
+    'Qatar': '+974',
+    'Saudi Arabia': '+966',
+    'United Kingdom': '+44'
+  };
+  return map[country] || '+91';
+}
+function normalizePhone(phone, country){
+  phone = String(phone||'').trim();
+  if(!phone) return '';
+  if(phone.startsWith('+')) return phone;
+  const code = countryDialCode(country || el('country').value.trim());
+  const digits = phone.replace(/[^\d]/g,'');
+  return code + digits;
+}
+
+function attachPhoneHandlers(){
+  const fix = ()=>{
+    const c = el('country').value.trim();
+    el('phone1').value = normalizePhone(el('phone1').value, c);
+    el('phone2').value = normalizePhone(el('phone2').value, c);
+  };
+  el('phone1').addEventListener('blur', fix);
+  el('phone2').addEventListener('blur', fix);
+  el('country').addEventListener('change', fix);
+}
+
+// ---------- Modals ----------
+function openSettings(){
+  el('settingsScriptUrl').value = getScriptUrl();
+  show('settingsOverlay');
+}
+function closeSettings(){ hide('settingsOverlay'); }
+function openUser(){
+  el('userNameInput').value = getUser();
+  show('userOverlay');
+}
+function closeUser(){ hide('userOverlay'); }
+
+// ---------- Init ----------
+function init(){
+  refreshHeader();
+
+  // tabs
+  qsa('.tab').forEach(b=> b.addEventListener('click', ()=> switchTab(b.dataset.tab)));
+
+  // lead type
+  el('btnTypeSupplier').addEventListener('click', ()=> setLeadType('supplier'));
+  el('btnTypeBuyer').addEventListener('click', ()=> setLeadType('buyer'));
+
+  // scan
+  el('btnScan').addEventListener('click', ()=>{
+    if(!state.leadType){ alert('Select Supplier or Buyer first.'); return; }
+    if(!state.configured){ alert('Set Apps Script URL in Settings first.'); openSettings(); return; }
+    openQr();
+  });
+  el('btnCloseQr').addEventListener('click', closeQr);
+
+  // settings
+  el('btnSettings').addEventListener('click', openSettings);
+  el('btnCloseSettings').addEventListener('click', closeSettings);
+  el('btnSaveSettings').addEventListener('click', saveSettings);
+  el('btnTest').addEventListener('click', testConnection);
+
+  // user
+  el('btnSwitchUser').addEventListener('click', openUser);
+  el('btnCloseUser').addEventListener('click', closeUser);
+  el('btnSaveUser').addEventListener('click', ()=>{
+    setUser(el('userNameInput').value.trim());
+    refreshHeader();
+    closeUser();
+    // refresh status
+    setConfigured(!!getUser() && isExecUrl(getScriptUrl()));
+  });
+
+  // actions
+  el('btnClear').addEventListener('click', resetForm);
+  el('btnSaveNew').addEventListener('click', ()=> saveLead(false));
+  el('btnSaveClose').addEventListener('click', ()=> saveLead(true));
+
+  // dashboard filters
+  el('btnClearFilters').addEventListener('click', ()=>{
+    ['fCountry','fProductType','fMarkets'].forEach(id=> el(id).value='');
+    renderDashboard();
+  });
+  ['fCountry','fProductType','fMarkets'].forEach(id=> el(id).addEventListener('input', renderDashboard));
+  ['lCountry','lProductType','lMarkets'].forEach(id=> el(id).addEventListener('input', renderLeads));
+  el('btnRefreshLeads').addEventListener('click', refreshLeads);
+
+  // calendar view toggles (agenda only implemented in this stable build)
+  el('calViewAgenda').addEventListener('click', ()=>{
+    el('calViewAgenda').classList.add('active'); el('calViewWeek').classList.remove('active'); el('calViewMonth').classList.remove('active');
+    show('calAgenda'); hide('calGrid');
+  });
+  el('calViewWeek').addEventListener('click', ()=>{
+    alert('Week view UI is queued next. Agenda view is stable for now.');
+  });
+  el('calViewMonth').addEventListener('click', ()=>{
+    alert('Month view UI is queued next. Agenda view is stable for now.');
+  });
+
+  attachPhoneHandlers();
+  setLeadType('supplier');
+
+  // config check
+  const ok = !!getUser() && isExecUrl(getScriptUrl());
+  setConfigured(ok);
+  if(ok){
+    hydrateAll().catch(()=>{});
+  }
+}
+
+document.addEventListener('DOMContentLoaded', init);
