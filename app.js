@@ -1,745 +1,761 @@
-// BOI CRM — Frontend (GitHub Pages)
-// Uses hidden-iframe POST to Apps Script (no CORS), Apps Script responds with postMessage(JSON)
-
-const STORAGE = {
-  user: 'boi_user_name',
-  scriptUrl: 'boi_script_url',
-};
-
-let state = {
-  leadType: 'supplier', // supplier|buyer
-  sessionLeads: [],
-  allLeads: [],
-  followups: [],
-  lists: { countries: [], productTypes: [], markets: [] },
-  configured: false,
-};
-
-function el(id){ return document.getElementById(id); }
-function qsa(sel){ return Array.from(document.querySelectorAll(sel)); }
-function show(id){ el(id).classList.remove('hidden'); }
-function hide(id){ el(id).classList.add('hidden'); }
-function setStatus(msg){ el('statusText').textContent = msg; }
-
-function normalizeScriptUrl(url){
-  if(!url) return '';
-  url = String(url).trim();
-  // remove trailing whitespace or stray quotes
-  url = url.replace(/^"+|"+$/g,'');
-  // strip trailing slash
-  url = url.replace(/\/+$/,'');
-  return url;
-}
-function isExecUrl(url){
-  url = normalizeScriptUrl(url);
-  return /^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/i.test(url);
-}
-
-function getUser(){ return localStorage.getItem(STORAGE.user) || ''; }
-function setUser(v){ localStorage.setItem(STORAGE.user, v || ''); }
-function getScriptUrl(){ return localStorage.getItem(STORAGE.scriptUrl) || ''; }
-function setScriptUrl(v){ localStorage.setItem(STORAGE.scriptUrl, normalizeScriptUrl(v)); }
-
-function refreshHeader(){
-  const u = getUser();
-  el('userNameLabel').textContent = u ? u : '—';
-}
-
-function setConfigured(ok){
-  state.configured = ok;
-  el('btnScan').disabled = !ok;
-  setStatus(ok ? 'Ready' : 'Not configured');
-}
-
-function switchTab(tab){
-  qsa('.tab').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
-  hide('tab-capture'); hide('tab-dashboard'); hide('tab-leads'); hide('tab-calendar');
-  show('tab-'+tab);
-  if(tab==='dashboard') renderDashboard();
-  if(tab==='leads') renderLeads();
-  if(tab==='calendar') renderCalendar();
-}
-
-function setLeadType(t){
-  state.leadType = t;
-  el('btnTypeSupplier').classList.toggle('active', t==='supplier');
-  el('btnTypeBuyer').classList.toggle('active', t==='buyer');
-  el('captureTitle').textContent = t==='supplier' ? 'Supplier details' : 'Buyer details';
-  el('productsLabel').innerHTML = (t==='supplier' ? 'What do they sell?' : 'What do they want to buy?') + ' (one per line) <span class="req">*</span>';
-  // Scan button only enabled after selecting type + configured
-  el('btnScan').disabled = !state.configured || !t;
-}
-
-function resetForm(){
-  ['company','contact','title','email','country','markets','phone1','phone2','website','social','productType','privateLabel','exFactory','fob','productsOrNeeds','qrData','notes'].forEach(id=>{
-    const node = el(id);
-    if(!node) return;
-    if(node.tagName==='SELECT') node.value='';
-    else node.value='';
-  });
-  el('catalogFiles').value = '';
-  el('cardFile').value = '';
-  el('followEnabled').checked = false;
-  el('followDate').value = '';
-  el('followTime').value = '';
-  el('followNote').value = '';
-}
-
-function getFormData(){
-  const lead = {
-    type: state.leadType,
-    enteredBy: getUser() || '',
-    company: el('company').value.trim(),
-    contact: el('contact').value.trim(),
-    title: el('title').value.trim(),
-    email: el('email').value.trim(),
-    phone: el('phone1').value.trim(),
-    phone2: el('phone2').value.trim(),
-    website: el('website').value.trim(),
-    social: el('social').value.trim(),
-    country: el('country').value.trim(),
-    markets: el('markets').value.trim(),
-    privateLabel: el('privateLabel').value.trim(),
-    productType: el('productType').value.trim(),
-    productsOrNeeds: el('productsOrNeeds').value.trim(),
-    exFactory: el('exFactory').value.trim(),
-    fob: el('fob').value.trim(),
-    qrData: el('qrData').value.trim(),
-    notes: el('notes').value.trim(),
+(() => {
+  // =====================
+  // Storage + State
+  // =====================
+  const LS = {
+    scriptUrl: 'boi_script_url',
+    user: 'boi_user',
   };
 
-  // follow-up (store only)
-  const followEnabled = el('followEnabled').checked;
-  const follow = followEnabled ? {
-    date: el('followDate').value,
-    time: el('followTime').value,
-    note: el('followNote').value.trim(),
-    durationMinutes: 30
-  } : null;
+  const state = {
+    leadType: 'supplier',
+    sessionLeads: [],
+    lists: { countries: [], productTypes: [], markets: [] },
+    configured: false,
+    scriptUrl: '',
+    user: '',
+    calendar: { anchor: startOfWeek(new Date()), followups: [] },
+  };
 
-  return { lead, follow };
-}
-
-function fileToBase64(file){
-  return new Promise((resolve,reject)=>{
-    if(!file) return resolve(null);
-    const r=new FileReader();
-    r.onload=()=> resolve(String(r.result).split(',')[1] || '');
-    r.onerror=()=> reject(r.error || new Error('File read error'));
-    r.readAsDataURL(file);
-  });
-}
-
-async function collectFiles(){
-  const card = el('cardFile').files && el('cardFile').files[0] ? el('cardFile').files[0] : null;
-  const catalogs = el('catalogFiles').files ? Array.from(el('catalogFiles').files) : [];
-  const cardObj = card ? {
-    name: card.name,
-    mimeType: card.type || 'application/octet-stream',
-    dataBase64: await fileToBase64(card),
-  } : null;
-
-  const catalogObjs = [];
-  for(const f of catalogs){
-    catalogObjs.push({
-      name: f.name,
-      mimeType: f.type || 'application/octet-stream',
-      dataBase64: await fileToBase64(f),
-    });
+  // =====================
+  // Helpers
+  // =====================
+  const $ = (id) => document.getElementById(id);
+  const esc = (s='') => String(s).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const isExecUrl = (u='') => /^https:\/\/script\.google\.com\/macros\/s\/[^\/]+\/exec$/i.test(u.trim());
+  function setOverlay(el, open){
+    el.classList.toggle('open', !!open);
+    el.setAttribute('aria-hidden', open ? 'false' : 'true');
   }
-  return { cardFile: cardObj, catalogFiles: catalogObjs };
-}
 
-// ---------- Apps Script bridge (no CORS) ----------
-let pending = new Map();
+  function startOfWeek(d){
+    const x = new Date(d);
+    const day = (x.getDay() + 6) % 7; // Mon=0
+    x.setHours(0,0,0,0);
+    x.setDate(x.getDate() - day);
+    return x;
+  }
 
-function postToAppsScript(action, payload){
-  return new Promise((resolve,reject)=>{
-    const url = getScriptUrl();
-    if(!isExecUrl(url)) return reject(new Error('Apps Script URL missing or not ending with /exec'));
+  function fmtIST(date){
+    // MM/DD/YY hh:mm AM/PM in IST
+    const dtf = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Kolkata',
+      year: '2-digit', month: '2-digit', day: '2-digit',
+      hour: 'numeric', minute: '2-digit', hour12: true
+    });
+    return dtf.format(date);
+  }
 
-    const id = 'req_' + Date.now() + '_' + Math.random().toString(16).slice(2);
-    pending.set(id, { resolve, reject, t: Date.now() });
+  function normalizePhone(raw, country){
+    const v = (raw||'').trim();
+    if (!v) return '';
+    if (v.startsWith('+')) return v;
+    const digits = v.replace(/[^0-9]/g,'');
+    if (!digits) return '';
+    // fallback +91 as you requested
+    const prefix = countryCodeFor(country) || '+91';
+    return prefix + digits;
+  }
 
-    const iframe = document.createElement('iframe');
-    iframe.name = 'if_' + id;
+  function countryCodeFor(country){
+    // map from Lists sheet values like: "India (+91)" or just "India"
+    const c = (country||'').trim();
+    if (!c) return '';
+    const m = c.match(/\(\+\d+\)/);
+    if (m) return m[1];
+    // quick hard default for India/US if not tagged
+    const low = c.toLowerCase();
+    if (low.includes('india')) return '+91';
+    if (low.includes('united states') || low === 'usa') return '+1';
+    return '';
+  }
+
+  function buildDatalist(elId, values){
+    const dl = $(elId);
+    if (!dl) return;
+    dl.innerHTML = values.map(v => `<option value="${esc(v)}"></option>`).join('');
+  }
+
+  // =====================
+  // Iframe POST bridge (no CORS)
+  // =====================
+  let iframe, iframeName, lastReqId = 0;
+
+  function ensureIframe(){
+    if (iframe) return;
+    iframeName = 'boi_iframe_' + Math.random().toString(16).slice(2);
+    iframe = document.createElement('iframe');
+    iframe.name = iframeName;
     iframe.style.display = 'none';
     document.body.appendChild(iframe);
+  }
 
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = url;
-    form.target = iframe.name;
-
-    const add = (k,v)=>{
-      const i=document.createElement('input');
-      i.type='hidden';
-      i.name=k;
-      i.value=v;
-      form.appendChild(i);
-    };
-
-    add('reqId', id);
-    add('action', action);
-    add('payload', JSON.stringify(payload || {}));
-
-    document.body.appendChild(form);
-    form.submit();
-    form.remove();
-
-    // timeout
-    setTimeout(()=>{
-      if(pending.has(id)){
-        pending.delete(id);
-        iframe.remove();
-        reject(new Error('Request timeout'));
+  function postToScript(action, data){
+    return new Promise((resolve, reject) => {
+      if (!state.scriptUrl || !isExecUrl(state.scriptUrl)) {
+        reject(new Error('Apps Script URL missing or not ending with /exec'));
+        return;
       }
-    }, 45000);
-  });
-}
+      ensureIframe();
+      const reqId = String(++lastReqId);
 
-window.addEventListener('message', (ev)=>{
-  const data = ev.data;
-  if(!data || typeof data !== 'object') return;
-  const { reqId, ok, result, error } = data;
-  if(!reqId || !pending.has(reqId)) return;
-  const p = pending.get(reqId);
-  pending.delete(reqId);
-  try{
-    p.resolve({ ok, result, error });
-  } catch(e){}
-});
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = state.scriptUrl;
+      form.target = iframeName;
 
-// ---------- Settings ----------
-async function testConnection(){
-  el('settingsMsg').textContent = '';
-  const input = el('settingsScriptUrl').value;
-  const url = normalizeScriptUrl(input);
-  if(!isExecUrl(url)){
-    el('settingsMsg').textContent = 'Connection failed: Apps Script URL missing or not ending with /exec';
-    return false;
-  }
-  setScriptUrl(url);
-  try{
-    const res = await postToAppsScript('ping', { t: Date.now() });
-    if(res.ok){
-      el('settingsMsg').textContent = 'Connected ✓';
-      setConfigured(true);
-      // load lists & data
-      await hydrateAll();
-      return true;
-    }
-    el('settingsMsg').textContent = 'Connection failed: ' + (res.error || 'Unknown error');
-    setConfigured(false);
-    return false;
-  }catch(err){
-    el('settingsMsg').textContent = 'Connection failed: ' + (err.message || err);
-    setConfigured(false);
-    return false;
-  }
-}
+      const payload = {
+        reqId,
+        action,
+        data
+      };
 
-function saveSettings(){
-  const url = normalizeScriptUrl(el('settingsScriptUrl').value);
-  if(!isExecUrl(url)){
-    el('settingsMsg').textContent = 'Please paste a full /exec URL.';
-    return;
-  }
-  setScriptUrl(url);
-  el('settingsMsg').textContent = 'Saved ✓';
-  setConfigured(true);
-  hydrateAll().catch(()=>{});
-}
+      const inp = document.createElement('input');
+      inp.type = 'hidden';
+      inp.name = 'payload';
+      inp.value = JSON.stringify(payload);
+      form.appendChild(inp);
 
-// ---------- Data loading ----------
-async function hydrateAll(){
-  const res = await postToAppsScript('getAll', { });
-  if(!res.ok) throw new Error(res.error || 'Failed to load');
-  const { leads, followups, lists } = res.result || {};
-  state.allLeads = Array.isArray(leads) ? leads : [];
-  state.followups = Array.isArray(followups) ? followups : [];
-  state.lists = lists || state.lists;
-  renderDatalists();
-  renderDashboard();
-  renderLeads();
-  renderCalendar();
-}
+      document.body.appendChild(form);
 
-function renderDatalists(){
-  const fill = (id, arr)=>{
-    const dl = el(id);
-    if(!dl) return;
-    dl.innerHTML = '';
-    (arr||[]).forEach(v=>{
-      const o=document.createElement('option');
-      o.value=v;
-      dl.appendChild(o);
+      const timeout = setTimeout(() => {
+        cleanup();
+        reject(new Error('Request timed out.'));
+      }, 20000);
+
+      function onMsg(ev){
+        // accept from any origin; validate payload
+        try{
+          const msg = ev.data;
+          if (!msg || typeof msg !== 'object') return;
+          if (msg.reqId !== reqId) return;
+          window.removeEventListener('message', onMsg);
+          clearTimeout(timeout);
+          cleanup();
+          if (msg.ok) resolve(msg);
+          else reject(new Error(msg.error || 'Request failed'));
+        }catch(e){}
+      }
+
+      function cleanup(){
+        if (form && form.parentNode) form.parentNode.removeChild(form);
+      }
+
+      window.addEventListener('message', onMsg);
+      form.submit();
     });
-  };
-  fill('dlCountries', state.lists.countries || []);
-  fill('dlProductTypes', state.lists.productTypes || []);
-  fill('dlMarkets', state.lists.markets || []);
-}
-
-// ---------- Save lead ----------
-function showSaving(on){
-  const s = el('savingIndicator');
-  s.classList.toggle('show', !!on);
-}
-
-async function saveLead(closeAfter){
-  // basic validation
-  const { lead, follow } = getFormData();
-  if(!lead.company){
-    alert('Company name is required.');
-    return;
-  }
-  if(!lead.productsOrNeeds){
-    alert((state.leadType==='supplier'?'Products sold':'Products needed') + ' is required.');
-    return;
-  }
-  if(!getUser()){
-    alert('Please set a User (Switch button) before saving.');
-    openUser();
-    return;
-  }
-  if(!isExecUrl(getScriptUrl())){
-    alert('Please set your Apps Script URL in Settings.');
-    openSettings();
-    return;
   }
 
-  // collect files
-  showSaving(true);
-  try{
-    const files = await collectFiles();
-    const res = await postToAppsScript('saveLead', { lead, follow, files });
-    if(!res.ok) throw new Error(res.error || 'Save failed');
-
-    // update session list
-    const saved = res.result && res.result.lead ? res.result.lead : lead;
-    state.sessionLeads.unshift(saved);
-    state.sessionLeads = state.sessionLeads.slice(0, 15);
-    renderSession();
-
-    // refresh global datasets
-    await hydrateAll();
-
-    if(closeAfter){
-      // stay on capture but clear
-      resetForm();
-      alert('Saved ✓');
-    }else{
-      resetForm();
-    }
-  }catch(err){
-    alert('Save failed: ' + (err.message || err));
-  }finally{
-    showSaving(false);
+  async function testConnection(){
+    // ping through iframe + postMessage
+    const r = await postToScript('ping', {});
+    return r;
   }
-}
 
-function renderSession(){
-  const tbody = el('sessionTable').querySelector('tbody');
-  tbody.innerHTML='';
-  state.sessionLeads.forEach(r=>{
-    const tr=document.createElement('tr');
-    tr.innerHTML = `<td>${escapeHtml(r.type||'')}</td>
-      <td>${escapeHtml(r.company||'')}</td>
-      <td>${escapeHtml(r.country||'')}</td>
-      <td>${escapeHtml(r.timeIST||r.timestampIST||'')}</td>`;
-    tbody.appendChild(tr);
-  });
-  el('sessionCount').textContent = `${state.sessionLeads.length} leads this session`;
-}
+  // =====================
+  // QR Scan (html5-qrcode)
+  // =====================
+  let qrScanner = null;
+  let qrLibReady = false;
 
-function escapeHtml(s){
-  return String(s||'').replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;'}[c]));
-}
+  async function loadQrLib(){
+    if (qrLibReady) return true;
 
-// ---------- Dashboard ----------
-function filterMatch(row, f){
-  if(!f) return true;
-  const v = String(row||'').toLowerCase();
-  return v.includes(String(f).toLowerCase());
-}
-function applyFilters(arr, prefix){
-  const c = el(prefix+'Country').value.trim();
-  const p = el(prefix+'ProductType').value.trim();
-  const m = el(prefix+'Markets').value.trim();
-  return (arr||[]).filter(r =>
-    filterMatch(r.country, c) &&
-    filterMatch(r.productType, p) &&
-    filterMatch(r.markets, m)
-  );
-}
-
-function renderDashboard(){
-  if(!state.configured) return;
-  const filtered = applyFilters(state.allLeads, 'f');
-  el('kpiTotal').textContent = filtered.length;
-  el('kpiSuppliers').textContent = filtered.filter(x=>String(x.type).toLowerCase()==='supplier').length;
-  el('kpiBuyers').textContent = filtered.filter(x=>String(x.type).toLowerCase()==='buyer').length;
-
-  // followups (no filters except match by lead fields)
-  const follow = (state.followups||[]).filter(fu=>{
-    const lead = state.allLeads.find(l=>l.leadId===fu.leadId) || {};
-    return filterMatch(lead.country, el('fCountry').value.trim()) &&
-           filterMatch(lead.productType, el('fProductType').value.trim()) &&
-           filterMatch(lead.markets, el('fMarkets').value.trim());
-  });
-
-  el('kpiFollowups').textContent = follow.length;
-
-  // upcoming followups table
-  const tbody = el('followupsTable').querySelector('tbody');
-  tbody.innerHTML='';
-  follow.slice(0, 20).forEach(fu=>{
-    const lead = state.allLeads.find(l=>l.leadId===fu.leadId) || {};
-    const tr=document.createElement('tr');
-    const cal = fu.calendarUrl ? `<a class="link" href="${fu.calendarUrl}" target="_blank">Open</a>` : '';
-    tr.innerHTML = `<td>${escapeHtml(fu.whenIST||'')}</td>
-      <td>${escapeHtml(lead.type||'')}</td>
-      <td>${escapeHtml(lead.company||'')}</td>
-      <td>${escapeHtml(fu.note||'')}</td>
-      <td>${cal}</td>`;
-    tbody.appendChild(tr);
-  });
-
-  // recent leads
-  const tbody2 = el('recentLeadsTable').querySelector('tbody');
-  tbody2.innerHTML='';
-  filtered.slice(0, 20).forEach(l=>{
-    const drive = l.folderUrl ? `<a class="link" href="${l.folderUrl}" target="_blank">Drive</a>` : '';
-    const tr=document.createElement('tr');
-    tr.innerHTML = `<td>${escapeHtml(l.whenIST||l.timestampIST||'')}</td>
-      <td>${escapeHtml(l.type||'')}</td>
-      <td>${escapeHtml(l.company||'')}</td>
-      <td>${escapeHtml(l.country||'')}</td>
-      <td>${drive}</td>`;
-    tbody2.appendChild(tr);
-  });
-}
-
-// ---------- Leads ----------
-function leadActionsHtml(l){
-  const tel = l.phone ? `tel:${encodeURI(l.phone)}` : '';
-  const wa = l.phone ? `https://wa.me/${encodeURIComponent(l.phone.replace(/\D/g,''))}` : '';
-  const mail = l.email ? `mailto:${encodeURIComponent(l.email)}?subject=${encodeURIComponent('IndusFood follow-up')}` : '';
-  const drive = l.folderUrl || '';
-  const btn = (href, label)=> href ? `<a class="chip" href="${href}" target="_blank">${label}</a>` : '';
-  return `<div class="chips">
-    ${btn(tel,'Call')}
-    ${btn(wa,'WhatsApp')}
-    ${btn(mail,'Email')}
-    ${btn(drive,'Drive')}
-    <button class="chip" data-edit="${escapeHtml(l.leadId||'')}">Edit</button>
-  </div>`;
-}
-
-function renderLeads(){
-  if(!state.configured) return;
-  const filtered = applyFilters(state.allLeads, 'l');
-  const tbody = el('leadsTable').querySelector('tbody');
-  tbody.innerHTML='';
-  filtered.slice(0, 300).forEach(l=>{
-    const tr=document.createElement('tr');
-    tr.innerHTML = `<td>${escapeHtml(l.whenIST||l.timestampIST||'')}</td>
-      <td>${escapeHtml(l.type||'')}</td>
-      <td>${escapeHtml(l.company||'')}</td>
-      <td>${escapeHtml(l.contact||'')}</td>
-      <td>${escapeHtml(l.country||'')}</td>
-      <td>${escapeHtml(l.productType||'')}</td>
-      <td>${escapeHtml(l.markets||'')}</td>
-      <td>${escapeHtml(l.enteredBy||'')}</td>
-      <td>${leadActionsHtml(l)}</td>`;
-    tbody.appendChild(tr);
-  });
-
-  // attach edit handlers
-  tbody.querySelectorAll('button[data-edit]').forEach(btn=>{
-    btn.addEventListener('click', ()=> openEdit(btn.getAttribute('data-edit')));
-  });
-}
-
-// simple chips css injection via class names in existing css (add minimal here)
-(function injectChipCss(){
-  const st=document.createElement('style');
-  st.textContent = `
-  .chips{ display:flex; gap:6px; flex-wrap:wrap; }
-  .chip{ border:1px solid rgba(255,255,255,.14); background:rgba(255,255,255,.03); color:rgba(230,237,247,.9);
-    padding:6px 10px; border-radius:999px; font-size:12px; cursor:pointer; text-decoration:none; }
-  .chip:hover{ background:rgba(59,130,246,.08); }
-  a.link{ color: rgba(147,197,253,.95); text-decoration:none; }
-  a.link:hover{ text-decoration:underline; }
-  `;
-  document.head.appendChild(st);
-})();
-
-async function refreshLeads(){
-  try{
-    await hydrateAll();
-  }catch(e){
-    alert('Refresh failed: ' + (e.message||e));
-  }
-}
-
-// ---------- Edit lead (simple prompt-based to keep UI minimal) ----------
-async function openEdit(leadId){
-  const lead = state.allLeads.find(x=>x.leadId===leadId);
-  if(!lead) return;
-  const newNotes = prompt('Update notes for: ' + lead.company, lead.notes||'');
-  if(newNotes === null) return;
-  const updated = { leadId, notes: newNotes };
-  try{
-    showSaving(true);
-    const res = await postToAppsScript('updateLead', { updated });
-    if(!res.ok) throw new Error(res.error||'Update failed');
-    await hydrateAll();
-    alert('Updated ✓');
-  }catch(e){
-    alert('Update failed: ' + (e.message||e));
-  }finally{
-    showSaving(false);
-  }
-}
-
-// ---------- Calendar ----------
-function renderCalendar(){
-  if(!state.configured) return;
-
-  const tbody = el('calendarTable').querySelector('tbody');
-  tbody.innerHTML='';
-  (state.followups||[]).slice(0,300).forEach(fu=>{
-    const lead = state.allLeads.find(l=>l.leadId===fu.leadId) || {};
-    const cal = fu.calendarUrl ? `<a class="link" href="${fu.calendarUrl}" target="_blank">Open</a>` : '';
-    const tr=document.createElement('tr');
-    tr.innerHTML = `<td>${escapeHtml(fu.whenIST||'')}</td>
-      <td>${escapeHtml(lead.company||'')}</td>
-      <td>${escapeHtml(lead.type||'')}</td>
-      <td>${escapeHtml(fu.note||'')}</td>
-      <td>${cal}</td>`;
-    tbody.appendChild(tr);
-  });
-}
-
-// ---------- QR scanning ----------
-function openQr(){
-  show('qrOverlay');
-  el('qrMsg').textContent = '';
-  ensureQrLibrary()
-    .then(()=> startQr())
-    .catch(err=>{
-      el('qrMsg').textContent = String(err.message||err);
-      alert('QR library not loaded yet. Refresh and try again.');
-    });
-}
-function closeQr(){
-  stopQr().finally(()=> hide('qrOverlay'));
-}
-
-function ensureQrLibrary(){
-  // Already loaded?
-  if(window.Html5Qrcode) return Promise.resolve(true);
-
-  return new Promise((resolve,reject)=>{
-    const sources = [
+    // Try jsDelivr versioned first, then unpkg versioned
+    const candidates = [
       'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.10/minified/html5-qrcode.min.js',
       'https://unpkg.com/html5-qrcode@2.3.10/minified/html5-qrcode.min.js'
     ];
-    let idx=0;
 
-    const loadNext=()=>{
-      if(idx>=sources.length) return reject(new Error('Unable to load QR library (CDN blocked).'));
-      const src=sources[idx++];
-      const s=document.createElement('script');
-      s.src=src;
-      s.async=true;
-      s.onload=()=> window.Html5Qrcode ? resolve(true) : loadNext();
-      s.onerror=()=> loadNext();
-      document.head.appendChild(s);
-    };
-    loadNext();
-  });
-}
-
-let qr = null;
-
-async function startQr(){
-  if(!window.Html5Qrcode) throw new Error('QR library not loaded.');
-  const regionId = 'qrReader';
-  el(regionId).innerHTML = '';
-  qr = new Html5Qrcode(regionId);
-  const cfg = { fps: 10, qrbox: { width: 260, height: 260 } };
-
-  try{
-    await qr.start(
-      { facingMode: "environment" },
-      cfg,
-      (decodedText)=>{
-        // fill QR raw
-        el('qrData').value = decodedText;
-        // Try parse vCard
-        autofillFromVCard(decodedText);
-        el('qrMsg').textContent = 'Captured ✓';
-        // stop after first scan
-        closeQr();
-      },
-      ()=>{}
-    );
-  }catch(e){
-    el('qrMsg').textContent = 'Camera error: ' + (e.message||e);
-    throw e;
-  }
-}
-
-async function stopQr(){
-  try{
-    if(qr){
-      await qr.stop();
-      await qr.clear();
+    for (const src of candidates){
+      try{
+        await loadScript(src);
+        if (window.Html5Qrcode) { qrLibReady = true; return true; }
+      }catch(e){}
     }
-  }catch(e){}
-  qr = null;
-}
-
-function autofillFromVCard(text){
-  if(!text || !/BEGIN:VCARD/i.test(text)) return;
-  // basic vCard parse
-  const lines = text.split(/\r?\n/);
-  const get = (prefix)=>{
-    const line = lines.find(l=>l.toUpperCase().startsWith(prefix));
-    if(!line) return '';
-    return line.split(':').slice(1).join(':').trim();
-  };
-  const fn = get('FN');
-  const org = get('ORG');
-  const email = get('EMAIL');
-  const tel = get('TEL');
-  if(fn && !el('contact').value) el('contact').value = fn;
-  if(org && !el('company').value) el('company').value = org;
-  if(email && !el('email').value) el('email').value = email;
-  if(tel && !el('phone1').value) el('phone1').value = tel;
-}
-
-// ---------- Phone auto-prefix ----------
-function countryDialCode(country){
-  // minimal mapping; backend also normalizes
-  const map = {
-    'India': '+91',
-    'United States': '+1',
-    'USA': '+1',
-    'United Arab Emirates': '+971',
-    'UAE': '+971',
-    'Qatar': '+974',
-    'Saudi Arabia': '+966',
-    'United Kingdom': '+44'
-  };
-  return map[country] || '+91';
-}
-function normalizePhone(phone, country){
-  phone = String(phone||'').trim();
-  if(!phone) return '';
-  if(phone.startsWith('+')) return phone;
-  const code = countryDialCode(country || el('country').value.trim());
-  const digits = phone.replace(/[^\d]/g,'');
-  return code + digits;
-}
-
-function attachPhoneHandlers(){
-  const fix = ()=>{
-    const c = el('country').value.trim();
-    el('phone1').value = normalizePhone(el('phone1').value, c);
-    el('phone2').value = normalizePhone(el('phone2').value, c);
-  };
-  el('phone1').addEventListener('blur', fix);
-  el('phone2').addEventListener('blur', fix);
-  el('country').addEventListener('change', fix);
-}
-
-// ---------- Modals ----------
-function openSettings(){
-  el('settingsScriptUrl').value = getScriptUrl();
-  show('settingsOverlay');
-}
-function closeSettings(){ hide('settingsOverlay'); }
-function openUser(){
-  el('userNameInput').value = getUser();
-  show('userOverlay');
-}
-function closeUser(){ hide('userOverlay'); }
-
-// ---------- Init ----------
-function init(){
-  refreshHeader();
-
-  // tabs
-  qsa('.tab').forEach(b=> b.addEventListener('click', ()=> switchTab(b.dataset.tab)));
-
-  // lead type
-  el('btnTypeSupplier').addEventListener('click', ()=> setLeadType('supplier'));
-  el('btnTypeBuyer').addEventListener('click', ()=> setLeadType('buyer'));
-
-  // scan
-  el('btnScan').addEventListener('click', ()=>{
-    if(!state.leadType){ alert('Select Supplier or Buyer first.'); return; }
-    if(!state.configured){ alert('Set Apps Script URL in Settings first.'); openSettings(); return; }
-    openQr();
-  });
-  el('btnCloseQr').addEventListener('click', closeQr);
-
-  // settings
-  el('btnSettings').addEventListener('click', openSettings);
-  el('btnCloseSettings').addEventListener('click', closeSettings);
-  el('btnSaveSettings').addEventListener('click', saveSettings);
-  el('btnTest').addEventListener('click', testConnection);
-
-  // user
-  el('btnSwitchUser').addEventListener('click', openUser);
-  el('btnCloseUser').addEventListener('click', closeUser);
-  el('btnSaveUser').addEventListener('click', ()=>{
-    setUser(el('userNameInput').value.trim());
-    refreshHeader();
-    closeUser();
-    // refresh status
-    setConfigured(!!getUser() && isExecUrl(getScriptUrl()));
-  });
-
-  // actions
-  el('btnClear').addEventListener('click', resetForm);
-  el('btnSaveNew').addEventListener('click', ()=> saveLead(false));
-  el('btnSaveClose').addEventListener('click', ()=> saveLead(true));
-
-  // dashboard filters
-  el('btnClearFilters').addEventListener('click', ()=>{
-    ['fCountry','fProductType','fMarkets'].forEach(id=> el(id).value='');
-    renderDashboard();
-  });
-  ['fCountry','fProductType','fMarkets'].forEach(id=> el(id).addEventListener('input', renderDashboard));
-  ['lCountry','lProductType','lMarkets'].forEach(id=> el(id).addEventListener('input', renderLeads));
-  el('btnRefreshLeads').addEventListener('click', refreshLeads);
-
-  // calendar view toggles (agenda only implemented in this stable build)
-  el('calViewAgenda').addEventListener('click', ()=>{
-    el('calViewAgenda').classList.add('active'); el('calViewWeek').classList.remove('active'); el('calViewMonth').classList.remove('active');
-    show('calAgenda'); hide('calGrid');
-  });
-  el('calViewWeek').addEventListener('click', ()=>{
-    alert('Week view UI is queued next. Agenda view is stable for now.');
-  });
-  el('calViewMonth').addEventListener('click', ()=>{
-    alert('Month view UI is queued next. Agenda view is stable for now.');
-  });
-
-  attachPhoneHandlers();
-  setLeadType('supplier');
-
-  // config check
-  const ok = !!getUser() && isExecUrl(getScriptUrl());
-  setConfigured(ok);
-  if(ok){
-    hydrateAll().catch(()=>{});
+    return false;
   }
-}
 
-document.addEventListener('DOMContentLoaded', init);
+  function loadScript(src){
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src;
+      s.async = true;
+      s.onload = () => resolve(true);
+      s.onerror = () => reject(new Error('Failed to load ' + src));
+      document.head.appendChild(s);
+    });
+  }
+
+  async function openQr(){
+    if (!state.leadType) { alert('Select Supplier or Buyer first.'); return; }
+
+    const ok = await loadQrLib();
+    if (!ok) { alert('QR library not loaded yet. Please refresh and try again.'); return; }
+
+    setOverlay($('qrOverlay'), true);
+
+    $('qrHint').textContent = 'Starting camera…';
+    await sleep(50);
+
+    try{
+      if (!qrScanner) qrScanner = new window.Html5Qrcode('qrReader');
+      const cameras = await window.Html5Qrcode.getCameras();
+      if (!cameras || !cameras.length){
+        $('qrHint').textContent = 'No camera found on this device.';
+        return;
+      }
+      const camId = cameras[0].id;
+
+      await qrScanner.start(
+        camId,
+        { fps: 10, qrbox: { width: 280, height: 280 } },
+        (decodedText) => {
+          onQrDecoded(decodedText);
+        },
+        () => {}
+      );
+      $('qrHint').textContent = 'Point at a vCard QR.';
+    }catch(e){
+      $('qrHint').textContent = 'Camera start failed: ' + e.message;
+    }
+  }
+
+  async function closeQr(){
+    try{
+      if (qrScanner && qrScanner.isScanning) await qrScanner.stop();
+    }catch(e){}
+    setOverlay($('qrOverlay'), false);
+  }
+
+  function parseVCard(text){
+    const out = {};
+    if (!text || !/BEGIN:VCARD/i.test(text)) return out;
+    const lines = text.split(/\r?\n/);
+    for (const ln of lines){
+      const m = ln.match(/^([^:;]+)(?:;[^:]*)?:(.*)$/);
+      if (!m) continue;
+      const key = m[1].toUpperCase();
+      const val = m[2].trim();
+      if (key === 'FN') out.name = val;
+      if (key === 'ORG') out.company = val;
+      if (key === 'TITLE') out.title = val;
+      if (key === 'EMAIL') out.email = val;
+      if (key === 'TEL') {
+        if (!out.phone) out.phone = val;
+        else if (!out.phone2) out.phone2 = val;
+      }
+      if (key === 'URL') out.website = val;
+      if (key === 'NOTE') out.note = val;
+    }
+    return out;
+  }
+
+  function onQrDecoded(decodedText){
+    $('qrData').value = decodedText;
+    const vc = parseVCard(decodedText);
+
+    if (vc.company) $('company').value = vc.company;
+    if (vc.name) $('contact').value = vc.name;
+    if (vc.title) $('title').value = vc.title;
+    if (vc.email) $('email').value = vc.email;
+    if (vc.website) $('website').value = vc.website;
+
+    if (vc.phone) $('phone').value = vc.phone;
+    if (vc.phone2) $('phone2').value = vc.phone2;
+
+    closeQr();
+  }
+
+  // =====================
+  // UI wiring
+  // =====================
+  function setLeadType(t){
+    state.leadType = t;
+    document.querySelectorAll('.seg-btn').forEach(b => b.classList.toggle('active', b.dataset.type === t));
+    $('productsLabel').innerHTML = t === 'buyer'
+      ? 'What do they want to buy? (one per line) <span class="req">*</span>'
+      : 'What do they sell? (one per line) <span class="req">*</span>';
+    $('productsOrNeeds').placeholder = t === 'buyer' ? 'One needed item per line' : 'One product per line';
+  }
+
+  function setConfigured(ok){
+    state.configured = ok;
+    $('statusText').textContent = ok ? 'Connected' : 'Not configured';
+    $('statusTip').textContent = ok ? 'Ready to save leads.' : 'Tip: set user + Apps Script URL in Settings.';
+  }
+
+  function loadLocalSettings(){
+    const u = localStorage.getItem(LS.scriptUrl) || '';
+    const user = localStorage.getItem(LS.user) || '';
+    state.scriptUrl = u.trim();
+    state.user = user.trim();
+    $('activeUser').textContent = state.user || '—';
+    $('settingsScriptUrl').value = state.scriptUrl || '';
+    $('userNameInput').value = state.user || '';
+  }
+
+  function saveLocalSettings(){
+    localStorage.setItem(LS.scriptUrl, state.scriptUrl);
+    localStorage.setItem(LS.user, state.user);
+    $('activeUser').textContent = state.user || '—';
+  }
+
+  function clearForm(){
+    $('leadForm').reset();
+    $('qrData').value = '';
+    $('followEnabled').checked = false;
+  }
+
+  function renderSession(){
+    $('sessionCount').textContent = String(state.sessionLeads.length);
+    const tbody = $('sessionTable').querySelector('tbody');
+    tbody.innerHTML = state.sessionLeads.slice(-12).reverse().map(r => `
+      <tr>
+        <td>${esc(r.type)}</td>
+        <td>${esc(r.company)}</td>
+        <td>${esc(r.country||'')}</td>
+        <td>${esc(r.timeIST||'')}</td>
+      </tr>
+    `).join('');
+  }
+
+  function leadPayload(){
+    const country = $('country').value;
+    const p1 = normalizePhone($('phone').value, country);
+    const p2 = normalizePhone($('phone2').value, country);
+
+    return {
+      type: state.leadType,
+      enteredBy: state.user || '',
+      company: $('company').value.trim(),
+      contact: $('contact').value.trim(),
+      title: $('title').value.trim(),
+      email: $('email').value.trim(),
+      phone: p1,
+      phone2: p2,
+      website: $('website').value.trim(),
+      social: $('social').value.trim(),
+      country: country.trim(),
+      markets: $('markets').value.trim(),
+      privateLabel: $('privateLabel').value.trim(),
+      productType: $('productType').value.trim(),
+      productsOrNeeds: $('productsOrNeeds').value.trim(),
+      exFactory: $('exFactory').value.trim(),
+      fob: $('fob').value.trim(),
+      qrData: $('qrData').value.trim(),
+      notes: $('notes').value.trim(),
+      followup: $('followEnabled').checked ? {
+        date: $('followDate').value,
+        time: $('followTime').value,
+        note: $('followNote').value.trim()
+      } : null,
+      // files encoded
+      catalogFiles: null,
+      cardFile: null
+    };
+  }
+
+  async function fileToBase64(file){
+    const buf = await file.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let bin = '';
+    for (let i=0;i<bytes.length;i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin);
+  }
+
+  async function attachFiles(payload){
+    // Catalog multiple
+    const cat = $('catalogFiles').files;
+    if (cat && cat.length){
+      payload.catalogFiles = [];
+      for (const f of Array.from(cat)){
+        payload.catalogFiles.push({
+          name: f.name,
+          mimeType: f.type || 'application/octet-stream',
+          dataBase64: await fileToBase64(f)
+        });
+      }
+    }
+    // Card
+    const card = $('cardFile').files;
+    if (card && card[0]){
+      const f = card[0];
+      payload.cardFile = {
+        name: f.name,
+        mimeType: f.type || 'image/jpeg',
+        dataBase64: await fileToBase64(f)
+      };
+    }
+  }
+
+  async function saveLead(mode){
+    if (!state.user) {
+      setOverlay($('userOverlay'), true);
+      alert('Set user first.');
+      return;
+    }
+    if (!state.scriptUrl || !isExecUrl(state.scriptUrl)) {
+      setOverlay($('settingsOverlay'), true);
+      alert('Set Apps Script URL (must end with /exec).');
+      return;
+    }
+
+    // basic required
+    if (!$('company').value.trim() || !$('productsOrNeeds').value.trim()){
+      alert('Please fill required fields (Company and Products/Needs).');
+      return;
+    }
+
+    const payload = leadPayload();
+    await attachFiles(payload);
+
+    // ping once if not configured
+    if (!state.configured){
+      try{
+        await testConnection();
+        setConfigured(true);
+      }catch(e){
+        setConfigured(false);
+        alert('Connection failed: ' + e.message);
+        return;
+      }
+    }
+
+    // save
+    try{
+      $('statusText').textContent = 'Saving…';
+      const resp = await postToScript('saveLead', payload);
+      $('statusText').textContent = 'Saved';
+      const timeIST = resp.timeIST || fmtIST(new Date());
+
+      state.sessionLeads.push({
+        type: payload.type,
+        company: payload.company,
+        country: payload.country,
+        timeIST
+      });
+      renderSession();
+
+      // refresh lists + dashboard/leads caches
+      await refreshLists();
+      if (mode === 'new') clearForm();
+      if (mode === 'close') switchTab('dashboard');
+    }catch(e){
+      $('statusText').textContent = 'Error';
+      alert('Save failed: ' + e.message);
+    } finally {
+      if (!state.configured) setConfigured(false);
+    }
+  }
+
+  function switchTab(name){
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+    document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
+    if (name === 'dashboard') refreshDashboard();
+    if (name === 'leads') refreshLeads();
+    if (name === 'calendar') refreshCalendar();
+  }
+
+  // =====================
+  // Data loading (Lists + Leads + FollowUps)
+  // =====================
+  async function refreshLists(){
+    try{
+      const r = await postToScript('getLists', {});
+      const lists = r.lists || {};
+      state.lists.countries = lists.countries || [];
+      state.lists.productTypes = lists.productTypes || [];
+      state.lists.markets = lists.markets || [];
+      buildDatalist('countryList', state.lists.countries);
+      buildDatalist('productTypeList', state.lists.productTypes);
+      buildDatalist('marketsList', state.lists.markets);
+    }catch(e){
+      // ignore if not configured yet
+    }
+  }
+
+  async function refreshDashboard(){
+    if (!state.configured) return;
+    const filters = {
+      country: $('fCountry').value.trim(),
+      productType: $('fProductType').value.trim(),
+      markets: $('fMarkets').value.trim(),
+    };
+    try{
+      const r = await postToScript('getDashboard', filters);
+      $('kTotal').textContent = r.kpis?.total ?? '—';
+      $('kSup').textContent = r.kpis?.suppliers ?? '—';
+      $('kBuy').textContent = r.kpis?.buyers ?? '—';
+      $('kFollow').textContent = r.kpis?.upcomingFollowups ?? '—';
+      const tbody = $('upcomingTable').querySelector('tbody');
+      tbody.innerHTML = (r.upcoming || []).map(x => `
+        <tr>
+          <td>${esc(x.when||'')}</td>
+          <td>${esc(x.type||'')}</td>
+          <td>${esc(x.company||'')}</td>
+          <td>${esc(x.note||'')}</td>
+        </tr>
+      `).join('');
+    }catch(e){
+      // show not configured
+    }
+  }
+
+  let leadsCache = [];
+  async function refreshLeads(){
+    if (!state.configured) return;
+    try{
+      const r = await postToScript('getLeads', {});
+      leadsCache = r.leads || [];
+      renderLeads();
+    }catch(e){}
+  }
+
+  function applyLeadFilters(rows){
+    const q = $('qLeads').value.trim().toLowerCase();
+    const c = $('qCountry').value.trim().toLowerCase();
+    const p = $('qProductType').value.trim().toLowerCase();
+    const m = $('qMarkets').value.trim().toLowerCase();
+
+    return rows.filter(x => {
+      const hay = (x.company + ' ' + x.contact + ' ' + x.email).toLowerCase();
+      if (q && !hay.includes(q)) return false;
+      if (c && !(x.country||'').toLowerCase().includes(c)) return false;
+      if (p && !(x.productType||'').toLowerCase().includes(p)) return false;
+      if (m && !(x.markets||'').toLowerCase().includes(m)) return false;
+      return true;
+    });
+  }
+
+  function renderLeads(){
+    const rows = applyLeadFilters(leadsCache);
+    const tbody = $('leadsTable').querySelector('tbody');
+    tbody.innerHTML = rows.slice(0, 500).map(x => {
+      const tel = x.phone ? `tel:${encodeURIComponent(x.phone)}` : '';
+      const wa = x.phone ? `https://wa.me/${encodeURIComponent(x.phone.replace(/[^0-9]/g,''))}` : '';
+      const mail = x.email ? `mailto:${encodeURIComponent(x.email)}` : '';
+      const drive = x.folderUrl || '';
+      return `
+      <tr>
+        <td>${esc(x.timestamp||'')}</td>
+        <td>${esc(x.type||'')}</td>
+        <td>${esc(x.company||'')}</td>
+        <td>${esc(x.contact||'')}</td>
+        <td>${esc(x.country||'')}</td>
+        <td>${esc(x.productType||'')}</td>
+        <td>${esc(x.markets||'')}</td>
+        <td>
+          <button class="btn btn-sm btn-ghost" data-edit="${esc(x.leadId)}">Edit</button>
+          ${tel ? `<a class="linkbtn" href="${tel}">Call</a>` : ''}
+          ${wa ? `<a class="linkbtn" target="_blank" href="${wa}">WhatsApp</a>` : ''}
+          ${mail ? `<a class="linkbtn" href="${mail}">Email</a>` : ''}
+          ${drive ? `<a class="linkbtn" target="_blank" href="${esc(drive)}">Drive</a>` : ''}
+        </td>
+      </tr>`;
+    }).join('');
+
+    tbody.querySelectorAll('button[data-edit]').forEach(btn => {
+      btn.addEventListener('click', () => openEdit(btn.getAttribute('data-edit')));
+    });
+  }
+
+  // Simple edit via prompt (keeps UI light)
+  async function openEdit(leadId){
+    const row = leadsCache.find(x => x.leadId === leadId);
+    if (!row) return;
+    const notes = prompt('Edit notes:', row.notes || '');
+    if (notes === null) return;
+    try{
+      await postToScript('updateLead', { leadId, notes });
+      await refreshLeads();
+      await refreshDashboard();
+      alert('Updated.');
+    }catch(e){
+      alert('Update failed: ' + e.message);
+    }
+  }
+
+  // =====================
+  // Calendar UI
+  // =====================
+  function calRangeText(anchor){
+    const end = new Date(anchor); end.setDate(end.getDate()+6);
+    return fmtIST(anchor) + ' — ' + fmtIST(end);
+  }
+
+  async function refreshCalendar(){
+    if (!state.configured) return;
+    const anchor = state.calendar.anchor;
+    $('calRange').textContent = 'Week: ' + calRangeText(anchor);
+    try{
+      const r = await postToScript('getFollowups', { weekStartISO: anchor.toISOString() });
+      state.calendar.followups = r.followups || [];
+      renderAgenda();
+      renderMonth();
+    }catch(e){}
+  }
+
+  function renderAgenda(){
+    const anchor = state.calendar.anchor;
+    const days = [];
+    for (let i=0;i<7;i++){
+      const d = new Date(anchor); d.setDate(d.getDate()+i);
+      const key = d.toISOString().slice(0,10);
+      days.push({ date: d, key, items: [] });
+    }
+    for (const f of state.calendar.followups){
+      const key = (f.dateISO||'').slice(0,10);
+      const day = days.find(x => x.key === key);
+      if (day) day.items.push(f);
+    }
+
+    const wrap = $('agenda');
+    wrap.innerHTML = days.map(d => {
+      const dateLabel = new Intl.DateTimeFormat('en-GB', { timeZone:'Asia/Kolkata', weekday:'short', day:'2-digit', month:'short' }).format(d.date);
+      const items = d.items.sort((a,b)=> (a.time||'').localeCompare(b.time||''));
+      const body = items.length ? items.map(ev => `
+        <div class="event">
+          <div class="event-top">
+            <div class="event-title">${esc(ev.company||'')}</div>
+            <div class="muted tiny">${esc(ev.time||'')}</div>
+          </div>
+          <div class="event-sub">${esc(ev.note||'')}</div>
+          <div class="event-actions">
+            ${ev.calendarUrl ? `<a class="linkbtn" target="_blank" href="${esc(ev.calendarUrl)}">Open Calendar</a>` : ''}
+            ${ev.mailto ? `<a class="linkbtn" href="${esc(ev.mailto)}">Email</a>` : ''}
+            ${ev.whatsapp ? `<a class="linkbtn" target="_blank" href="${esc(ev.whatsapp)}">WhatsApp</a>` : ''}
+          </div>
+        </div>
+      `).join('') : `<div class="muted tiny">No follow-ups</div>`;
+      return `
+        <div class="day">
+          <div class="day-title"><span>${esc(dateLabel)}</span><span class="muted tiny">${items.length} item(s)</span></div>
+          ${body}
+        </div>
+      `;
+    }).join('');
+  }
+
+  function renderMonth(){
+    const now = new Date();
+    const tz = 'Asia/Kolkata';
+    const y = now.getFullYear(), m = now.getMonth();
+    const first = new Date(y, m, 1);
+    const startDow = first.getDay(); // Sun
+    const daysInMonth = new Date(y, m+1, 0).getDate();
+    const cells = [];
+    const todayKey = new Date().toISOString().slice(0,10);
+
+    for (let i=0;i<startDow;i++) cells.push(null);
+    for (let d=1; d<=daysInMonth; d++){
+      const date = new Date(y,m,d);
+      const key = date.toISOString().slice(0,10);
+      const count = state.calendar.followups.filter(f => (f.dateISO||'').slice(0,10) === key).length;
+      cells.push({ key, day:d, count });
+    }
+
+    const grid = $('monthGrid');
+    grid.innerHTML = cells.map(c => {
+      if (!c) return `<div class="cell"></div>`;
+      const cls = c.key === todayKey ? 'cell today' : 'cell';
+      return `<div class="${cls}"><div class="d">${c.day}</div><div class="c">${c.count? c.count + ' follow-up' + (c.count>1?'s':'') : ''}</div></div>`;
+    }).join('');
+  }
+
+  // =====================
+  // Init
+  // =====================
+  async function init(){
+    // tabs
+    document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+
+    // lead type
+    document.querySelectorAll('.seg-btn').forEach(b => b.addEventListener('click', () => setLeadType(b.dataset.type)));
+
+    // overlays
+    $('btnSettings').addEventListener('click', () => setOverlay($('settingsOverlay'), true));
+    $('btnCloseSettings').addEventListener('click', () => setOverlay($('settingsOverlay'), false));
+    $('btnSwitchUser').addEventListener('click', () => setOverlay($('userOverlay'), true));
+    $('btnCloseUser').addEventListener('click', () => setOverlay($('userOverlay'), false));
+    $('btnCloseQr').addEventListener('click', closeQr);
+
+    // settings buttons
+    $('btnSaveSettings').addEventListener('click', async () => {
+      const url = $('settingsScriptUrl').value.trim();
+      state.scriptUrl = url;
+      saveLocalSettings();
+      setConfigured(false);
+      try{
+        await testConnection();
+        setConfigured(true);
+        await refreshLists();
+        alert('Connected.');
+        setOverlay($('settingsOverlay'), false);
+      }catch(e){
+        setConfigured(false);
+        alert('Connection failed: ' + e.message);
+      }
+    });
+
+    $('btnTestConn').addEventListener('click', async () => {
+      try{
+        await testConnection();
+        setConfigured(true);
+        alert('Connection OK');
+      }catch(e){
+        setConfigured(false);
+        alert('Connection failed: ' + e.message);
+      }
+    });
+
+    // user
+    $('btnSaveUser').addEventListener('click', () => {
+      state.user = $('userNameInput').value.trim();
+      saveLocalSettings();
+      setOverlay($('userOverlay'), false);
+    });
+
+    // buttons
+    $('btnScan').addEventListener('click', openQr);
+    $('btnClear').addEventListener('click', clearForm);
+    $('btnSaveNew').addEventListener('click', () => saveLead('new'));
+    $('btnSaveClose').addEventListener('click', () => saveLead('close'));
+
+    // dashboard
+    $('btnDashRefresh').addEventListener('click', refreshDashboard);
+
+    // leads filters
+    $('btnLeadsRefresh').addEventListener('click', refreshLeads);
+    $('btnApplyLeadFilters').addEventListener('click', renderLeads);
+
+    // calendar controls
+    $('calPrev').addEventListener('click', () => { state.calendar.anchor.setDate(state.calendar.anchor.getDate()-7); refreshCalendar(); });
+    $('calNext').addEventListener('click', () => { state.calendar.anchor.setDate(state.calendar.anchor.getDate()+7); refreshCalendar(); });
+    $('calToday').addEventListener('click', () => { state.calendar.anchor = startOfWeek(new Date()); refreshCalendar(); });
+
+    // load local
+    loadLocalSettings();
+    setLeadType(state.leadType);
+
+    // Try auto ping if configured
+    if (state.scriptUrl && isExecUrl(state.scriptUrl)){
+      try{
+        await testConnection();
+        setConfigured(true);
+        await refreshLists();
+        await refreshDashboard();
+        await refreshLeads();
+        await refreshCalendar();
+      }catch(e){
+        setConfigured(false);
+      }
+    } else {
+      setConfigured(false);
+    }
+    renderSession();
+  }
+
+  document.addEventListener('DOMContentLoaded', init);
+})();
