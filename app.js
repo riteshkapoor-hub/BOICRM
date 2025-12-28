@@ -1,13 +1,19 @@
-// BOI CRM Frontend (GitHub Pages)
+// BOI CRM Frontend (Dark + Product Type categories + IST display)
 
-// Default Apps Script URL
 const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzrHBqp6ZcS3lvRir9EchBhsldBS1jRghuQCWhj7XOY4nyuy8NRQP6mz3J1WGNYm-cD/exec";
 const LS_SCRIPT_URL = "boi_crm_script_url";
 const LS_USER = "boi_crm_user";
 
+// Product type categories (saved per device)
+const LS_SUP_PT = "boi_sup_product_types";
+const LS_BUY_PT = "boi_buy_product_types";
+
 let leadType = "supplier";
 let html5Qr = null;
 let sessionCount = 0;
+
+// For Add Product Type modal
+let ptTarget = null; // "supplier" or "buyer"
 
 const $ = (id) => document.getElementById(id);
 
@@ -26,8 +32,7 @@ function openOverlay(id){ $(id).classList.add("open"); $(id).setAttribute("aria-
 function closeOverlay(id){ $(id).classList.remove("open"); $(id).setAttribute("aria-hidden","true"); }
 
 function showTab(which){
-  const tabs = ["Capture","Dashboard","Leads"];
-  tabs.forEach(t=>{
+  ["Capture","Dashboard","Leads"].forEach(t=>{
     $(`tab${t}`).classList.toggle("isActive", t===which);
     $(`view${t}`).style.display = (t===which) ? "" : "none";
   });
@@ -81,6 +86,87 @@ async function testSettings(){
   }
 }
 
+/* ---------- PRODUCT TYPE CATEGORIES ---------- */
+function defaultSupplierPT(){
+  return ["Chips","Dehydrated powders","Sweeteners","Spices","Snacks","Private label"];
+}
+function defaultBuyerPT(){
+  return ["Chips","Dehydrated powders","Sweeteners","Spices","Snacks","Private label"];
+}
+function loadPT(key, defaultsFn){
+  try{
+    const raw = localStorage.getItem(key);
+    if(!raw) return defaultsFn();
+    const arr = JSON.parse(raw);
+    if(!Array.isArray(arr) || !arr.length) return defaultsFn();
+    return arr.map(x=>String(x)).filter(Boolean);
+  }catch{
+    return defaultsFn();
+  }
+}
+function savePT(key, arr){
+  const clean = Array.from(new Set(arr.map(x=>String(x).trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
+  localStorage.setItem(key, JSON.stringify(clean));
+  return clean;
+}
+function renderPTSelect(selectEl, values, includeAllLabel){
+  selectEl.innerHTML = "";
+  if(includeAllLabel){
+    const opt=document.createElement("option");
+    opt.value="";
+    opt.textContent=includeAllLabel;
+    selectEl.appendChild(opt);
+  }else{
+    const opt=document.createElement("option");
+    opt.value="";
+    opt.textContent="";
+    selectEl.appendChild(opt);
+  }
+  values.forEach(v=>{
+    const opt=document.createElement("option");
+    opt.value=v;
+    opt.textContent=v;
+    selectEl.appendChild(opt);
+  });
+}
+
+function refreshAllPTDropdowns(){
+  const sup = loadPT(LS_SUP_PT, defaultSupplierPT);
+  const buy = loadPT(LS_BUY_PT, defaultBuyerPT);
+
+  renderPTSelect($("supProductType"), sup, null);
+  renderPTSelect($("buyProductType"), buy, null);
+
+  // Filters (use combined list to filter everything)
+  const union = Array.from(new Set([...sup, ...buy])).sort((a,b)=>a.localeCompare(b));
+  renderPTSelect($("filterProductType"), union, "All product types");
+  renderPTSelect($("leadsProductType"), union, "All product types");
+}
+
+function openAddPT(which){
+  ptTarget = which; // supplier|buyer
+  $("ptInput").value = "";
+  openOverlay("ptOverlay");
+  $("ptInput").focus();
+}
+function saveNewPT(){
+  const v = $("ptInput").value.trim();
+  if(!v){ alert("Enter a product type"); return; }
+
+  if(ptTarget==="supplier"){
+    const sup = loadPT(LS_SUP_PT, defaultSupplierPT);
+    const next = savePT(LS_SUP_PT, [...sup, v]);
+    renderPTSelect($("supProductType"), next, null);
+  }else{
+    const buy = loadPT(LS_BUY_PT, defaultBuyerPT);
+    const next = savePT(LS_BUY_PT, [...buy, v]);
+    renderPTSelect($("buyProductType"), next, null);
+  }
+
+  refreshAllPTDropdowns();
+  closeOverlay("ptOverlay");
+}
+
 /* ---------- FILES ---------- */
 function fileToBase64(file){
   return new Promise((resolve,reject)=>{
@@ -121,10 +207,6 @@ async function collectUploads(catalogInputId, cardInputId){
 }
 
 /* ---------- NETWORK ---------- */
-/**
- * IMPORTANT: send as application/x-www-form-urlencoded with `payload=...`
- * This matches your backend and avoids "Missing payload".
- */
 async function postLead(payloadObj){
   setStatus("Saving…");
   const payloadStr = JSON.stringify(payloadObj);
@@ -133,12 +215,9 @@ async function postLead(payloadObj){
     const body = new URLSearchParams();
     body.set("payload", payloadStr);
 
-    const res = await fetch(getScriptUrl(), {
-      method:"POST",
-      body
-    });
-
+    const res = await fetch(getScriptUrl(), { method:"POST", body });
     const text = await res.text();
+
     let json;
     try{ json = JSON.parse(text); }
     catch{ throw new Error("Server did not return JSON: " + text.slice(0,160)); }
@@ -226,21 +305,38 @@ function closeQr(){
 }
 
 /* ---------- UI helpers ---------- */
+function esc(s){
+  return String(s||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
+}
+
+// show session time as IST (client side)
+function istNowLabel(){
+  try{
+    const d = new Date();
+    const fmt = new Intl.DateTimeFormat("en-IN", {
+      timeZone: "Asia/Kolkata",
+      day:"2-digit",month:"2-digit",year:"2-digit",
+      hour:"numeric",minute:"2-digit",hour12:true
+    });
+    return fmt.format(d);
+  }catch{
+    return new Date().toLocaleString();
+  }
+}
+
 function addSessionRow(type, main, country){
   const tbody=$("tbl").querySelector("tbody");
   const tr=document.createElement("tr");
-  tr.innerHTML = `<td>${esc(type)}</td><td>${esc(main)}</td><td>${esc(country||"")}</td><td>${new Date().toLocaleTimeString()}</td>`;
+  tr.innerHTML = `<td>${esc(type)}</td><td>${esc(main)}</td><td>${esc(country||"")}</td><td>${esc(istNowLabel())}</td>`;
   tbody.prepend(tr);
-}
-function esc(s){
-  return String(s||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
 }
 
 /* ---------- Clear ---------- */
 function clearSupplier(){
   ["supCompany","supContact","supTitle","supEmail","supPhone","supPhone2","supWebsite","supSocial",
-   "supCountry","supProductType","supProducts","supExFactory","supFOB","supQR","supNotes"
+   "supCountry","supProducts","supExFactory","supFOB","supQR","supNotes"
   ].forEach(id=>$(id).value="");
+  $("supProductType").value="";
   $("supCatalogFiles").value="";
   $("supCardFile").value="";
   $("supResult").innerHTML="";
@@ -249,6 +345,7 @@ function clearBuyer(){
   ["buyContact","buyCompany","buyTitle","buyEmail","buyPhone","buyPhone2","buyWebsite","buySocial",
    "buyCountry","buyMarkets","buyNeeds","buyQR","buyNotes"
   ].forEach(id=>$(id).value="");
+  $("buyProductType").value="";
   $("buyPL").value="";
   $("buyCatalogFiles").value="";
   $("buyCardFile").value="";
@@ -322,6 +419,7 @@ async function saveBuyer(closeAfter){
     country:$("buyCountry").value.trim(),
     markets:$("buyMarkets").value.trim(),
     privateLabel:$("buyPL").value.trim(),
+    productType:$("buyProductType").value.trim(),
     productsOrNeeds:needs,
     qrData:$("buyQR").value.trim(),
     notes:$("buyNotes").value.trim(),
@@ -348,8 +446,9 @@ function setDashRow(tbody, r){
   const driveLink = r.folderUrl ? `<a target="_blank" rel="noopener" href="${esc(r.folderUrl)}">Open</a>` : "";
   const tr=document.createElement("tr");
   tr.innerHTML = `
-    <td>${esc(r.timestamp||"")}</td>
+    <td>${esc(r.timestampIST||"")}</td>
     <td>${esc(r.type||"")}</td>
+    <td>${esc(r.productType||"")}</td>
     <td>${esc(r.enteredBy||"")}</td>
     <td>${esc((r.company||"") || (r.contact||""))}</td>
     <td>${esc(r.country||"")}</td>
@@ -363,7 +462,9 @@ async function refreshDashboard(){
     setStatus("Loading dashboard…");
     const user = $("filterUser").value.trim();
     const type = $("filterType").value.trim();
-    const data = await getLeads({ limit: 50, user, type });
+    const productType = $("filterProductType").value.trim();
+
+    const data = await getLeads({ limit: 50, user, type, productType });
 
     $("kpiTotal").textContent = data.kpis.total;
     $("kpiSup").textContent = data.kpis.suppliers;
@@ -387,7 +488,9 @@ async function refreshLeads(){
   try{
     setStatus("Loading leads…");
     const q = $("searchLeads").value.trim();
-    const data = await getLeads({ limit: 200, q });
+    const productType = $("leadsProductType").value.trim();
+
+    const data = await getLeads({ limit: 500, q, productType });
 
     const tbody = $("leadsTable").querySelector("tbody");
     tbody.innerHTML="";
@@ -396,8 +499,9 @@ async function refreshLeads(){
       const driveLink = r.folderUrl ? `<a target="_blank" rel="noopener" href="${esc(r.folderUrl)}">Open</a>` : "";
       const tr=document.createElement("tr");
       tr.innerHTML = `
-        <td>${esc(r.timestamp||"")}</td>
+        <td>${esc(r.timestampIST||"")}</td>
         <td>${esc(r.type||"")}</td>
+        <td>${esc(r.productType||"")}</td>
         <td>${esc(r.enteredBy||"")}</td>
         <td>${esc(r.company||"")}</td>
         <td>${esc(r.contact||"")}</td>
@@ -423,11 +527,6 @@ document.addEventListener("DOMContentLoaded", ()=>{
   $("tabCapture").addEventListener("click", ()=>showTab("Capture"));
   $("tabDashboard").addEventListener("click", ()=>showTab("Dashboard"));
   $("tabLeads").addEventListener("click", ()=>showTab("Leads"));
-
-  // dashboard buttons
-  $("btnRefreshDash").addEventListener("click", refreshDashboard);
-  $("btnRefreshLeads").addEventListener("click", refreshLeads);
-  $("searchLeads").addEventListener("input", ()=>{ /* optional live */ });
 
   // lead type
   showSupplier();
@@ -471,6 +570,18 @@ document.addEventListener("DOMContentLoaded", ()=>{
   $("saveBuyerClose").addEventListener("click", ()=>saveBuyer(true));
   $("clearBuyer").addEventListener("click", clearBuyer);
 
+  // dashboard/leads refresh
+  $("btnRefreshDash").addEventListener("click", refreshDashboard);
+  $("btnRefreshLeads").addEventListener("click", refreshLeads);
+
+  // product types
+  refreshAllPTDropdowns();
+  $("btnAddSupPT").addEventListener("click", ()=>openAddPT("supplier"));
+  $("btnAddBuyPT").addEventListener("click", ()=>openAddPT("buyer"));
+  $("btnClosePT").addEventListener("click", ()=>closeOverlay("ptOverlay"));
+  $("btnSavePT").addEventListener("click", saveNewPT);
+  $("ptOverlay").addEventListener("click",(e)=>{ if(e.target.id==="ptOverlay") closeOverlay("ptOverlay"); });
+
   setStatus("Ready");
   updateSummary();
 
@@ -479,6 +590,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
     if(e.key==="Escape"){
       closeQr();
       closeOverlay("settingsOverlay");
+      closeOverlay("ptOverlay");
     }
   });
 });
