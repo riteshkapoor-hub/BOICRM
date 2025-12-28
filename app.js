@@ -1,3 +1,889 @@
+/* BOI CRM — client (GitHub Pages)
+   Talks to Google Apps Script webapp using form-urlencoded to avoid CORS preflight.
+*/
+
+const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzrHBqp6ZcS3lvRir9EchBhsldBS1jRghuQCWhj7XOY4nyuy8NRQP6mz3J1WGNYm-cD/exec";
+
+const LS = {
+  scriptUrl: "boi.crm.scriptUrl",
+  username: "boi.crm.username"
+};
+
+let leadType = "supplier"; // 'supplier' | 'buyer'
+let sessionLeads = [];
+let listsCache = { countries: [], markets: [], productTypes: [] };
+let qrScanner = null;
+let pendingFollowup = { supplier: null, buyer: null };
+let editCurrent = null;
+let calendar = null;
+
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+function getScriptUrl(){
+  return localStorage.getItem(LS.scriptUrl) || DEFAULT_SCRIPT_URL;
+}
+function setScriptUrl(url){
+  localStorage.setItem(LS.scriptUrl, url);
+}
+function getUsername(){
+  return localStorage.getItem(LS.username) || "";
+}
+function setUsername(name){
+  localStorage.setItem(LS.username, name);
+  renderUserPill();
+}
+
+function renderUserPill(){
+  const u = getUsername() || "—";
+  $("userPill").textContent = `User: ${u}`;
+}
+
+function openOverlay(overlayId){
+  const el = $(overlayId);
+  el.classList.add("open");
+  el.setAttribute("aria-hidden","false");
+}
+function closeOverlay(overlayId){
+  const el = $(overlayId);
+  el.classList.remove("open");
+  el.setAttribute("aria-hidden","true");
+}
+
+/* ---------- Combo (searchable dropdown) ---------- */
+function createCombo(mountEl, options, placeholder, onPick){
+  // mountEl is a DIV
+  mountEl.innerHTML = `
+    <div class="combo">
+      <input type="text" aria-label="${esc(placeholder)}" placeholder="${esc(placeholder)}" />
+      <button class="combo__btn" type="button" title="Show list">▾</button>
+      <div class="combo__list"></div>
+    </div>`;
+  const wrap = mountEl.querySelector(".combo");
+  const input = wrap.querySelector("input");
+  const btn = wrap.querySelector(".combo__btn");
+  const list = wrap.querySelector(".combo__list");
+
+  function renderList(filter=""){
+    const q = filter.trim().toLowerCase();
+    const filtered = !q ? options : options.filter(o => String(o).toLowerCase().includes(q));
+    list.innerHTML = filtered.slice(0, 200).map(o => `<div class="combo__item" data-v="${esc(o)}">${esc(o)}</div>`).join("") || `<div class="combo__item" data-v="">(no matches)</div>`;
+  }
+  renderList("");
+
+  function open(){ wrap.classList.add("open"); renderList(input.value); }
+  function close(){ wrap.classList.remove("open"); }
+  btn.addEventListener("click", (e)=>{ e.preventDefault(); wrap.classList.contains("open") ? close() : open(); });
+  input.addEventListener("focus", ()=> renderList(input.value));
+  input.addEventListener("input", ()=> { renderList(input.value); open(); });
+
+  list.addEventListener("click", (e)=>{
+    const item = e.target.closest(".combo__item");
+    if(!item) return;
+    const v = item.getAttribute("data-v") || "";
+    input.value = v;
+    close();
+    onPick?.(v);
+  });
+
+  // close on outside click
+  document.addEventListener("click", (e)=>{
+    if(!wrap.contains(e.target)) close();
+  });
+
+  return {
+    get value(){ return input.value.trim(); },
+    set value(v){ input.value = v || ""; },
+    setOptions(newOptions){
+      options = Array.from(new Set(newOptions)).filter(Boolean).sort();
+      renderList(input.value);
+    }
+  };
+}
+
+/* ---------- API ---------- */
+async function apiPost(action, payloadObj){
+  const url = getScriptUrl();
+  if(!/\/exec(\?|$)/.test(url)){
+    throw new Error("Apps Script Web App URL must end with /exec");
+  }
+  const body = new URLSearchParams({
+    action,
+    payload: JSON.stringify(payloadObj || {})
+  });
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+    body
+  });
+
+  // GAS sometimes returns plain text; parse defensively.
+  const text = await res.text();
+  let jsonText = text;
+
+  // If server echoes as payload=... (rare), decode
+  if(/^payload=/.test(jsonText)){
+    const v = jsonText.split("payload=")[1] || "";
+    jsonText = decodeURIComponent(v.replace(/\+/g, "%20"));
+  }
+  try{
+    return JSON.parse(jsonText);
+  }catch(err){
+    throw new Error(`Invalid JSON from server: ${text.slice(0,200)}`);
+  }
+}
+
+async function apiGet(action, params={}){
+  const url = new URL(getScriptUrl());
+  url.searchParams.set("action", action);
+  Object.entries(params).forEach(([k,v])=> url.searchParams.set(k, v));
+  const res = await fetch(url.toString());
+  const text = await res.text();
+  try{ return JSON.parse(text); }catch(e){ throw new Error(`Invalid JSON: ${text.slice(0,200)}`); }
+}
+
+/* ---------- QR scan ---------- */
+async function openQr(){
+  if(leadType !== "supplier" && leadType !== "buyer"){
+    alert("Select Buyer or Supplier first.");
+    return;
+  }
+  if(!window.__qrLoaded || typeof Html5Qrcode === "undefined"){
+    alert("QR library not loaded.");
+    return;
+  }
+  openOverlay("qrOverlay");
+
+  const readerId = "qr-reader";
+  $(readerId).innerHTML = ""; // reset
+  qrScanner = new Html5Qrcode(readerId);
+
+  const config = { fps: 10, qrbox: { width: 320, height: 320 } };
+
+  try{
+    const cameras = await Html5Qrcode.getCameras();
+    if(!cameras || !cameras.length){
+      throw new Error("No camera found");
+    }
+    const camId = cameras[0].id;
+    await qrScanner.start(
+      camId,
+      config,
+      (decodedText)=>{
+        handleQr(decodedText);
+        closeQr();
+      },
+      ()=>{}
+    );
+  }catch(e){
+    console.error(e);
+    alert("Camera permission / camera not available on this device.");
+    closeQr();
+  }
+}
+async function closeQr(){
+  try{
+    if(qrScanner){
+      await qrScanner.stop();
+      await qrScanner.clear();
+    }
+  }catch(_){}
+  qrScanner = null;
+  closeOverlay("qrOverlay");
+}
+$("btnCloseQr").addEventListener("click", closeQr);
+$("btnScan").addEventListener("click", openQr);
+
+function handleQr(text){
+  const qr = String(text || "").trim();
+  if(!qr) return;
+  if(leadType === "supplier"){
+    $("supQR").value = qr;
+    const v = parseVCardOrMeCard(qr);
+    if(v) fillSupplierFromVcard(v);
+  }else{
+    $("buyQR").value = qr;
+    const v = parseVCardOrMeCard(qr);
+    if(v) fillBuyerFromVcard(v);
+  }
+}
+function parseVCardOrMeCard(raw){
+  const s = String(raw || "");
+  if(!/BEGIN:VCARD/i.test(s) && !/^MECARD:/i.test(s)) return null;
+  const out = {};
+  if(/^MECARD:/i.test(s)){
+    // MECARD:N:John Doe;TEL:...;EMAIL:...;URL:...;
+    const body = s.replace(/^MECARD:/i,"");
+    body.split(";").forEach(part=>{
+      const [k, ...rest] = part.split(":");
+      const v = rest.join(":");
+      const key = (k||"").toUpperCase().trim();
+      if(key==="N") out.name = v;
+      if(key==="TEL") out.tel = v;
+      if(key==="EMAIL") out.email = v;
+      if(key==="URL") out.url = v;
+      if(key==="ORG") out.org = v;
+    });
+    return out;
+  }
+  // VCARD
+  const lines = s.split(/\r?\n/);
+  for(const line of lines){
+    const m = line.match(/^([A-Z]+)(?:;[^:]+)?:([\s\S]*)$/i);
+    if(!m) continue;
+    const key = m[1].toUpperCase();
+    const val = m[2].trim();
+    if(key==="FN") out.name = val;
+    if(key==="N" && !out.name) out.name = val.replace(/;/g," ").trim();
+    if(key==="ORG") out.org = val.replace(/;/g," ").trim();
+    if(key==="EMAIL") out.email = val;
+    if(key==="TEL" && !out.tel) out.tel = val;
+    if(key==="URL") out.url = val;
+    if(key==="TITLE") out.title = val;
+  }
+  return out;
+}
+function fillSupplierFromVcard(v){
+  if(v.org) $("supCompany").value = v.org;
+  if(v.name) $("supContact").value = v.name;
+  if(v.title) $("supTitle").value = v.title;
+  if(v.email) $("supEmail").value = v.email;
+  if(v.tel) $("supPhone").value = normalizePhone(v.tel, supCountryCombo?.value);
+  if(v.url) $("supWebsite").value = v.url;
+}
+function fillBuyerFromVcard(v){
+  if(v.name) $("buyContact").value = v.name;
+  if(v.org) $("buyCompany").value = v.org;
+  if(v.title) $("buyTitle").value = v.title;
+  if(v.email) $("buyEmail").value = v.email;
+  if(v.tel) $("buyPhone").value = normalizePhone(v.tel, buyCountryCombo?.value);
+  if(v.url) $("buyWebsite").value = v.url;
+}
+
+/* ---------- Phone / country ---------- */
+const COUNTRY_DIAL = {
+  "India": "+91",
+  "United States": "+1"
+};
+function normalizePhone(input, country){
+  let s = String(input || "").trim();
+  if(!s) return "";
+  // remove spaces/brackets/dashes
+  s = s.replace(/[()\-\s]/g, "");
+  // if already starts with + keep it
+  if(s.startsWith("+")) return s;
+  const dial = COUNTRY_DIAL[country] || "";
+  // if starts with 00 (international)
+  if(s.startsWith("00")) return "+" + s.substring(2);
+  // fallback: prepend country dial if available
+  return dial ? (dial + s.replace(/^\+/, "")) : s;
+}
+
+/* ---------- UI wiring ---------- */
+function setLeadType(t){
+  leadType = t;
+  $("btnSupplier").classList.toggle("isActive", t==="supplier");
+  $("btnBuyer").classList.toggle("isActive", t==="buyer");
+  $("supplierForm").style.display = t==="supplier" ? "" : "none";
+  $("buyerForm").style.display = t==="buyer" ? "" : "none";
+  $("formTitle").textContent = t==="supplier" ? "Supplier details" : "Buyer details";
+}
+$("btnSupplier").addEventListener("click", ()=> setLeadType("supplier"));
+$("btnBuyer").addEventListener("click", ()=> setLeadType("buyer"));
+
+function showView(view){
+  const views = ["Capture","Dashboard","Leads","Calendar"];
+  for(const v of views){
+    $(`view${v}`).style.display = (v===view) ? "" : "none";
+    $(`tab${v}`).classList.toggle("isActive", v===view);
+  }
+  if(view==="Dashboard") refreshDashboard();
+  if(view==="Leads") refreshLeads();
+  if(view==="Calendar") refreshCalendar();
+}
+$("tabCapture").addEventListener("click", ()=> showView("Capture"));
+$("tabDashboard").addEventListener("click", ()=> showView("Dashboard"));
+$("tabLeads").addEventListener("click", ()=> showView("Leads"));
+$("tabCalendar").addEventListener("click", ()=> showView("Calendar"));
+
+/* ---------- Settings / user ---------- */
+$("btnSettings").addEventListener("click", ()=>{
+  $("scriptUrlInput").value = getScriptUrl();
+  openOverlay("settingsOverlay");
+});
+$("btnCloseSettings").addEventListener("click", ()=> closeOverlay("settingsOverlay"));
+$("btnSaveSettings").addEventListener("click", ()=>{
+  const v = $("scriptUrlInput").value.trim();
+  setScriptUrl(v);
+  closeOverlay("settingsOverlay");
+  toast("Settings saved.");
+});
+$("btnSwitchUser").addEventListener("click", ()=> openOverlay("userOverlay"));
+$("btnStartSession").addEventListener("click", ()=>{
+  const name = $("usernameInput").value.trim();
+  if(!name){ alert("Enter a username"); return; }
+  setUsername(name);
+  closeOverlay("userOverlay");
+});
+
+/* ---------- session table ---------- */
+function addSessionLead(row){
+  sessionLeads.unshift(row);
+  renderSessionTable();
+  $("summary").textContent = `${sessionLeads.length} leads this session`;
+}
+function renderSessionTable(){
+  const tb = $("tbl").querySelector("tbody");
+  tb.innerHTML = sessionLeads.slice(0, 15).map(r=>`
+    <tr>
+      <td>${esc(r.typeLabel)}</td>
+      <td>${esc(r.contactOrCompany)}</td>
+      <td>${esc(r.country || "")}</td>
+      <td>${esc(r.timeIst || "")}</td>
+    </tr>
+  `).join("");
+}
+
+/* ---------- file helpers ---------- */
+function fileToBase64(file){
+  return new Promise((resolve,reject)=>{
+    if(!file) return resolve(null);
+    const reader = new FileReader();
+    reader.onload = ()=> {
+      const dataUrl = reader.result;
+      const base64 = String(dataUrl).split(",")[1] || "";
+      resolve({
+        name: file.name,
+        mimeType: file.type || "application/octet-stream",
+        dataBase64: base64
+      });
+    };
+    reader.onerror = ()=> reject(new Error("File read failed"));
+    reader.readAsDataURL(file);
+  });
+}
+async function filesToBase64List(fileList){
+  const files = Array.from(fileList || []);
+  const out = [];
+  for(const f of files){
+    const b = await fileToBase64(f);
+    if(b) out.push(b);
+  }
+  return out;
+}
+
+/* ---------- Follow-up queue (before save) ---------- */
+function queueFollowup(kind){
+  const prefix = kind === "supplier" ? "sup" : "buy";
+  const d = $(`${prefix}FUDate`).value;
+  const t = $(`${prefix}FUTime`).value;
+  const note = $(`${prefix}FUNotes`).value.trim();
+  if(!d || !t){
+    alert("Pick follow-up date and time first.");
+    return;
+  }
+  pendingFollowup[kind] = { date: d, time: t, note };
+  $(`${prefix}FULast`).textContent = `Will schedule after save: ${formatFUDisplay(d,t)}`;
+  toast("Follow-up queued. Now save the lead.");
+}
+function formatFUDisplay(d,t){
+  return `${d} ${t}`;
+}
+$("supFUQueueBtn").addEventListener("click", ()=> queueFollowup("supplier"));
+$("buyFUQueueBtn").addEventListener("click", ()=> queueFollowup("buyer"));
+
+/* ---------- Save lead ---------- */
+async function saveSupplier(closeAfter){
+  const enteredBy = getUsername();
+  if(!enteredBy){ openOverlay("userOverlay"); throw new Error("No username"); }
+
+  const company = $("supCompany").value.trim();
+  const productsOrNeeds = $("supProducts").value.trim();
+  if(!company){ alert("Company name is required."); return; }
+  if(!productsOrNeeds){ alert("What do they sell is required."); return; }
+
+  const country = supCountryCombo.value;
+  const payload = {
+    type: "supplier",
+    enteredBy,
+    company,
+    contact: $("supContact").value.trim(),
+    title: $("supTitle").value.trim(),
+    email: $("supEmail").value.trim(),
+    phone: normalizePhone($("supPhone").value, country),
+    phone2: normalizePhone($("supPhone2").value, country),
+    website: $("supWebsite").value.trim(),
+    social: $("supSocial").value.trim(),
+    country,
+    markets: supMarketsCombo.value,
+    privateLabel: $("supPL").value,
+    productType: supProductTypeCombo.value,
+    productsOrNeeds,
+    exFactory: $("supExFactory").value.trim(),
+    fob: $("supFOB").value.trim(),
+    qrData: $("supQR").value.trim(),
+    notes: $("supNotes").value.trim(),
+    followup: pendingFollowup.supplier || null,
+    cardFile: await fileToBase64($("supCardFile").files[0]),
+    catalogFiles: await filesToBase64List($("supCatalogFiles").files)
+  };
+
+  $("status").textContent = "Saving…";
+  const res = await apiPost("saveLead", payload);
+  $("status").textContent = "Ready";
+
+  if(res.result !== "ok"){
+    alert(`Save failed: ${res.message || "Unknown error"}`);
+    return;
+  }
+  pendingFollowup.supplier = null;
+  $("supFULast").textContent = "";
+  $("supResult").innerHTML = `Saved. <a href="${esc(res.folderUrl)}" target="_blank" rel="noreferrer">Open Drive folder</a> • <a href="${esc(res.itemsSheetUrl)}" target="_blank" rel="noreferrer">Items sheet</a>`;
+  addSessionLead({
+    typeLabel: "Supplier",
+    contactOrCompany: `${payload.company}`,
+    country: payload.country,
+    timeIst: res.timeIst || ""
+  });
+
+  // Refresh lists + dashboards
+  await refreshLists();
+  if(closeAfter){
+    showView("Dashboard");
+  }else{
+    clearSupplierForm(true);
+  }
+}
+async function saveBuyer(closeAfter){
+  const enteredBy = getUsername();
+  if(!enteredBy){ openOverlay("userOverlay"); throw new Error("No username"); }
+
+  const contact = $("buyContact").value.trim();
+  const needs = $("buyNeeds").value.trim();
+  if(!contact){ alert("Contact person is required."); return; }
+  if(!needs){ alert("What do they want to buy is required."); return; }
+
+  const country = buyCountryCombo.value;
+  const payload = {
+    type: "buyer",
+    enteredBy,
+    company: $("buyCompany").value.trim(),
+    contact,
+    title: $("buyTitle").value.trim(),
+    email: $("buyEmail").value.trim(),
+    phone: normalizePhone($("buyPhone").value, country),
+    phone2: normalizePhone($("buyPhone2").value, country),
+    website: $("buyWebsite").value.trim(),
+    social: $("buySocial").value.trim(),
+    country,
+    markets: buyMarketsCombo.value,
+    privateLabel: $("buyPL").value,
+    productType: buyProductTypeCombo.value,
+    productsOrNeeds: needs,
+    exFactory: "",
+    fob: "",
+    qrData: $("buyQR").value.trim(),
+    notes: $("buyNotes").value.trim(),
+    followup: pendingFollowup.buyer || null,
+    cardFile: await fileToBase64($("buyCardFile").files[0]),
+    catalogFiles: await filesToBase64List($("buyCatalogFiles").files)
+  };
+
+  $("status").textContent = "Saving…";
+  const res = await apiPost("saveLead", payload);
+  $("status").textContent = "Ready";
+
+  if(res.result !== "ok"){
+    alert(`Save failed: ${res.message || "Unknown error"}`);
+    return;
+  }
+  pendingFollowup.buyer = null;
+  $("buyFULast").textContent = "";
+  $("buyResult").innerHTML = `Saved. <a href="${esc(res.folderUrl)}" target="_blank" rel="noreferrer">Open Drive folder</a> • <a href="${esc(res.itemsSheetUrl)}" target="_blank" rel="noreferrer">Items sheet</a>`;
+  addSessionLead({
+    typeLabel: "Buyer",
+    contactOrCompany: `${payload.contact}${payload.company ? " / "+payload.company : ""}`,
+    country: payload.country,
+    timeIst: res.timeIst || ""
+  });
+
+  await refreshLists();
+  if(closeAfter){
+    showView("Dashboard");
+  }else{
+    clearBuyerForm(true);
+  }
+}
+
+function clearSupplierForm(keepLeadType){
+  $("supCompany").value = "";
+  $("supContact").value = "";
+  $("supTitle").value = "";
+  $("supEmail").value = "";
+  $("supPhone").value = "";
+  $("supPhone2").value = "";
+  $("supWebsite").value = "";
+  $("supSocial").value = "";
+  $("supPL").value = "";
+  $("supExFactory").value = "";
+  $("supFOB").value = "";
+  $("supProducts").value = "";
+  $("supCatalogFiles").value = "";
+  $("supCardFile").value = "";
+  $("supQR").value = "";
+  $("supNotes").value = "";
+  $("supFUDate").value = "";
+  $("supFUTime").value = "";
+  $("supFUNotes").value = "";
+  pendingFollowup.supplier = null;
+  $("supFULast").textContent = "";
+  $("supResult").textContent = "";
+  if(!keepLeadType) setLeadType("supplier");
+}
+function clearBuyerForm(keepLeadType){
+  $("buyCompany").value = "";
+  $("buyContact").value = "";
+  $("buyTitle").value = "";
+  $("buyEmail").value = "";
+  $("buyPhone").value = "";
+  $("buyPhone2").value = "";
+  $("buyWebsite").value = "";
+  $("buySocial").value = "";
+  $("buyPL").value = "";
+  $("buyNeeds").value = "";
+  $("buyCatalogFiles").value = "";
+  $("buyCardFile").value = "";
+  $("buyQR").value = "";
+  $("buyNotes").value = "";
+  $("buyFUDate").value = "";
+  $("buyFUTime").value = "";
+  $("buyFUNotes").value = "";
+  pendingFollowup.buyer = null;
+  $("buyFULast").textContent = "";
+  $("buyResult").textContent = "";
+  if(!keepLeadType) setLeadType("buyer");
+}
+$("clearSupplier").addEventListener("click", ()=> clearSupplierForm(true));
+$("clearBuyer").addEventListener("click", ()=> clearBuyerForm(true));
+
+$("saveSupplierNew").addEventListener("click", ()=> saveSupplier(false).catch(console.error));
+$("saveSupplierClose").addEventListener("click", ()=> saveSupplier(true).catch(console.error));
+$("saveBuyerNew").addEventListener("click", ()=> saveBuyer(false).catch(console.error));
+$("saveBuyerClose").addEventListener("click", ()=> saveBuyer(true).catch(console.error));
+
+/* ---------- Dashboard / Leads / Calendar ---------- */
+let dashCountryCombo, dashMarketCombo, dashPTCombo;
+let leadsCountryCombo, leadsMarketCombo, leadsPTCombo;
+let supCountryCombo, supMarketsCombo, supProductTypeCombo;
+let buyCountryCombo, buyMarketsCombo, buyProductTypeCombo;
+let editCountryCombo, editMarketsCombo, editPTCombo;
+
+async function refreshLists(){
+  const res = await apiGet("lists");
+  if(res.result !== "ok") return;
+  listsCache = res.lists || listsCache;
+
+  const { countries, markets, productTypes } = listsCache;
+
+  // update all combos
+  [supCountryCombo, buyCountryCombo, dashCountryCombo, leadsCountryCombo, editCountryCombo].forEach(c=> c?.setOptions(countries));
+  [supMarketsCombo, buyMarketsCombo, dashMarketCombo, leadsMarketCombo, editMarketsCombo].forEach(c=> c?.setOptions(markets));
+  [supProductTypeCombo, buyProductTypeCombo, dashPTCombo, leadsPTCombo, editPTCombo].forEach(c=> c?.setOptions(productTypes));
+}
+
+function getFilters(prefix){
+  return {
+    country: window[`${prefix}CountryCombo`]?.value || "",
+    markets: window[`${prefix}MarketCombo`]?.value || "",
+    productType: window[`${prefix}PTCombo`]?.value || "",
+    q: $(prefix==="dash" ? "dashQ" : "leadsQ")?.value?.trim() || ""
+  };
+}
+
+async function refreshDashboard(){
+  const f = {
+    country: dashCountryCombo.value,
+    markets: dashMarketCombo.value,
+    productType: dashPTCombo.value,
+    q: $("dashQ").value.trim()
+  };
+  const res = await apiGet("leads", f);
+  if(res.result !== "ok"){ console.warn(res); return; }
+
+  renderKpis(res.stats || {});
+  renderDashTable(res.leads || []);
+  renderUpcoming(res.followups || []);
+}
+$("btnDashRefresh").addEventListener("click", refreshDashboard);
+
+function renderKpis(stats){
+  const kpis = [
+    { v: stats.total || 0, l: "Total leads" },
+    { v: stats.suppliers || 0, l: "Suppliers" },
+    { v: stats.buyers || 0, l: "Buyers" },
+    { v: stats.today || 0, l: "Today" }
+  ];
+  $("kpis").innerHTML = kpis.map(k=>`
+    <div class="kpi">
+      <div class="kpi__v">${esc(k.v)}</div>
+      <div class="kpi__l">${esc(k.l)}</div>
+    </div>`).join("");
+}
+function renderDashTable(rows){
+  const tb = $("dashTable").querySelector("tbody");
+  tb.innerHTML = rows.slice(0, 30).map(r=>`
+    <tr>
+      <td>${esc(r.timeIst || "")}</td>
+      <td>${esc(r.type || "")}</td>
+      <td>${esc(r.company || "")}</td>
+      <td>${esc(r.contact || "")}</td>
+      <td>${esc(r.country || "")}</td>
+      <td>${esc(r.markets || "")}</td>
+      <td>${esc(r.productType || "")}</td>
+      <td>${esc(r.enteredBy || "")}</td>
+      <td>${r.folderUrl ? `<a href="${esc(r.folderUrl)}" target="_blank" rel="noreferrer">Folder</a>` : ""}</td>
+    </tr>
+  `).join("");
+}
+function renderUpcoming(items){
+  const box = $("upcomingFollowups");
+  if(!items.length){
+    box.innerHTML = `<div class="hint">No follow-ups scheduled.</div>`;
+    return;
+  }
+  box.innerHTML = items.slice(0, 12).map(f=>`
+    <div class="item">
+      <div class="t">${esc(f.whenIst || "")} • ${esc(f.type || "")}</div>
+      <div class="m">${esc(f.companyOrContact || "")}</div>
+      <div class="m">${esc(f.note || "")}</div>
+      ${f.calendarUrl ? `<div class="m"><a href="${esc(f.calendarUrl)}" target="_blank" rel="noreferrer">Open Calendar</a></div>` : ""}
+    </div>
+  `).join("");
+}
+
+async function refreshLeads(){
+  const f = {
+    country: leadsCountryCombo.value,
+    markets: leadsMarketCombo.value,
+    productType: leadsPTCombo.value,
+    q: $("leadsQ").value.trim()
+  };
+  const res = await apiGet("leads", f);
+  if(res.result !== "ok") return;
+  renderLeadsTable(res.leads || []);
+}
+$("btnLeadsRefresh").addEventListener("click", refreshLeads);
+
+function whatsappLink(phone){
+  const p = String(phone||"").replace(/[^\d+]/g,"");
+  const digits = p.replace(/^\+/,"");
+  return digits ? `https://wa.me/${digits}` : "";
+}
+function renderLeadsTable(rows){
+  const tb = $("leadsTable").querySelector("tbody");
+  tb.innerHTML = rows.map(r=>{
+    const mail = r.email ? `mailto:${encodeURIComponent(r.email)}` : "";
+    const tel = r.phone ? `tel:${encodeURIComponent(r.phone)}` : "";
+    const wa = r.phone ? whatsappLink(r.phone) : "";
+    return `
+      <tr>
+        <td>${esc(r.timeIst || "")}</td>
+        <td>${esc(r.type || "")}</td>
+        <td>${esc(r.company || "")}</td>
+        <td>${esc(r.contact || "")}</td>
+        <td>
+          ${tel ? `<a href="${esc(tel)}">Call</a>` : ""} ${wa ? ` • <a href="${esc(wa)}" target="_blank" rel="noreferrer">WhatsApp</a>` : ""}
+        </td>
+        <td>${mail ? `<a href="${esc(mail)}">Email</a>` : ""}</td>
+        <td>${esc(r.phone || "")}</td>
+        <td>${esc(r.country || "")}</td>
+        <td>${esc(r.markets || "")}</td>
+        <td>${esc(r.productType || "")}</td>
+        <td>${esc(r.enteredBy || "")}</td>
+        <td>${r.folderUrl ? `<a href="${esc(r.folderUrl)}" target="_blank" rel="noreferrer">Folder</a>` : ""}</td>
+        <td><button class="btn btn--ghost" data-edit="${esc(r.leadId)}">Edit</button></td>
+      </tr>`;
+  }).join("");
+
+  tb.querySelectorAll("button[data-edit]").forEach(btn=>{
+    btn.addEventListener("click", ()=> openEdit(btn.getAttribute("data-edit")));
+  });
+}
+
+async function refreshCalendar(){
+  const res = await apiGet("followups");
+  if(res.result !== "ok") return;
+
+  const events = (res.followups || []).map(f=>({
+    id: f.followupId,
+    title: `${(f.type||"").toUpperCase()}: ${f.companyOrContact||""}`,
+    start: f.startIso, // ISO in IST offset
+    end: f.endIso,
+    extendedProps: f
+  }));
+
+  if(!calendar){
+    const calEl = $("calendar");
+    calendar = new FullCalendar.Calendar(calEl, {
+      initialView: "timeGridWeek",
+      height: "auto",
+      nowIndicator: true,
+      headerToolbar: { left: "prev,next today", center: "title", right: "timeGridWeek,dayGridMonth" },
+      events,
+      eventClick: (info)=>{
+        const p = info.event.extendedProps || {};
+        const lines = [
+          `When: ${p.whenIst || ""}`,
+          `Lead: ${p.companyOrContact || ""}`,
+          `Note: ${p.note || ""}`
+        ].join("\n");
+        if(p.calendarUrl){
+          if(confirm(lines + "\n\nOpen Google Calendar event?")){
+            window.open(p.calendarUrl, "_blank", "noreferrer");
+          }
+        }else{
+          alert(lines);
+        }
+      }
+    });
+    calendar.render();
+  }else{
+    calendar.removeAllEvents();
+    calendar.addEventSource(events);
+  }
+}
+
+/* ---------- Edit lead ---------- */
+async function openEdit(leadId){
+  const res = await apiGet("lead", { leadId });
+  if(res.result !== "ok"){ alert("Could not load lead."); return; }
+  editCurrent = res.lead;
+  $("editLeadId").value = editCurrent.leadId || "";
+  $("editType").value = editCurrent.type || "";
+  $("editCompany").value = editCurrent.company || "";
+  $("editContact").value = editCurrent.contact || "";
+  $("editEmail").value = editCurrent.email || "";
+  $("editPhone").value = editCurrent.phone || "";
+  editCountryCombo.value = editCurrent.country || "";
+  editMarketsCombo.value = editCurrent.markets || "";
+  editPTCombo.value = editCurrent.productType || "";
+  $("editPL").value = editCurrent.privateLabel || "";
+  $("editProductsOrNeeds").value = editCurrent.productsOrNeeds || "";
+  $("editNotes").value = editCurrent.notes || "";
+  $("editFUDate").value = "";
+  $("editFUTime").value = "";
+  $("editFUNotes").value = "";
+
+  openOverlay("editOverlay");
+}
+$("btnCloseEdit").addEventListener("click", ()=> closeOverlay("editOverlay"));
+
+async function saveEdit(withFollowup){
+  if(!editCurrent) return;
+
+  const country = editCountryCombo.value;
+  const payload = {
+    leadId: editCurrent.leadId,
+    updates: {
+      company: $("editCompany").value.trim(),
+      contact: $("editContact").value.trim(),
+      email: $("editEmail").value.trim(),
+      phone: normalizePhone($("editPhone").value, country),
+      country,
+      markets: editMarketsCombo.value,
+      productType: editPTCombo.value,
+      privateLabel: $("editPL").value,
+      productsOrNeeds: $("editProductsOrNeeds").value.trim(),
+      notes: $("editNotes").value.trim()
+    }
+  };
+
+  if(withFollowup){
+    const d = $("editFUDate").value;
+    const t = $("editFUTime").value;
+    if(!d || !t){ alert("Pick follow-up date and time."); return; }
+    payload.followup = { date: d, time: t, note: $("editFUNotes").value.trim() };
+  }
+
+  $("editResult").textContent = "Saving…";
+  const res = await apiPost("updateLead", payload);
+  if(res.result !== "ok"){
+    $("editResult").textContent = "";
+    alert(`Save failed: ${res.message || "Unknown"}`);
+    return;
+  }
+  $("editResult").textContent = "Saved.";
+  await refreshLists();
+  await refreshDashboard();
+  await refreshLeads();
+  await refreshCalendar();
+  toast("Saved.");
+  closeOverlay("editOverlay");
+}
+$("btnSaveEdit").addEventListener("click", ()=> saveEdit(false).catch(console.error));
+$("btnSaveEditAndFollow").addEventListener("click", ()=> saveEdit(true).catch(console.error));
+
+/* ---------- Toast ---------- */
+let toastTimer=null;
+function toast(msg){
+  $("status").textContent = msg;
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=> $("status").textContent="Ready", 2000);
+}
+
+/* ---------- init ---------- */
+window.addEventListener("load", async ()=>{
+  renderUserPill();
+
+  // combos mount
+  supCountryCombo = createCombo($("supCountryCombo"), [], "Search country…", (v)=> {
+    $("supPhone").value = normalizePhone($("supPhone").value, v);
+    $("supPhone2").value = normalizePhone($("supPhone2").value, v);
+  });
+  supMarketsCombo = createCombo($("supMarketsCombo"), [], "Search markets…");
+  supProductTypeCombo = createCombo($("supProductTypeCombo"), [], "Search product type…");
+
+  buyCountryCombo = createCombo($("buyCountryCombo"), [], "Search country…", (v)=> {
+    $("buyPhone").value = normalizePhone($("buyPhone").value, v);
+    $("buyPhone2").value = normalizePhone($("buyPhone2").value, v);
+  });
+  buyMarketsCombo = createCombo($("buyMarketsCombo"), [], "Search markets…");
+  buyProductTypeCombo = createCombo($("buyProductTypeCombo"), [], "Search product type…");
+
+  dashCountryCombo = createCombo($("dashCountryCombo"), [], "All countries");
+  dashMarketCombo = createCombo($("dashMarketCombo"), [], "All markets");
+  dashPTCombo = createCombo($("dashPTCombo"), [], "All product types");
+
+  leadsCountryCombo = createCombo($("leadsCountryCombo"), [], "All countries");
+  leadsMarketCombo = createCombo($("leadsMarketCombo"), [], "All markets");
+  leadsPTCombo = createCombo($("leadsPTCombo"), [], "All product types");
+
+  editCountryCombo = createCombo($("editCountryCombo"), [], "Country");
+  editMarketsCombo = createCombo($("editMarketsCombo"), [], "Markets / notes");
+  editPTCombo = createCombo($("editPTCombo"), [], "Product type");
+
+  // first run lists
+  try{
+    await refreshLists();
+  }catch(e){
+    console.warn(e);
+    openOverlay("settingsOverlay");
+    $("status").textContent = "Set Apps Script URL in Settings.";
+  }
+
+  // username
+  if(!getUsername()){
+    $("usernameInput").value = "";
+    openOverlay("userOverlay");
+  }else{
+    $("usernameInput").value = getUsername();
+  }
+
+  // default view
+  setLeadType("supplier");
+  showView("Capture");
+});
 // BOI CRM — app.js (FRONT-END ONLY)
 
 const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzrHBqp6ZcS3lvRir9EchBhsldBS1jRghuQCWhj7XOY4nyuy8NRQP6mz3J1WGNYm-cD/exec";
@@ -744,3 +1630,4 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   setStatus("Ready");
   updateSummary();
 });
+
