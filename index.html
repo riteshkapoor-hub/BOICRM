@@ -1,358 +1,396 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta charset="UTF-8" />
   <title>BOI CRM — IndusFood</title>
-  <link rel="icon" href="favicon.ico"/>
-  <link rel="stylesheet" href="styles.css"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="./favicon.ico" />
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <img class="logo" src="boi-logo.png" alt="BOI"/>
-      <div class="brandtext">
-        <div class="title">BOI CRM — IndusFood</div>
-        <div class="subtitle">Blue Orbit International LLP • Lead Capture</div>
-      </div>
-    </div>
-
-    <div class="top-actions">
-      <div class="userpill">
-        <span class="muted">User:</span> <span id="userNameLabel">—</span>
-        <button class="btn btn-ghost btn-sm" id="btnSwitchUser">Switch</button>
-      </div>
-      <button class="btn btn-ghost" id="btnSettings">Settings</button>
-    </div>
-  </header>
-
-  <nav class="tabs">
-    <button class="tab active" data-tab="capture">Capture</button>
-    <button class="tab" data-tab="dashboard">Dashboard</button>
-    <button class="tab" data-tab="leads">Leads</button>
-    <button class="tab" data-tab="calendar">Calendar</button>
-  </nav>
-
-  <main class="shell">
-    <!-- CAPTURE -->
-    <section class="panel" id="tab-capture">
-      <div class="panel-head">
-        <div class="seg">
-          <span class="muted">LEAD TYPE</span>
-          <button class="segbtn active" id="btnTypeSupplier">Supplier</button>
-          <button class="segbtn" id="btnTypeBuyer">Buyer</button>
-        </div>
-
-        <div class="right">
-          <button class="btn btn-ghost" id="btnScan" disabled>Scan QR (optional)</button>
-          <div class="status">
-            <div class="small muted">Status</div>
-            <div id="statusText" class="small">Not configured</div>
-            <div class="tiny muted">Tip: set user + Apps Script URL in Settings.</div>
-          </div>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo svglogo" aria-label="BOI">B</div>
+        <div class="brand-text">
+          <div class="brand-title">BOI CRM — IndusFood</div>
+          <div class="brand-sub">Blue Orbit International LLP • Lead Capture</div>
         </div>
       </div>
 
-      <div class="grid2">
-        <div class="card">
-          <div class="card-title" id="captureTitle">Supplier details</div>
-          <div class="card-sub">Fill manually or scan. Attach catalog/card images if available.</div>
+      <div class="top-actions">
+        <div class="user-pill">
+          <span class="muted">User:</span>
+          <span id="activeUser">—</span>
+          <button class="btn btn-ghost btn-sm" id="btnSwitchUser">Switch</button>
+        </div>
+        <button class="btn btn-ghost" id="btnSettings">Settings</button>
+      </div>
+    </header>
 
-          <div class="formgrid">
-            <div>
-              <label>Company name <span class="req">*</span></label>
-              <input id="company" autocomplete="organization"/>
-            </div>
-            <div>
-              <label>Contact person</label>
-              <input id="contact" autocomplete="name"/>
-            </div>
+    <nav class="tabs">
+      <button class="tab active" data-tab="capture">Capture</button>
+      <button class="tab" data-tab="dashboard">Dashboard</button>
+      <button class="tab" data-tab="leads">Leads</button>
+      <button class="tab" data-tab="calendar">Calendar</button>
+    </nav>
 
-            <div>
-              <label>Title</label>
-              <input id="title" autocomplete="organization-title"/>
-            </div>
-            <div>
-              <label>Email</label>
-              <input id="email" type="email" autocomplete="email"/>
-            </div>
-
-            <div>
-              <label>Country (type to search)</label>
-              <input id="country" list="dlCountries" placeholder="Search country..."/>
-              <datalist id="dlCountries"></datalist>
-            </div>
-            <div>
-              <label>Markets / Notes (type to search)</label>
-              <input id="markets" list="dlMarkets" placeholder="Search markets..."/>
-              <datalist id="dlMarkets"></datalist>
-            </div>
-
-            <div>
-              <label>Phone 1 (WhatsApp ok)</label>
-              <input id="phone1" placeholder="+91 ..." inputmode="tel" autocomplete="tel"/>
-            </div>
-            <div>
-              <label>Phone 2 (optional)</label>
-              <input id="phone2" placeholder="+91 ..." inputmode="tel" autocomplete="tel"/>
-            </div>
-
-            <div>
-              <label>Website</label>
-              <input id="website" placeholder="https://..." autocomplete="url"/>
-            </div>
-            <div>
-              <label>Social</label>
-              <input id="social" placeholder="@company"/>
-            </div>
-
-            <div>
-              <label>Product Type (type to search)</label>
-              <input id="productType" list="dlProductTypes" placeholder="Search product type..."/>
-              <datalist id="dlProductTypes"></datalist>
-            </div>
-            <div>
-              <label>Private label?</label>
-              <select id="privateLabel">
-                <option value=""></option>
-                <option>Private label</option>
-                <option>Own brand</option>
-                <option>Not sure</option>
-              </select>
-            </div>
-
-            <div>
-              <label>Price — Ex-Factory</label>
-              <input id="exFactory" placeholder="USD / unit"/>
-            </div>
-            <div>
-              <label>Price — FOB</label>
-              <input id="fob" placeholder="USD / unit"/>
-            </div>
-
-            <div class="span2">
-              <label id="productsLabel">What do they sell? (one per line) <span class="req">*</span></label>
-              <textarea id="productsOrNeeds" rows="4" placeholder="One item per line"></textarea>
-            </div>
-
-            <div class="span2">
-              <label>Attach catalog / docs (optional · multiple)</label>
-              <input id="catalogFiles" type="file" multiple accept="image/*,application/pdf"/>
-            </div>
-
-            <div class="span2">
-              <label>Attach card image (optional)</label>
-              <input id="cardFile" type="file" accept="image/*"/>
-            </div>
-
-            <div class="span2">
-              <label>QR raw (auto-filled if scanned)</label>
-              <textarea id="qrData" rows="2" placeholder="(optional)"></textarea>
-            </div>
-
-            <div class="span2">
-              <label>Notes</label>
-              <textarea id="notes" rows="3"></textarea>
-            </div>
-          </div>
-
-          <div class="follow">
-            <div class="follow-head">
-              <div class="follow-title">Schedule follow-up (IST)</div>
-              <label class="toggle">
-                <input type="checkbox" id="followEnabled"/>
-                <span>Enable</span>
-              </label>
-            </div>
-            <div class="follow-grid">
+    <main class="content">
+      <!-- CAPTURE -->
+      <section class="panel active" id="tab-capture">
+        <div class="grid2">
+          <div class="card">
+            <div class="card-head">
               <div>
-                <label>Date</label>
-                <input id="followDate" type="date"/>
+                <div class="h">Lead details</div>
+                <div class="sub">Scan is optional. Select Supplier/Buyer first.</div>
               </div>
+              <div class="leadtype">
+                <span class="muted">LEAD TYPE</span>
+                <div class="seg">
+                  <button class="seg-btn active" data-type="supplier">Supplier</button>
+                  <button class="seg-btn" data-type="buyer">Buyer</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="rowline">
+              <button class="btn btn-ghost" id="btnScan">Scan QR (optional)</button>
+              <div class="status">
+                <div class="status-title">Status</div>
+                <div class="status-val" id="statusText">Not configured</div>
+                <div class="status-tip" id="statusTip">Tip: set user + Apps Script URL in Settings.</div>
+              </div>
+            </div>
+
+            <form id="leadForm" class="form">
+              <div class="form-grid">
+                <div class="field">
+                  <label>Company name <span class="req">*</span></label>
+                  <input id="company" required placeholder="Company" />
+                </div>
+                <div class="field">
+                  <label>Contact person</label>
+                  <input id="contact" placeholder="Name" />
+                </div>
+
+                <div class="field">
+                  <label>Title</label>
+                  <input id="title" placeholder="Title" />
+                </div>
+                <div class="field">
+                  <label>Email</label>
+                  <input id="email" type="email" placeholder="name@company.com" />
+                </div>
+
+                <div class="field">
+                  <label>Country (type to search)</label>
+                  <input id="country" list="countryList" placeholder="Search country..." />
+                  <datalist id="countryList"></datalist>
+                </div>
+                <div class="field">
+                  <label>Markets / Notes (type to search)</label>
+                  <input id="markets" list="marketsList" placeholder="Search markets..." />
+                  <datalist id="marketsList"></datalist>
+                </div>
+
+                <div class="field">
+                  <label>Phone 1 (WhatsApp ok)</label>
+                  <input id="phone" placeholder="+91…" inputmode="tel" />
+                </div>
+                <div class="field">
+                  <label>Phone 2 (optional)</label>
+                  <input id="phone2" placeholder="+91…" inputmode="tel" />
+                </div>
+
+                <div class="field">
+                  <label>Website</label>
+                  <input id="website" placeholder="https://…" />
+                </div>
+                <div class="field">
+                  <label>Social</label>
+                  <input id="social" placeholder="@company" />
+                </div>
+
+                <div class="field">
+                  <label>Product Type (type to search)</label>
+                  <input id="productType" list="productTypeList" placeholder="Search product type..." />
+                  <datalist id="productTypeList"></datalist>
+                </div>
+
+                <div class="field">
+                  <label>Private label?</label>
+                  <select id="privateLabel">
+                    <option value=""></option>
+                    <option>Private label</option>
+                    <option>Own brand</option>
+                    <option>Open to both</option>
+                  </select>
+                </div>
+
+                <div class="field">
+                  <label>Price — Ex-Factory</label>
+                  <input id="exFactory" placeholder="USD / unit" />
+                </div>
+                <div class="field">
+                  <label>Price — FOB</label>
+                  <input id="fob" placeholder="USD / unit" />
+                </div>
+
+                <div class="field full">
+                  <label id="productsLabel">What do they sell? (one per line) <span class="req">*</span></label>
+                  <textarea id="productsOrNeeds" rows="4" required placeholder="One item per line"></textarea>
+                </div>
+
+                <div class="field full">
+                  <label>Attach catalog / docs (optional • multiple)</label>
+                  <input id="catalogFiles" type="file" multiple accept="image/*,application/pdf" />
+                </div>
+
+                <div class="field full">
+                  <label>Attach card image (optional)</label>
+                  <input id="cardFile" type="file" accept="image/*" />
+                </div>
+
+                <div class="field full">
+                  <label>QR raw (auto-filled if scanned)</label>
+                  <textarea id="qrData" rows="2" placeholder=""></textarea>
+                </div>
+
+                <div class="field full">
+                  <label>Notes</label>
+                  <textarea id="notes" rows="3" placeholder=""></textarea>
+                </div>
+              </div>
+
+              <div class="follow-card">
+                <div class="follow-head">
+                  <div class="h2">Schedule follow-up (IST)</div>
+                  <label class="toggle">
+                    <input id="followEnabled" type="checkbox" />
+                    <span>Enable</span>
+                  </label>
+                </div>
+                <div class="follow-grid">
+                  <div class="field">
+                    <label>Date</label>
+                    <input id="followDate" type="date" />
+                  </div>
+                  <div class="field">
+                    <label>Time</label>
+                    <input id="followTime" type="time" />
+                  </div>
+                  <div class="field full">
+                    <label>Follow-up note</label>
+                    <input id="followNote" placeholder="Call / WhatsApp / send catalog / pricing…" />
+                  </div>
+                </div>
+                <div class="muted tiny">If enabled, the event will be created on your Google Calendar (30 mins) and invite will be sent to lead email (if provided).</div>
+              </div>
+
+              <div class="actions">
+                <button class="btn btn-primary" id="btnSaveNew" type="button">Save & New</button>
+                <button class="btn btn-primary" id="btnSaveClose" type="button">Save & Close</button>
+                <button class="btn btn-ghost" id="btnClear" type="button">Clear</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
               <div>
-                <label>Time</label>
-                <input id="followTime" type="time"/>
+                <div class="h">Session leads</div>
+                <div class="sub">This device only. Master is in Google Sheet.</div>
               </div>
-              <div class="span2">
-                <label>Follow-up note</label>
-                <input id="followNote" placeholder="Call / WhatsApp / send catalog / pricing..."/>
+              <div class="pill"><span id="sessionCount">0</span> leads</div>
+            </div>
+            <div class="table-wrap">
+              <table class="tbl" id="sessionTable">
+                <thead><tr><th>Type</th><th>Company</th><th>Country</th><th>Time (IST)</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- DASHBOARD -->
+      <section class="panel" id="tab-dashboard">
+        <div class="grid2">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <div class="h">Dashboard</div>
+                <div class="sub">Filters apply with “contains”.</div>
               </div>
+            </div>
+
+            <div class="filters">
+              <div class="field">
+                <label>Country</label>
+                <input id="fCountry" list="countryList" placeholder="contains…" />
+              </div>
+              <div class="field">
+                <label>Product Type</label>
+                <input id="fProductType" list="productTypeList" placeholder="contains…" />
+              </div>
+              <div class="field">
+                <label>Markets</label>
+                <input id="fMarkets" list="marketsList" placeholder="contains…" />
+              </div>
+              <button class="btn btn-ghost" id="btnDashRefresh">Refresh</button>
+            </div>
+
+            <div class="kpis">
+              <div class="kpi"><div class="k">Total leads</div><div class="v" id="kTotal">—</div></div>
+              <div class="kpi"><div class="k">Suppliers</div><div class="v" id="kSup">—</div></div>
+              <div class="kpi"><div class="k">Buyers</div><div class="v" id="kBuy">—</div></div>
+              <div class="kpi"><div class="k">Upcoming follow-ups</div><div class="v" id="kFollow">—</div></div>
             </div>
           </div>
 
-          <div class="actions">
-            <button class="btn btn-primary" id="btnSaveNew">Save & New</button>
-            <button class="btn btn-primary" id="btnSaveClose">Save & Close</button>
-            <button class="btn btn-ghost" id="btnClear">Clear</button>
-            <div class="saving" id="savingIndicator">Saving…</div>
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <div class="h">Upcoming follow-ups</div>
+                <div class="sub">Next 14 days (IST)</div>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="tbl" id="upcomingTable">
+                <thead><tr><th>When</th><th>Type</th><th>Company</th><th>Action</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
           </div>
         </div>
+      </section>
 
+      <!-- LEADS -->
+      <section class="panel" id="tab-leads">
         <div class="card">
-          <div class="card-title">Session leads</div>
-          <div class="card-sub">This device only. Master record is in your Google Sheet.</div>
+          <div class="card-head">
+            <div>
+              <div class="h">All leads</div>
+              <div class="sub">Edit, call, WhatsApp, email.</div>
+            </div>
+            <button class="btn btn-ghost" id="btnLeadsRefresh">Refresh</button>
+          </div>
 
-          <div class="tablewrap">
-            <table class="table" id="sessionTable">
+          <div class="filters">
+            <div class="field">
+              <label>Search</label>
+              <input id="qLeads" placeholder="company / contact / email…" />
+            </div>
+            <div class="field">
+              <label>Country</label>
+              <input id="qCountry" list="countryList" placeholder="contains…" />
+            </div>
+            <div class="field">
+              <label>Product Type</label>
+              <input id="qProductType" list="productTypeList" placeholder="contains…" />
+            </div>
+            <div class="field">
+              <label>Markets</label>
+              <input id="qMarkets" list="marketsList" placeholder="contains…" />
+            </div>
+            <button class="btn btn-ghost" id="btnApplyLeadFilters">Apply</button>
+          </div>
+
+          <div class="table-wrap">
+            <table class="tbl" id="leadsTable">
               <thead>
-                <tr><th>Type</th><th>Company</th><th>Country</th><th>Time (IST)</th></tr>
+                <tr>
+                  <th>Time (IST)</th><th>Type</th><th>Company</th><th>Contact</th><th>Country</th><th>Product</th><th>Markets</th><th>Actions</th>
+                </tr>
               </thead>
               <tbody></tbody>
             </table>
           </div>
-
-          <div class="tiny muted" id="sessionCount">0 leads this session</div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <!-- DASHBOARD -->
-    <section class="panel hidden" id="tab-dashboard">
-      <div class="panel-head">
-        <div class="filters">
-          <input id="fCountry" list="dlCountries" placeholder="Filter: Country (contains)"/>
-          <input id="fProductType" list="dlProductTypes" placeholder="Filter: Product Type (contains)"/>
-          <input id="fMarkets" list="dlMarkets" placeholder="Filter: Markets (contains)"/>
-          <button class="btn btn-ghost" id="btnClearFilters">Clear filters</button>
-        </div>
-      </div>
+      <!-- CALENDAR -->
+      <section class="panel" id="tab-calendar">
+        <div class="grid2">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <div class="h">Follow-up calendar</div>
+                <div class="sub">Week agenda (IST)</div>
+              </div>
+              <div>
+                <button class="btn btn-ghost btn-sm" id="calPrev">◀</button>
+                <button class="btn btn-ghost btn-sm" id="calToday">Today</button>
+                <button class="btn btn-ghost btn-sm" id="calNext">▶</button>
+              </div>
+            </div>
+            <div id="calRange" class="muted tiny"></div>
+            <div class="agenda" id="agenda"></div>
+          </div>
 
-      <div class="kpis">
-        <div class="kpi"><div class="kpi-label">Total leads</div><div class="kpi-val" id="kpiTotal">0</div></div>
-        <div class="kpi"><div class="kpi-label">Suppliers</div><div class="kpi-val" id="kpiSuppliers">0</div></div>
-        <div class="kpi"><div class="kpi-label">Buyers</div><div class="kpi-val" id="kpiBuyers">0</div></div>
-        <div class="kpi"><div class="kpi-label">Upcoming follow-ups</div><div class="kpi-val" id="kpiFollowups">0</div></div>
-      </div>
-
-      <div class="grid2">
-        <div class="card">
-          <div class="card-title">Upcoming follow-ups</div>
-          <div class="tablewrap">
-            <table class="table" id="followupsTable">
-              <thead><tr><th>When (IST)</th><th>Type</th><th>Company</th><th>Note</th><th></th></tr></thead>
-              <tbody></tbody>
-            </table>
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <div class="h">Month view</div>
+                <div class="sub">Counts per day</div>
+              </div>
+            </div>
+            <div id="monthGrid" class="month"></div>
           </div>
         </div>
-
-        <div class="card">
-          <div class="card-title">Recent leads</div>
-          <div class="tablewrap">
-            <table class="table" id="recentLeadsTable">
-              <thead><tr><th>When (IST)</th><th>Type</th><th>Company</th><th>Country</th><th></th></tr></thead>
-              <tbody></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- LEADS -->
-    <section class="panel hidden" id="tab-leads">
-      <div class="panel-head">
-        <div class="filters">
-          <input id="lCountry" list="dlCountries" placeholder="Country (contains)"/>
-          <input id="lProductType" list="dlProductTypes" placeholder="Product Type (contains)"/>
-          <input id="lMarkets" list="dlMarkets" placeholder="Markets (contains)"/>
-          <button class="btn btn-ghost" id="btnRefreshLeads">Refresh</button>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="tablewrap">
-          <table class="table" id="leadsTable">
-            <thead>
-              <tr>
-                <th>When</th><th>Type</th><th>Company</th><th>Contact</th><th>Country</th><th>Product</th><th>Markets</th><th>Owner</th><th>Actions</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-
-    <!-- CALENDAR -->
-    <section class="panel hidden" id="tab-calendar">
-      <div class="panel-head">
-        <div class="seg">
-          <button class="segbtn active" id="calViewAgenda">Agenda</button>
-          <button class="segbtn" id="calViewWeek">Week</button>
-          <button class="segbtn" id="calViewMonth">Month</button>
-        </div>
-      </div>
-
-      <div class="card" id="calAgenda">
-        <div class="card-title">Follow-ups (agenda)</div>
-        <div class="tablewrap">
-          <table class="table" id="calendarTable">
-            <thead><tr><th>When (IST)</th><th>Company</th><th>Type</th><th>Note</th><th>Calendar</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="grid2 hidden" id="calGrid">
-        <div class="card">
-          <div class="card-title" id="calGridTitle">Calendar</div>
-          <div id="calendarGrid" class="calgrid"></div>
-        </div>
-        <div class="card">
-          <div class="card-title">Details</div>
-          <div id="calDetails" class="small muted">Select a follow-up to see details.</div>
-        </div>
-      </div>
-    </section>
-  </main>
+      </section>
+    </main>
+  </div>
 
   <!-- SETTINGS MODAL -->
-  <div class="overlay hidden" id="settingsOverlay" aria-hidden="true">
-    <div class="modal">
+  <div class="overlay" id="settingsOverlay" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-label="Settings">
       <div class="modal-head">
-        <div class="modal-title">Settings</div>
+        <div class="h">Settings</div>
         <button class="btn btn-ghost btn-sm" id="btnCloseSettings">Close</button>
       </div>
-
-      <label class="muted small">Apps Script Web App URL (must end with /exec)</label>
-      <input id="settingsScriptUrl" placeholder="https://script.google.com/macros/s/.../exec"/>
-
-      <div class="row">
-        <button class="btn btn-ghost" id="btnTest">Test connection</button>
+      <div class="field">
+        <label>Apps Script Web App URL (must end with /exec)</label>
+        <input id="settingsScriptUrl" placeholder="https://script.google.com/macros/s/.../exec" />
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="btnTestConn">Test connection</button>
         <button class="btn btn-primary" id="btnSaveSettings">Save</button>
       </div>
-
-      <div class="tiny muted">Tip: Deploy as Web App → Execute as <b>Me (USER_DEPLOYING)</b> to create Calendar invites from your account.</div>
-      <div class="small" id="settingsMsg"></div>
+      <div class="muted tiny">Deploy as Web App → Execute as <b>Me</b> (USER_DEPLOYING) to create Calendar invites from your account.</div>
     </div>
   </div>
 
   <!-- USER MODAL -->
-  <div class="overlay hidden" id="userOverlay" aria-hidden="true">
-    <div class="modal">
+  <div class="overlay" id="userOverlay" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-label="User">
       <div class="modal-head">
-        <div class="modal-title">Set user name</div>
+        <div class="h">Set user</div>
         <button class="btn btn-ghost btn-sm" id="btnCloseUser">Close</button>
       </div>
-
-      <label class="muted small">User name (stored only on this device)</label>
-      <input id="userNameInput" placeholder="Ritesh Kapoor"/>
-
-      <div class="row">
+      <div class="field">
+        <label>Entered by</label>
+        <input id="userNameInput" placeholder="Ritesh Kapoor" />
+      </div>
+      <div class="modal-actions">
         <button class="btn btn-primary" id="btnSaveUser">Save</button>
       </div>
     </div>
   </div>
 
   <!-- QR MODAL -->
-  <div class="overlay hidden" id="qrOverlay" aria-hidden="true">
-    <div class="modal modal-wide">
+  <div class="overlay" id="qrOverlay" aria-hidden="true">
+    <div class="modal wide" role="dialog" aria-modal="true" aria-label="Scan QR">
       <div class="modal-head">
-        <div class="modal-title">Scan badge / business card (optional)</div>
+        <div>
+          <div class="h">Scan badge / business card (optional)</div>
+          <div class="muted tiny">Allow camera permission when prompted. Point at a vCard QR to auto-fill.</div>
+        </div>
         <button class="btn btn-ghost btn-sm" id="btnCloseQr">Close</button>
       </div>
-      <div class="tiny muted">Allow camera permission when prompted. Point at QR (vCard recommended) to auto-fill.</div>
       <div id="qrReader" class="qrbox"></div>
-      <div class="small" id="qrMsg"></div>
+      <div class="muted tiny" id="qrHint"></div>
     </div>
   </div>
 
