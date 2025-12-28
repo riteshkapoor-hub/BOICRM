@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>BOI CRM — IndusFood</title>
+  <title>BOI CRM</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -11,22 +11,23 @@
     <div class="brand">
       <img src="boi-logo.png" class="brand__logo" alt="BOI" />
       <div class="brand__text">
-        <div class="brand__title">BOI CRM — IndusFood</div>
+        <div class="brand__title">BOI CRM</div>
         <div class="brand__sub">Blue Orbit International LLP • Lead Capture</div>
       </div>
     </div>
     <div class="topbar__right">
       <div id="userPill" class="pill">User: —</div>
-      <button id="btnSwitchUser" class="btn btn--ghost">Switch User</button>
-      <button id="btnSettings" class="btn btn--ghost">Settings</button>
+      <button id="btnSwitchUser" class="btn btn--ghost" type="button">Switch User</button>
+      <button id="btnSettings" class="btn btn--ghost" type="button">Settings</button>
     </div>
   </header>
 
   <main class="shell">
     <nav class="tabs">
-      <button id="tabCapture" class="tab isActive">Capture</button>
-      <button id="tabDashboard" class="tab">Dashboard</button>
-      <button id="tabLeads" class="tab">Leads</button>
+      <button id="tabCapture" class="tab isActive" type="button">Capture</button>
+      <button id="tabDashboard" class="tab" type="button">Dashboard</button>
+      <button id="tabLeads" class="tab" type="button">Leads</button>
+      <button id="tabCalendar" class="tab" type="button">Calendar</button>
 
       <div class="tabs__spacer"></div>
 
@@ -43,6 +44,7 @@
       <div id="summary" class="summary">0 leads this session</div>
     </nav>
 
+    <!-- CAPTURE -->
     <section id="viewCapture" class="view">
       <div class="grid">
         <div class="card">
@@ -51,7 +53,7 @@
             <div class="card__sub">Fill manually or scan. Attach catalog / card images if available.</div>
           </div>
 
-          <!-- SUPPLIER -->
+          <!-- SUPPLIER FORM -->
           <form id="supplierForm" class="form">
             <div class="row2">
               <div class="field">
@@ -81,14 +83,14 @@
                 <div id="supCountryCombo"></div>
               </div>
               <div class="field">
-                <label>Markets / Notes (type to search)</label>
+                <label>Markets (type to search)</label>
                 <div id="supMarketsCombo"></div>
               </div>
             </div>
 
             <div class="row2">
               <div class="field">
-                <label>Phone 1 (WhatsApp ok)</label>
+                <label>Phone 1</label>
                 <input id="supPhone" type="tel" placeholder="+91 …" autocomplete="tel" />
               </div>
               <div class="field">
@@ -161,7 +163,7 @@
               <textarea id="supNotes" rows="3"></textarea>
             </div>
 
-            <!-- FOLLOW-UP (before save buttons) -->
+            <!-- FOLLOW-UP -->
             <div class="follow">
               <div class="follow__hdr">Schedule follow-up (IST)</div>
               <div class="row2">
@@ -184,7 +186,6 @@
               </div>
             </div>
 
-            <!-- Buttons: Save & Close LAST -->
             <div class="btnrow">
               <button id="saveSupplierNew" type="button" class="btn btn--primary">Save & New</button>
               <button id="clearSupplier" type="button" class="btn btn--ghost">Clear</button>
@@ -194,7 +195,7 @@
             <div id="supResult" class="result"></div>
           </form>
 
-          <!-- BUYER -->
+          <!-- BUYER FORM -->
           <form id="buyerForm" class="form" style="display:none;">
             <div class="row2">
               <div class="field">
@@ -224,14 +225,14 @@
                 <div id="buyCountryCombo"></div>
               </div>
               <div class="field">
-                <label>Markets / Notes (type to search)</label>
+                <label>Markets (type to search)</label>
                 <div id="buyMarketsCombo"></div>
               </div>
             </div>
 
             <div class="row2">
               <div class="field">
-                <label>Phone 1 (WhatsApp ok)</label>
+                <label>Phone 1</label>
                 <input id="buyPhone" type="tel" placeholder="+91 …" autocomplete="tel" />
               </div>
               <div class="field">
@@ -293,7 +294,7 @@
               <textarea id="buyNotes" rows="3"></textarea>
             </div>
 
-            <!-- FOLLOW-UP (before save buttons) -->
+            <!-- FOLLOW-UP -->
             <div class="follow">
               <div class="follow__hdr">Schedule follow-up (IST)</div>
               <div class="row2">
@@ -345,6 +346,7 @@
       </div>
     </section>
 
+    <!-- DASHBOARD -->
     <section id="viewDashboard" class="view" style="display:none;">
       <div class="card">
         <div class="card__hdr">
@@ -360,7 +362,7 @@
             <div id="dashCountryCombo"></div>
           </div>
           <div class="field">
-            <label>Markets / Notes</label>
+            <label>Markets</label>
             <div id="dashMarketCombo"></div>
           </div>
           <div class="field">
@@ -389,11 +391,12 @@
       </div>
     </section>
 
+    <!-- LEADS -->
     <section id="viewLeads" class="view" style="display:none;">
       <div class="card">
         <div class="card__hdr">
           <div class="card__title">Leads</div>
-          <div class="card__sub">Full list (same filters as dashboard)</div>
+          <div class="card__sub">Call / Email / Edit saved leads</div>
         </div>
 
         <div class="filters">
@@ -402,7 +405,7 @@
             <div id="leadsCountryCombo"></div>
           </div>
           <div class="field">
-            <label>Markets / Notes</label>
+            <label>Markets</label>
             <div id="leadsMarketCombo"></div>
           </div>
           <div class="field">
@@ -423,11 +426,48 @@
               <tr>
                 <th>Time (IST)</th><th>Type</th><th>Company</th><th>Contact</th>
                 <th>Email</th><th>Phone</th><th>Country</th><th>Markets</th><th>Product Type</th>
-                <th>Entered By</th><th>Drive</th>
+                <th>Entered By</th><th>Drive / Edit</th>
               </tr>
             </thead>
             <tbody></tbody>
           </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- CALENDAR -->
+    <section id="viewCalendar" class="view" style="display:none;">
+      <div class="card">
+        <div class="card__hdr">
+          <div class="card__title">Follow-up Calendar</div>
+          <div class="card__sub">All scheduled follow-ups pulled from FollowUps tab.</div>
+        </div>
+
+        <div class="calbar">
+          <div class="seg seg--sm">
+            <button id="calViewDay" class="seg__btn isActive" type="button">Day</button>
+            <button id="calViewWeek" class="seg__btn" type="button">Week</button>
+            <button id="calViewMonth" class="seg__btn" type="button">Month</button>
+          </div>
+
+          <div class="calnav">
+            <button id="calPrev" class="btn btn--ghost" type="button">◀</button>
+            <div id="calTitle" class="caltitle">—</div>
+            <button id="calNext" class="btn btn--ghost" type="button">▶</button>
+          </div>
+
+          <button id="btnCalRefresh" class="btn btn--ghost" type="button">Refresh</button>
+        </div>
+
+        <div class="calgridwrap">
+          <div id="calGrid" class="calgrid"></div>
+          <div class="calpanel">
+            <div class="calpanel__hdr">
+              <div id="calPanelTitle" class="calpanel__title">Upcoming</div>
+              <div class="hint" id="calPanelHint"></div>
+            </div>
+            <div id="calList" class="callist"></div>
+          </div>
         </div>
       </div>
     </section>
@@ -484,6 +524,135 @@
         </div>
         <button id="btnStartSession" class="btn btn--primary" type="button">Start</button>
         <div class="hint">Stored locally on this device.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit lead overlay -->
+  <div id="editOverlay" class="overlay" aria-hidden="true">
+    <div class="modal">
+      <div class="modal__hdr">
+        <div>
+          <div class="modal__title">Edit Lead</div>
+          <div class="modal__sub" id="editSub">—</div>
+        </div>
+        <button id="btnCloseEdit" class="btn btn--ghost" type="button">Close</button>
+      </div>
+
+      <div class="form">
+        <input id="editLeadId" type="hidden" />
+
+        <div class="row2">
+          <div class="field">
+            <label>Type</label>
+            <input id="editType" type="text" disabled />
+          </div>
+          <div class="field">
+            <label>Entered By</label>
+            <input id="editEnteredBy" type="text" disabled />
+          </div>
+        </div>
+
+        <div class="row2">
+          <div class="field">
+            <label>Company</label>
+            <input id="editCompany" type="text" />
+          </div>
+          <div class="field">
+            <label>Contact</label>
+            <input id="editContact" type="text" />
+          </div>
+        </div>
+
+        <div class="row2">
+          <div class="field">
+            <label>Title</label>
+            <input id="editTitle" type="text" />
+          </div>
+          <div class="field">
+            <label>Email</label>
+            <input id="editEmail" type="email" />
+          </div>
+        </div>
+
+        <div class="row2">
+          <div class="field">
+            <label>Phone</label>
+            <input id="editPhone" type="tel" />
+          </div>
+          <div class="field">
+            <label>Phone 2</label>
+            <input id="editPhone2" type="tel" />
+          </div>
+        </div>
+
+        <div class="row2">
+          <div class="field">
+            <label>Country</label>
+            <div id="editCountryCombo"></div>
+          </div>
+          <div class="field">
+            <label>Markets</label>
+            <div id="editMarketCombo"></div>
+          </div>
+        </div>
+
+        <div class="row2">
+          <div class="field">
+            <label>Product Type</label>
+            <div id="editPTCombo"></div>
+          </div>
+          <div class="field">
+            <label>Private label?</label>
+            <input id="editPL" type="text" />
+          </div>
+        </div>
+
+        <div class="row2" id="editPriceRow">
+          <div class="field">
+            <label>Ex-Factory</label>
+            <input id="editExFactory" type="text" />
+          </div>
+          <div class="field">
+            <label>FOB</label>
+            <input id="editFOB" type="text" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label>What do they sell / buy? (one per line)</label>
+          <textarea id="editProducts" rows="4"></textarea>
+        </div>
+
+        <div class="field">
+          <label>Notes</label>
+          <textarea id="editNotes" rows="3"></textarea>
+        </div>
+
+        <div class="follow">
+          <div class="follow__hdr">Add a new follow-up (optional • IST)</div>
+          <div class="row2">
+            <div class="field">
+              <label>Date</label>
+              <input id="editFUDate" type="date" />
+            </div>
+            <div class="field">
+              <label>Time</label>
+              <input id="editFUTime" type="time" />
+            </div>
+          </div>
+          <div class="field">
+            <label>Follow-up note</label>
+            <input id="editFUNotes" type="text" placeholder="Call / WhatsApp / send catalog / pricing…" />
+          </div>
+        </div>
+
+        <div class="btnrow">
+          <button id="btnSaveEdit" class="btn btn--primary" type="button">Save Changes</button>
+          <button id="btnClearEditFU" class="btn btn--ghost" type="button">Clear Follow-up Fields</button>
+        </div>
+
+        <div id="editStatus" class="hint" style="padding:10px 2px 0 2px;"></div>
       </div>
     </div>
   </div>
