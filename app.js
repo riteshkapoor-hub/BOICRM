@@ -636,7 +636,7 @@ function setLeadRow(tbody, r){
   tbody.appendChild(tr);
 }
 
-function setFU.row(tbody, r){
+function setFUrow(tbody, r){
   const tr=document.createElement("tr");
   tr.innerHTML = `
     <td>${esc(r.scheduledAtIST||"")}</td>
@@ -925,3 +925,4 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   setStatus("Ready");
   updateSummary();
 });
+
