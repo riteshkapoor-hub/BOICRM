@@ -2,141 +2,348 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>BOI CRM</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>BOI CRM — IndusFood</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 
 <body>
   <header class="topbar">
     <div class="brand">
-      <div class="logo">BOI</div>
-      <div>
-        <div class="brand-title">Blue Orbit CRM</div>
-        <div class="brand-sub">Trade Show Lead Capture</div>
+      <div class="brand-icon">B</div>
+      <div class="brand-text">
+        <div class="brand-title">BOI CRM — IndusFood</div>
+        <div class="brand-sub">Blue Orbit International LLP • Lead Capture</div>
       </div>
     </div>
 
-    <div class="top-actions">
-      <button id="btnOpenScanner" class="btn btn-primary" type="button">
-        Scan QR
-      </button>
+    <div class="top-right">
+      <div class="user-pill">
+        <span class="muted">User:</span>
+        <span id="activeUserLabel" class="user-name">—</span>
+        <button id="btnSwitchUser" class="btn btn-ghost btn-sm" type="button">Switch</button>
+      </div>
+      <button id="btnOpenSettings" class="btn btn-ghost btn-sm" type="button">Settings</button>
     </div>
   </header>
 
+  <nav class="tabs">
+    <button class="tab active" data-tab="capture" type="button">Capture</button>
+    <button class="tab" data-tab="dashboard" type="button">Dashboard</button>
+    <button class="tab" data-tab="leads" type="button">Leads</button>
+    <button class="tab" data-tab="calendar" type="button">Calendar</button>
+  </nav>
+
   <main class="container">
-    <section class="card">
-      <h2 class="card-title">Lead Details</h2>
+    <!-- CAPTURE -->
+    <section id="tab-capture" class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Lead details</h2>
+          <div class="muted small">Scan is optional. Select Supplier/Buyer first.</div>
+        </div>
+        <div class="status-block">
+          <div class="muted small">Status</div>
+          <div id="configStatus" class="badge badge-warn">Not configured</div>
+          <div class="muted small">Tip: set user + Apps Script URL in Settings.</div>
+        </div>
+      </div>
 
-      <form id="leadForm" autocomplete="off">
-        <div class="grid">
-          <div class="field">
-            <label for="company">Company</label>
-            <input id="company" name="company" type="text" placeholder="Company name" />
+      <div class="card">
+        <div class="row row-tight">
+          <div class="segmented">
+            <div class="muted small seg-label">Lead Type</div>
+            <button id="leadTypeSupplier" class="seg active" type="button">Supplier</button>
+            <button id="leadTypeBuyer" class="seg" type="button">Buyer</button>
           </div>
 
-          <div class="field">
-            <label for="contactName">Contact Name</label>
-            <input id="contactName" name="contactName" type="text" placeholder="Full name" />
-          </div>
+          <button id="btnScanQR" class="btn btn-primary" type="button">Scan QR (optional)</button>
+        </div>
 
-          <div class="field">
-            <label for="title">Title</label>
-            <input id="title" name="title" type="text" placeholder="Role / Title" />
-          </div>
+        <form id="leadForm" class="form">
+          <div class="grid">
+            <div class="field span-2">
+              <label>Company name <span class="req">*</span></label>
+              <input id="company" type="text" placeholder="Company" />
+            </div>
 
-          <div class="field">
-            <label for="email">Email</label>
-            <input id="email" name="email" type="email" placeholder="name@company.com" />
-          </div>
+            <div class="field">
+              <label>Contact person</label>
+              <input id="contactName" type="text" placeholder="Name" />
+            </div>
 
-          <div class="field">
-            <label for="phone">Phone</label>
-            <input id="phone" name="phone" type="tel" placeholder="+1 (###) ###-####" />
-          </div>
+            <div class="field">
+              <label>Title</label>
+              <input id="title" type="text" placeholder="Title" />
+            </div>
 
-          <div class="field">
-            <label for="country">Country</label>
-            <input id="country" name="country" type="text" placeholder="Country" />
-          </div>
+            <div class="field">
+              <label>Email</label>
+              <input id="email" type="email" placeholder="name@company.com" />
+            </div>
 
-          <div class="field span-2">
-            <label for="productsOrNeeds">Products / Needs (one per line)</label>
-            <textarea id="productsOrNeeds" name="productsOrNeeds" rows="5" placeholder="Example:
-Vacuum cooked chips
+            <div class="field">
+              <label>Country (type to search)</label>
+              <input id="country" type="text" placeholder="Search country..." />
+            </div>
+
+            <div class="field span-2">
+              <label>Markets / Notes (type to search)</label>
+              <input id="markets" type="text" placeholder="Search markets..." />
+            </div>
+
+            <div class="field">
+              <label>Phone 1 (WhatsApp ok)</label>
+              <input id="phone1" type="tel" placeholder="+1..." />
+            </div>
+
+            <div class="field">
+              <label>Phone 2 (optional)</label>
+              <input id="phone2" type="tel" placeholder="+1..." />
+            </div>
+
+            <div class="field span-2">
+              <label>Website</label>
+              <input id="website" type="url" placeholder="https://..." />
+            </div>
+
+            <div class="field span-2">
+              <label>Social</label>
+              <input id="social" type="text" placeholder="@company" />
+            </div>
+
+            <div class="field span-2">
+              <label>Product Type (type to search)</label>
+              <input id="productType" type="text" placeholder="Vacuum-cooked chips, powders, sweeteners..." />
+            </div>
+
+            <div class="field span-2">
+              <label>Products / Needs (one per line)</label>
+              <textarea id="productsOrNeeds" rows="4" placeholder="Example:
+Vacuum cooked fruit chips
 Dehydrated powders
 Private label"></textarea>
+            </div>
+
+            <div class="field span-2">
+              <label>Internal notes</label>
+              <textarea id="notes" rows="3" placeholder="Anything important from the conversation"></textarea>
+            </div>
+
+            <div class="field">
+              <label>Follow-up date</label>
+              <input id="followUpDate" type="date" />
+            </div>
+
+            <div class="field">
+              <label>Priority</label>
+              <select id="priority">
+                <option value="Warm">Warm</option>
+                <option value="Hot">Hot</option>
+                <option value="Cold">Cold</option>
+              </select>
+            </div>
           </div>
 
-          <div class="field span-2">
-            <label for="notes">Notes</label>
-            <textarea id="notes" name="notes" rows="4" placeholder="Any notes from discussion"></textarea>
+          <div class="row">
+            <button id="btnSaveLead" class="btn btn-primary" type="submit">Save Lead</button>
+            <button id="btnClearLead" class="btn btn-ghost" type="button">Clear</button>
           </div>
 
-          <div class="field">
-            <label for="source">Source</label>
-            <select id="source" name="source">
-              <option value="IndusFood">IndusFood</option>
-              <option value="Cold Outreach">Cold Outreach</option>
-              <option value="Referral">Referral</option>
-              <option value="Inbound">Inbound</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
+          <div id="captureMsg" class="msg"></div>
+        </form>
+      </div>
+    </section>
 
-          <div class="field">
-            <label for="priority">Priority</label>
-            <select id="priority" name="priority">
-              <option value="Warm">Warm</option>
-              <option value="Hot">Hot</option>
-              <option value="Cold">Cold</option>
-            </select>
+    <!-- DASHBOARD -->
+    <section id="tab-dashboard" class="panel hidden">
+      <div class="panel-head">
+        <div>
+          <h2>Dashboard</h2>
+          <div class="muted small">Quick view of activity and follow-ups.</div>
+        </div>
+        <div class="row">
+          <button id="btnRefreshDashboard" class="btn btn-ghost" type="button">Refresh</button>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <div class="kpi">
+            <div class="muted small">Total leads (local)</div>
+            <div id="kpiTotal" class="kpi-val">0</div>
+          </div>
+          <div class="kpi">
+            <div class="muted small">Saved today</div>
+            <div id="kpiToday" class="kpi-val">0</div>
+          </div>
+          <div class="kpi">
+            <div class="muted small">Follow-ups due (7 days)</div>
+            <div id="kpiDue" class="kpi-val">0</div>
           </div>
         </div>
 
-        <div class="form-actions">
-          <button id="btnSubmit" class="btn btn-primary" type="submit">Save Lead</button>
-          <button id="btnClear" class="btn" type="button">Clear</button>
+        <div class="card">
+          <h3 class="card-title">Upcoming follow-ups</h3>
+          <div id="dashUpcoming" class="list"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- LEADS -->
+    <section id="tab-leads" class="panel hidden">
+      <div class="panel-head">
+        <div>
+          <h2>Leads</h2>
+          <div class="muted small">Search and manage locally stored leads.</div>
+        </div>
+        <div class="row">
+          <input id="leadSearch" class="search" type="text" placeholder="Search company, contact, email, country..." />
+          <button id="btnExportJson" class="btn btn-ghost" type="button">Export JSON</button>
+          <button id="btnClearLocal" class="btn btn-danger" type="button">Clear Local</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div id="leadsList" class="list"></div>
+      </div>
+    </section>
+
+    <!-- CALENDAR -->
+    <section id="tab-calendar" class="panel hidden">
+      <div class="panel-head">
+        <div>
+          <h2>Calendar</h2>
+          <div class="muted small">Follow-up task list (local). Not tied to Google Calendar.</div>
+        </div>
+        <div class="row">
+          <button id="btnRefreshCalendar" class="btn btn-ghost" type="button">Refresh</button>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <h3 class="card-title">Add a follow-up task</h3>
+          <div class="grid">
+            <div class="field span-2">
+              <label>Task</label>
+              <input id="taskTitle" type="text" placeholder="Call buyer, send catalog, pricing follow-up..." />
+            </div>
+            <div class="field">
+              <label>Due date</label>
+              <input id="taskDue" type="date" />
+            </div>
+            <div class="field">
+              <label>Related company</label>
+              <input id="taskCompany" type="text" placeholder="Company (optional)" />
+            </div>
+          </div>
+          <div class="row">
+            <button id="btnAddTask" class="btn btn-primary" type="button">Add Task</button>
+            <button id="btnClearTask" class="btn btn-ghost" type="button">Clear</button>
+          </div>
+          <div id="calendarMsg" class="msg"></div>
         </div>
 
-        <div id="status" class="status" role="status" aria-live="polite"></div>
-      </form>
+        <div class="card">
+          <h3 class="card-title">Upcoming tasks</h3>
+          <div id="taskList" class="list"></div>
+        </div>
+      </div>
     </section>
   </main>
 
-  <!-- Scanner Modal -->
-  <div id="scannerModal" class="modal hidden" aria-hidden="true">
-    <div class="modal-backdrop" id="scannerBackdrop"></div>
-
-    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="scannerTitle">
-      <div class="modal-header">
-        <h3 id="scannerTitle">Scan QR Code</h3>
-        <button id="btnCloseScanner" class="icon-btn" type="button" aria-label="Close scanner">✕</button>
+  <!-- SETTINGS MODAL -->
+  <div id="settingsModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-backdrop" id="settingsBackdrop"></div>
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <div class="modal-head">
+        <h3 id="settingsTitle">Settings</h3>
+        <button id="btnCloseSettings" class="icon-btn" type="button">✕</button>
       </div>
 
       <div class="modal-body">
-        <div class="scanner-box">
-          <!-- html5-qrcode will render camera here -->
-          <div id="qrReader"></div>
+        <div class="grid">
+          <div class="field span-2">
+            <label>Apps Script Web App URL (/exec)</label>
+            <input id="settingScriptUrl" type="url" placeholder="https://script.google.com/macros/s/.../exec" />
+            <div class="muted small">Required to save into Google Sheets.</div>
+          </div>
+
+          <div class="field">
+            <label>Default User</label>
+            <input id="settingUser" type="text" placeholder="Ritesh" />
+          </div>
+
+          <div class="field">
+            <label>Local cache</label>
+            <select id="settingCache">
+              <option value="on">On (recommended)</option>
+              <option value="off">Off</option>
+            </select>
+          </div>
         </div>
 
-        <div class="scanner-help">
-          <div class="hint">Tip: Hold the QR steady and keep it centered.</div>
-          <div id="scanStatus" class="scan-status"></div>
+        <div class="row">
+          <button id="btnSaveSettings" class="btn btn-primary" type="button">Save Settings</button>
+          <button id="btnResetSettings" class="btn btn-danger" type="button">Reset</button>
+        </div>
+
+        <div id="settingsMsg" class="msg"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- USER SWITCH MODAL -->
+  <div id="userModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-backdrop" id="userBackdrop"></div>
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="userTitle">
+      <div class="modal-head">
+        <h3 id="userTitle">Switch User</h3>
+        <button id="btnCloseUser" class="icon-btn" type="button">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="field">
+          <label>User name</label>
+          <input id="userInput" type="text" placeholder="Enter user name" />
+        </div>
+        <div class="row">
+          <button id="btnSetUser" class="btn btn-primary" type="button">Set User</button>
+        </div>
+        <div id="userMsg" class="msg"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- QR SCANNER MODAL -->
+  <div id="scannerModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-backdrop" id="scannerBackdrop"></div>
+    <div class="modal-panel modal-panel-wide" role="dialog" aria-modal="true" aria-labelledby="scannerTitle">
+      <div class="modal-head">
+        <h3 id="scannerTitle">Scan QR Code</h3>
+        <button id="btnCloseScanner" class="icon-btn" type="button">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="scannerShell">
+          <div id="qrReader" class="qrReader"></div>
+        </div>
+        <div class="row row-tight">
+          <div id="scanMsg" class="msg"></div>
+          <div class="muted small">Tip: keep QR centered and steady.</div>
         </div>
       </div>
 
-      <div class="modal-footer">
-        <button id="btnStopScanner" class="btn" type="button">Stop Camera</button>
-        <button id="btnStartScanner" class="btn btn-primary" type="button">Start Camera</button>
+      <div class="modal-foot">
+        <button id="btnStopScanner" class="btn btn-ghost" type="button">Stop</button>
+        <button id="btnStartScanner" class="btn btn-primary" type="button">Start</button>
       </div>
     </div>
   </div>
 
   <!-- QR library -->
   <script src="https://unpkg.com/html5-qrcode@2.3.10/html5-qrcode.min.js"></script>
-
-  <!-- App -->
   <script src="./app.js"></script>
 </body>
 </html>
