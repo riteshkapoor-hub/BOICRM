@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>BOI CRM</title>
-  <link rel="stylesheet" href="styles.css?v=20251229223639" />
+  <link rel="stylesheet" href="styles.css?v=20251229_fix_execurl_guard" />
 </head>
 <body>
   <header class="topbar">
@@ -166,6 +166,16 @@
             <!-- FOLLOW-UP -->
             <div class="follow">
               <div class="follow__hdr">Schedule follow-up (IST)</div>
+              <div class="quickfu">
+                <button id="buyFUQuickToday" type="button" class="btn btn--ghost btn--sm">Today @10am</button>
+                <button id="buyFUQuick7" type="button" class="btn btn--ghost btn--sm">+7 @10am</button>
+                <button id="buyFUQuick14" type="button" class="btn btn--ghost btn--sm">+14 @10am</button>
+              </div>
+              <div class="quickfu">
+                <button id="supFUQuickToday" type="button" class="btn btn--ghost btn--sm">Today @10am</button>
+                <button id="supFUQuick7" type="button" class="btn btn--ghost btn--sm">+7 @10am</button>
+                <button id="supFUQuick14" type="button" class="btn btn--ghost btn--sm">+14 @10am</button>
+              </div>
               <div class="row2">
                 <div class="field">
                   <label>Date</label>
@@ -375,6 +385,7 @@
           </div>
 
           <button id="btnDashRefresh" class="btn btn--ghost" type="button">Refresh</button>
+          <button id="btnDashClear" class="btn btn--ghost" type="button">Clear Filters</button>
         </div>
 
         <div class="tablewrap">
@@ -398,6 +409,10 @@
           <div class="card__title">Leads</div>
           <div class="card__sub">Call / Email / Edit saved leads</div>
         </div>
+        <div class="viewtoggle" role="group" aria-label="Leads view">
+          <button id="btnLeadsViewCards" class="btn btn--ghost isActive" type="button">Cards</button>
+          <button id="btnLeadsViewList" class="btn btn--ghost" type="button">List</button>
+        </div>
 
         <div class="filters">
           <div class="field">
@@ -419,6 +434,8 @@
 
           <button id="btnLeadsRefresh" class="btn btn--ghost" type="button">Refresh</button>
         </div>
+        <div id="leadsCards" class="cardsGrid"></div>
+
 
         <div class="tablewrap">
           <table class="table" id="leadsTable">
@@ -631,6 +648,11 @@
 
         <div class="follow">
           <div class="follow__hdr">Add a new follow-up (optional • IST)</div>
+          <div class="quickfu">
+            <button id="editQuickToday" type="button" class="btn btn--ghost btn--sm">Today @10am</button>
+            <button id="editQuick7" type="button" class="btn btn--ghost btn--sm">+7 @10am</button>
+            <button id="editQuick14" type="button" class="btn btn--ghost btn--sm">+14 @10am</button>
+          </div>
           <div class="row2">
             <div class="field">
               <label>Date</label>
@@ -661,6 +683,6 @@
   <script src="./vendor/html5-qrcode.min.js"></script>
 
   <!-- main app -->
-  <script src="app.js?v=20251229223639"></script>
+  <script src="app.js?v=20251229_fix_execurl_guard"></script>
 </body>
 </html>
