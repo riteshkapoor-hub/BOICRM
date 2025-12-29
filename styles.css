@@ -442,3 +442,117 @@ a{color:var(--brandLight)}
 @media (max-width: 900px){
   /* tables hide only when Cards view is selected via JS */
 }
+
+
+/* ===== Next level UX ===== */
+.banner{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:12px 14px;
+  border:1px solid rgba(255,255,255,.12);
+  background: rgba(0,108,255,.10);
+  border-radius: 14px;
+  margin-bottom: 12px;
+}
+.banner__actions{ display:flex; gap:10px; flex-wrap:wrap; }
+
+.stepper{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom: 10px;
+}
+.seg{
+  flex: 0 0 auto;
+  padding: 10px 12px;
+  border-radius: 999px;
+  border:1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.06);
+  color: inherit;
+}
+.seg--active{
+  background: rgba(0,108,255,.22);
+  border-color: rgba(0,108,255,.45);
+}
+.stepper__more{ margin-left:auto; }
+.step-pane.hidden{ display:none; }
+
+.chips{ display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 10px; }
+.chip{
+  border:1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.06);
+  padding:8px 10px;
+  border-radius: 999px;
+  cursor:pointer;
+  font-size: 13px;
+}
+.chip--ghost{ background: transparent; }
+
+.switchrow{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+.switch{
+  position:relative;
+  width:48px; height:28px;
+  display:inline-block;
+}
+.switch input{ opacity:0; width:0; height:0; }
+.switch__ui{
+  position:absolute; inset:0;
+  background: rgba(255,255,255,.12);
+  border:1px solid rgba(255,255,255,.18);
+  border-radius:999px;
+  transition: .2s;
+}
+.switch__ui:before{
+  content:"";
+  position:absolute; left:3px; top:3px;
+  width:22px; height:22px;
+  border-radius:50%;
+  background: rgba(255,255,255,.85);
+  transition: .2s;
+}
+.switch input:checked + .switch__ui{
+  background: rgba(0,108,255,.35);
+  border-color: rgba(0,108,255,.55);
+}
+.switch input:checked + .switch__ui:before{ transform: translateX(20px); }
+
+.cellicons{ display:flex; gap:8px; flex-wrap:wrap; }
+.iconmini{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:38px; height:38px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.06);
+}
+.iconmini svg{ width:18px; height:18px; }
+
+
+.modal{ max-height:92vh; display:flex; flex-direction:column; overflow:hidden; }
+.modal__hdr{ flex:0 0 auto; }
+.modal .form{ overflow:auto; -webkit-overflow-scrolling:touch; flex:1 1 auto; padding-bottom:16px; }
+
+
+.toast{
+  position: fixed;
+  left: 50%;
+  bottom: 90px;
+  transform: translateX(-50%);
+  padding: 10px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(0,0,0,.75);
+  z-index: 1200;
+  font-size: 14px;
+  max-width: 90vw;
+  text-align: center;
+}
