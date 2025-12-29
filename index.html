@@ -374,6 +374,15 @@
             <input id="dashQ" type="text" placeholder="company, contact, email…" />
           </div>
 
+
+          <div class="field">
+            <label>View</label>
+            <div class="segmented" role="group" aria-label="Dashboard view toggle">
+              <button id="dashViewList" class="segbtn" type="button">List</button>
+              <button id="dashViewCards" class="segbtn" type="button">Cards</button>
+            </div>
+          </div>
+
           <button id="btnDashRefresh" class="btn btn--ghost" type="button">Refresh</button>
         </div>
 
@@ -388,6 +397,9 @@
             <tbody></tbody>
           </table>
         </div>
+
+        <div id="dashCards" class="cardlist" style="display:none;"></div>
+
       </div>
     </section>
 
@@ -417,6 +429,15 @@
             <input id="leadsQ" type="text" placeholder="company, contact, email…" />
           </div>
 
+
+          <div class="field">
+            <label>View</label>
+            <div class="segmented" role="group" aria-label="Leads view toggle">
+              <button id="leadsViewList" class="segbtn" type="button">List</button>
+              <button id="leadsViewCards" class="segbtn" type="button">Cards</button>
+            </div>
+          </div>
+
           <button id="btnLeadsRefresh" class="btn btn--ghost" type="button">Refresh</button>
         </div>
 
@@ -432,6 +453,9 @@
             <tbody></tbody>
           </table>
         </div>
+
+        <div id="leadsCards" class="cardlist" style="display:none;"></div>
+
       </div>
     </section>
 
@@ -662,5 +686,12 @@
 
   <!-- main app -->
   <script src="app.js"></script>
+
+  <!-- Sticky mobile actions (shows on small screens for Capture + Edit) -->
+  <div id="stickyActions" class="sticky-actions hidden" aria-hidden="true">
+    <button id="stickyPrimary" class="btn btn--primary" type="button">Save</button>
+    <button id="stickySecondary" class="btn btn--ghost" type="button">Cancel</button>
+  </div>
+
 </body>
 </html>
