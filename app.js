@@ -1,3 +1,47 @@
+
+// Stepper buttons
+$("supStepQuickBtn")?.addEventListener("click", ()=> setCaptureStep("supplier","quick"));
+$("supStepDetailsBtn")?.addEventListener("click", ()=> setCaptureStep("supplier","details"));
+$("supStepMoreBtn")?.addEventListener("click", ()=> setCaptureStep("supplier","details"));
+
+$("buyStepQuickBtn")?.addEventListener("click", ()=> setCaptureStep("buyer","quick"));
+$("buyStepDetailsBtn")?.addEventListener("click", ()=> setCaptureStep("buyer","details"));
+$("buyStepMoreBtn")?.addEventListener("click", ()=> setCaptureStep("buyer","details"));
+
+// Follow-up quick chips
+document.querySelectorAll(".chips[data-fuchips]").forEach(chipWrap=>{
+  chipWrap.addEventListener("click", (e)=>{
+    const btn = e.target.closest("button[data-fu]");
+    if(!btn) return;
+    const kind = chipWrap.getAttribute("data-fuchips"); // supplier|buyer
+    applyFollowUpPreset(kind, btn.getAttribute("data-fu"));
+  });
+});
+
+// Draft banner actions
+$("btnRestoreDraft")?.addEventListener("click", ()=> restoreDraft());
+$("btnDismissDraft")?.addEventListener("click", ()=> dismissDraft());
+
+// Trade show mode toggle (settings)
+const t = $("tradeModeToggle");
+if(t){
+  t.checked = isTradeMode();
+  t.addEventListener("change", ()=> {
+    localStorage.setItem(LS_TRADE, t.checked ? "1" : "0");
+  });
+}
+
+// Initialize capture step based on saved step + trade mode
+const stepSup = isTradeMode() ? "quick" : getCaptureStep("supplier");
+const stepBuy = isTradeMode() ? "quick" : getCaptureStep("buyer");
+setCaptureStep("supplier", stepSup);
+setCaptureStep("buyer", stepBuy);
+
+// Setup draft autosave
+setupDraftAutosave();
+showDraftBannerIfAny();
+
+window.addEventListener("resize", ()=> { updateSticky(); });
 // BOI CRM — app.js (FULL)
 // Adds:
 // - WhatsApp action next to phone (Leads + Calendar)
@@ -44,6 +88,8 @@ function renderDashCards(rows){
     const actions = [];
     if(r.email) actions.push(`<a class="iconbtn" href="mailto:${esc(r.email)}">${svgMail()}<span>Email</span></a>`);
     if(r.phone) actions.push(`<a class="iconbtn" href="tel:${esc(safeTel(r.phone))}">${svgPhone()}<span>Call</span></a>`);
+    actions.push(`<button class="iconbtn" type="button" data-copy="${esc(r.leadId||"")}">${svgCopy()}<span>Copy</span></button>`);
+    if(r.leadId) actions.push(`<button class="iconbtn" type="button" data-edit="${esc(r.leadId||"")}">${svgEdit()}<span>Edit</span></button>`);
     if(r.folderUrl) actions.push(`<a class="iconbtn" href="${esc(r.folderUrl)}" target="_blank" rel="noopener">${svgLink()}<span>Drive</span></a>`);
 
     return `
@@ -70,6 +116,25 @@ function renderDashCards(rows){
 }
 
 
+
+function debounce(fn, wait){
+  let t=null;
+  return (...args)=>{
+    clearTimeout(t);
+    t=setTimeout(()=>fn(...args), wait);
+  };
+}
+
+
+function toast(msg){
+  const el = $("toast");
+  if(!el) return;
+  el.textContent = msg;
+  el.classList.remove("hidden");
+  clearTimeout(window.__toastT);
+  window.__toastT = setTimeout(()=> el.classList.add("hidden"), 1800);
+}
+
 function setStatus(msg) { $("status").textContent = msg || ""; }
 function updateSummary() { $("summary").textContent = `${sessionCount} leads this session`; }
 function setUserPill() {
@@ -82,7 +147,8 @@ function closeOverlay(id) { $(id).classList.remove("open"); $(id).setAttribute("
 
 
 /* ---------- STICKY MOBILE ACTIONS ---------- */
-function isSmallScreen(){ return window.matchMedia && window.matchMedia("(max-width: 720px)").matches; }
+function isSmallScreen(){ return window.matchMedia && window.matchMedia("(max-width: 1100px)").matches; }
+function isCoarsePointer(){ return window.matchMedia && window.matchMedia("(pointer: coarse)").matches; }
 
 function setStickyActions({ show, primaryText, secondaryText, onPrimary, onSecondary }){
   const bar = $("stickyActions");
@@ -105,10 +171,20 @@ function setStickyActions({ show, primaryText, secondaryText, onPrimary, onSecon
   secondary.onclick = onSecondary || null;
 }
 
+
+function isElementMostlyVisible(el){
+  if(!el) return false;
+  const r = el.getBoundingClientRect();
+  const vh = window.innerHeight || document.documentElement.clientHeight;
+  const visible = Math.min(r.bottom, vh) - Math.max(r.top, 0);
+  return visible >= Math.min(0.5 * r.height, 80);
+}
+
 function updateSticky(){
-  // Edit overlay takes priority
   const editOpen = $("editOverlay")?.classList.contains("open");
-  if(editOpen && isSmallScreen()){
+  const showSticky = isSmallScreen() || isCoarsePointer();
+
+  if(editOpen && (showSticky || !$("btnSaveEdit") || !isElementMostlyVisible($("btnSaveEdit")))){
     setStickyActions({
       show:true,
       primaryText:"Save Changes",
@@ -120,23 +196,36 @@ function updateSticky(){
   }
 
   const captureVisible = $("viewCapture") && $("viewCapture").style.display !== "none";
-  if(captureVisible && isSmallScreen()){
-    const isSupplier = (mode === "supplier");
-    const primaryBtn = isSupplier ? $("saveSupplierNew") : $("saveBuyerNew");
-    const secondaryBtn = isSupplier ? $("saveSupplierClose") : $("saveBuyerClose");
-    setStickyActions({
-      show:true,
-      primaryText:"Save & New",
-      secondaryText:"Save & Close",
-      onPrimary: ()=> primaryBtn?.click(),
-      onSecondary: ()=> secondaryBtn?.click()
-    });
-    return;
+  if(captureVisible){
+    const kind = mode; // "supplier" | "buyer"
+    const step = getCaptureStep(kind);
+    const btnRow = (kind==="supplier") ? $("saveSupplierNew")?.closest(".btnrow") : $("saveBuyerNew")?.closest(".btnrow");
+    const needSticky = showSticky || !isElementMostlyVisible(btnRow);
+
+    if(needSticky){
+      if(step==="quick"){
+        setStickyActions({
+          show:true,
+          primaryText:"Save & New",
+          secondaryText:"More Details",
+          onPrimary: ()=> (kind==="supplier" ? $("saveSupplierNew") : $("saveBuyerNew"))?.click(),
+          onSecondary: ()=> setCaptureStep(kind, "details")
+        });
+      } else {
+        setStickyActions({
+          show:true,
+          primaryText:"Save & New",
+          secondaryText:"Save & Close",
+          onPrimary: ()=> (kind==="supplier" ? $("saveSupplierNew") : $("saveBuyerNew"))?.click(),
+          onSecondary: ()=> (kind==="supplier" ? $("saveSupplierClose") : $("saveBuyerClose"))?.click()
+        });
+      }
+      return;
+    }
   }
 
-  // Otherwise hide
-  setStickyActions({ show:false });
-}
+  setStickyActions({show:false});
+}}
 
 function ensureUser() {
   const u = (localStorage.getItem(LS_USER) || "").trim();
@@ -273,6 +362,12 @@ function setMode(newMode){
   $("supplierForm").style.display = mode==="supplier" ? "" : "none";
   $("buyerForm").style.display = mode==="buyer" ? "" : "none";
   $("formTitle").textContent = mode==="supplier" ? "Supplier details" : "Buyer details";
+
+  // Default to Quick step in Trade Show Mode
+  const step = isTradeMode() ? "quick" : getCaptureStep(mode);
+  setCaptureStep(mode, step);
+
+  showDraftBannerIfAny();
   updateSticky();
 }
 
@@ -848,7 +943,7 @@ function clearSupplier(){
   $("supCatalogFiles").value="";
   $("supCardFile").value="";
   $("supResult").innerHTML="";
-  supCountry.setValue(""); supMarkets.setValue(""); supProductType.setValue("");
+  if(!isTradeMode()){ supCountry.setValue(""); supMarkets.setValue(""); supProductType.setValue(""); }
 
   $("supFUDate").value=""; $("supFUTime").value=""; $("supFUNotes").value="";
   $("supFULast").textContent="";
@@ -863,7 +958,7 @@ function clearBuyer(){
   $("buyCatalogFiles").value="";
   $("buyCardFile").value="";
   $("buyResult").innerHTML="";
-  buyCountry.setValue(""); buyMarkets.setValue(""); buyProductType.setValue("");
+  if(!isTradeMode()){ buyCountry.setValue(""); buyMarkets.setValue(""); buyProductType.setValue(""); }
 
   $("buyFUDate").value=""; $("buyFUTime").value=""; $("buyFUNotes").value="";
   $("buyFULast").textContent="";
@@ -873,8 +968,9 @@ function clearBuyer(){
 /* ---------- Save handlers ---------- */
 async function saveSupplier(closeAfter){
   const company = $("supCompany").value.trim();
+  const contact = $("supContact").value.trim();
   const products = $("supProducts").value.trim();
-  if(!company || !products){ alert("Fill Company and What do they sell."); return; }
+  if(!company || !contact){ alert("Company and Contact are required."); return; }
 
   queueFollowUp("supplier");
   const enteredBy = (localStorage.getItem(LS_USER)||"Unknown").trim() || "Unknown";
@@ -929,14 +1025,16 @@ async function saveSupplier(closeAfter){
   sessionCount++; updateSummary();
   addSessionRow("Supplier", `${company}${payload.contact? " / "+payload.contact:""}`, payload.country);
 
+  localStorage.removeItem(LS_DRAFT_SUP);
   clearSupplier();
   if(closeAfter) showTab("Dashboard");
 }
 
 async function saveBuyer(closeAfter){
   const contact = $("buyContact").value.trim();
+  const company = $("buyCompany").value.trim();
   const needs = $("buyNeeds").value.trim();
-  if(!contact || !needs){ alert("Fill Contact and What do they want to buy."); return; }
+  if(!company || !contact){ alert("Company and Contact are required."); return; }
 
   queueFollowUp("buyer");
   const enteredBy = (localStorage.getItem(LS_USER)||"Unknown").trim() || "Unknown";
@@ -987,6 +1085,7 @@ async function saveBuyer(closeAfter){
   sessionCount++; updateSummary();
   addSessionRow("Buyer", `${contact}${payload.company? " / "+payload.company:""}`, payload.country);
 
+  localStorage.removeItem(LS_DRAFT_BUY);
   clearBuyer();
   if(closeAfter) showTab("Dashboard");
 }
@@ -1036,6 +1135,41 @@ function svgWhatsApp(){
   </svg>`;
 }
 
+
+function svgCopy(){
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+    <rect x="2" y="2" width="13" height="13" rx="2"></rect>
+  </svg>`;
+}
+
+async function copyLeadToClipboard(r){
+  const parts = [
+    r.company || "",
+    r.contact ? `Contact: ${r.contact}` : "",
+    r.title ? `Title: ${r.title}` : "",
+    r.phone ? `Phone: ${r.phone}` : "",
+    r.phone2 ? `Phone2: ${r.phone2}` : "",
+    r.email ? `Email: ${r.email}` : "",
+    r.country ? `Country: ${r.country}` : "",
+    r.markets ? `Markets: ${r.markets}` : "",
+    r.productType ? `Product: ${r.productType}` : "",
+  ].filter(Boolean);
+  const text = parts.join("\n");
+  try{
+    await navigator.clipboard.writeText(text);
+    toast("Copied");
+  }catch(_){
+    // fallback
+    const ta=document.createElement("textarea");
+    ta.value=text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+    toast("Copied");
+  }
+}
 /* ---------- Dashboard / Leads ---------- */
 function renderKpis(k){
   const el = $("kpis");
@@ -1078,14 +1212,33 @@ async function refreshDashboard(){
         <td>${esc(r.type||"")}</td>
         <td>${esc(r.company||"")}</td>
         <td>${esc(r.contact||"")}</td>
+        <td>
+          <div class="cellicons">
+            ${r.email ? `<a class="iconmini" href="mailto:${esc(r.email)}" title="Email">${svgMail()}</a>` : ``}
+            ${r.phone ? `<a class="iconmini" href="tel:${esc(safeTel(r.phone))}" title="Call">${svgPhone()}</a>` : ``}
+            ${safeWa(r.phone) ? `<a class="iconmini" href="${esc(safeWa(r.phone))}" target="_blank" rel="noopener" title="WhatsApp">${svgWhatsApp()}</a>` : ``}
+            <button class="iconmini" type="button" data-copy="${esc(r.leadId||"")}" title="Copy">${svgCopy()}</button>
+            ${r.leadId ? `<button class="iconmini" type="button" data-edit="${esc(r.leadId)}" title="Edit">${svgEdit()}</button>` : ``}
+          </div>
+        </td>
         <td>${esc(r.country||"")}</td>
         <td>${esc(r.markets||"")}</td>
         <td>${esc(r.productType||"")}</td>
         <td>${esc(r.enteredBy||"")}</td>
         <td>${rowLink(r.folderUrl,"Folder")} ${r.itemsSheetUrl ? " | " + rowLink(r.itemsSheetUrl,"Items") : ""}</td>
       `;
-      tbody.appendChild(tr);
+tbody.appendChild(tr);
+
+      const eb = tr.querySelector('[data-edit]');
+      if(eb){ eb.addEventListener("click", ()=> openEdit(r.leadId, r)); }
+      const cb = tr.querySelector('[data-copy]');
+      if(cb){ cb.addEventListener("click", ()=> copyLeadToClipboard(r)); }
+
     });
+
+    // Cards view
+    renderDashCards(data.rows||[]);
+    applyDashView();
   } catch(e){
     console.error(e);
     setStatus("Dashboard load failed.");
@@ -1866,4 +2019,230 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   });
 
 
-});
+})
+function setSegActive(a,b,mode){
+  if(!a||!b) return;
+  a.classList.toggle("seg--active", mode==="list" || mode==="quick");
+  b.classList.toggle("seg--active", mode==="cards" || mode==="details");
+}
+
+function setCaptureStep(kind, step){
+  const isSup = kind==="supplier";
+  const quick = $(isSup ? "supStepQuickPane" : "buyStepQuickPane");
+  const details = $(isSup ? "supStepDetailsPane" : "buyStepDetailsPane");
+  const bQuick = $(isSup ? "supStepQuickBtn" : "buyStepQuickBtn");
+  const bDetails = $(isSup ? "supStepDetailsBtn" : "buyStepDetailsBtn");
+  const bMore = $(isSup ? "supStepMoreBtn" : "buyStepMoreBtn");
+
+  if(!quick || !details) return;
+
+  const mode = (step==="details") ? "details" : "quick";
+  quick.classList.toggle("hidden", mode==="details");
+  details.classList.toggle("hidden", mode==="quick");
+  if(bQuick && bDetails){
+    bQuick.classList.toggle("seg--active", mode==="quick");
+    bDetails.classList.toggle("seg--active", mode==="details");
+  }
+  if(bMore) bMore.style.display = (mode==="quick") ? "" : "none";
+
+  localStorage.setItem(isSup ? LS_STEP_SUP : LS_STEP_BUY, mode);
+  updateSticky();
+}
+
+function getCaptureStep(kind){
+  const isSup = kind==="supplier";
+  const v = localStorage.getItem(isSup ? LS_STEP_SUP : LS_STEP_BUY);
+  return (v==="details") ? "details" : "quick";
+}
+
+
+function bindCardActions(){
+  const leadsMount = $("leadsCards");
+  if(leadsMount && !leadsMount.__bound){
+    leadsMount.__bound = true;
+    leadsMount.addEventListener("click", (e)=>{
+      const edit = e.target.closest("[data-edit]");
+      if(edit){
+        e.preventDefault();
+        const id = edit.getAttribute("data-edit");
+        const row = (window.__leadsCache||[]).find(x => String(x.leadId||"")==String(id)) || null;
+        openEdit(id, row || {});
+        return;
+      }
+      const copy = e.target.closest("[data-copy]");
+if(copy){
+  e.preventDefault();
+  const id = copy.getAttribute("data-copy");
+  const row = (window.__leadsCache||[]).find(x => String(x.leadId||"")==String(id)) || {};
+  copyLeadToClipboard(row);
+  return;
+}
+        }
+    });
+  }
+}
+
+function isTradeMode(){
+  return localStorage.getItem(LS_TRADE)==="1";
+}
+
+
+
+function applyFollowUpPreset(kind, preset){
+  const isSup = kind==="supplier";
+  const d = $(isSup ? "supFUDate" : "buyFUDate");
+  const t = $(isSup ? "supFUTime" : "buyFUTime");
+  if(!d || !t) return;
+
+  const now = new Date();
+  const setDate = (dt)=>{
+    const yyyy = dt.getFullYear();
+    const mm = String(dt.getMonth()+1).padStart(2,'0');
+    const dd = String(dt.getDate()).padStart(2,'0');
+    d.value = `${yyyy}-${mm}-${dd}`;
+  };
+
+  if(preset==="clear"){
+    d.value=""; t.value="";
+    return;
+  }
+  if(preset==="tomorrow"){
+    const dt = new Date(now.getFullYear(), now.getMonth(), now.getDate()+1);
+    setDate(dt);
+    t.value = "10:00";
+    return;
+  }
+  if(preset==="nextweek"){
+    const dt = new Date(now.getFullYear(), now.getMonth(), now.getDate()+7);
+    setDate(dt);
+    t.value = t.value || "10:00";
+    return;
+  }
+  if(preset==="twoweeks"){
+    const dt = new Date(now.getFullYear(), now.getMonth(), now.getDate()+14);
+    setDate(dt);
+    t.value = t.value || "10:00";
+    return;
+  }
+}
+
+function draftKey(){
+  return (mode==="supplier") ? LS_DRAFT_SUP : LS_DRAFT_BUY;
+}
+
+function collectDraft(){
+  const isSup = mode==="supplier";
+  const obj = {
+    mode,
+    step: getCaptureStep(mode),
+    at: new Date().toISOString(),
+    fields: {}
+  };
+
+  const ids = isSup ? [
+    "supCompany","supContact","supTitle","supEmail",
+    "supPhone","supPhone2","supWebsite","supSocial","supPL",
+    "supExFactory","supFOB","supProducts","supNotes","supFUDate","supFUTime","supFUNotes"
+  ] : [
+    "buyCompany","buyContact","buyTitle","buyEmail",
+    "buyPhone","buyPhone2","buyWebsite","buySocial","buyPL",
+    "buyNeeds","buyNotes","buyFUDate","buyFUTime","buyFUNotes"
+  ];
+
+  ids.forEach(id=>{
+    const el = $(id);
+    if(el) obj.fields[id] = el.value;
+  });
+
+  // combos
+  try{
+    if(isSup){
+      obj.fields.supCountryCombo = supCountry?.value || "";
+      obj.fields.supMarketsCombo = supMarkets?.value || "";
+      obj.fields.supProductTypeCombo = supPT?.value || "";
+    }else{
+      obj.fields.buyCountryCombo = buyCountry?.value || "";
+      obj.fields.buyMarketsCombo = buyMarkets?.value || "";
+      obj.fields.buyProductTypeCombo = buyPT?.value || "";
+    }
+  }catch(_){}
+  return obj;
+}
+
+function applyDraft(draft){
+  if(!draft || !draft.fields) return;
+  const f = draft.fields;
+
+  Object.keys(f).forEach(k=>{
+    const el = $(k);
+    if(el) el.value = f[k];
+  });
+
+  try{
+    if(draft.mode==="supplier"){
+      supCountry?.setValue(f.supCountryCombo||"");
+      supMarkets?.setValue(f.supMarketsCombo||"");
+      supPT?.setValue(f.supProductTypeCombo||"");
+      setCaptureStep("supplier", draft.step==="details" ? "details" : "quick");
+    }else{
+      buyCountry?.setValue(f.buyCountryCombo||"");
+      buyMarkets?.setValue(f.buyMarketsCombo||"");
+      buyPT?.setValue(f.buyProductTypeCombo||"");
+      setCaptureStep("buyer", draft.step==="details" ? "details" : "quick");
+    }
+  }catch(_){}
+}
+
+function saveDraftNow(){
+  try{
+    const obj = collectDraft();
+    localStorage.setItem(draftKey(), JSON.stringify(obj));
+  }catch(_){}
+}
+
+const saveDraftDebounced = debounce(saveDraftNow, 450);
+
+function setupDraftAutosave(){
+  const sup = $("supplierForm");
+  const buy = $("buyerForm");
+  [sup,buy].forEach(form=>{
+    if(!form) return;
+    form.addEventListener("input", ()=> {
+      // only autosave when capture view is visible
+      const captureVisible = $("viewCapture") && $("viewCapture").style.display !== "none";
+      if(!captureVisible) return;
+      saveDraftDebounced();
+    });
+    form.addEventListener("change", ()=> {
+      const captureVisible = $("viewCapture") && $("viewCapture").style.display !== "none";
+      if(!captureVisible) return;
+      saveDraftDebounced();
+    });
+  });
+}
+
+function showDraftBannerIfAny(){
+  const banner = $("draftBanner");
+  if(!banner) return;
+  const raw = localStorage.getItem(draftKey());
+  if(!raw){ banner.classList.add("hidden"); return; }
+  banner.classList.remove("hidden");
+}
+
+function restoreDraft(){
+  const raw = localStorage.getItem(draftKey());
+  if(!raw) return;
+  try{
+    const d = JSON.parse(raw);
+    applyDraft(d);
+    $("draftBanner")?.classList.add("hidden");
+    updateSticky();
+  }catch(_){}
+}
+
+function dismissDraft(){
+  localStorage.removeItem(draftKey());
+  $("draftBanner")?.classList.add("hidden");
+}
+
+;
