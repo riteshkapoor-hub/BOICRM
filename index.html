@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>BOI CRM</title>
-  <link rel="stylesheet" href="styles.css?v=20251229h" />
+  <link rel="stylesheet" href="styles.css?v=20251229i" />
 </head>
 <body>
   <header class="topbar">
@@ -41,7 +41,7 @@
       </div>
 
       <button id="btnScan" class="btn btn--scan" type="button">Scan QR (optional)</button>
-      <div id="summary" class="summary" captureTop>0 leads this session</div>
+      <div id="summary" class="summary">0 leads this session</div>
     </nav>
 
     <!-- CAPTURE -->
@@ -61,7 +61,7 @@
                 <input id="supCompany" type="text" placeholder="Company" autocomplete="organization" />
               </div>
               <div class="field">
-                <label>Contact person</label>
+                <label>Contact person <span class="req">*</span></label>
                 <input id="supContact" type="text" placeholder="Name" autocomplete="name" />
               </div>
             </div>
@@ -72,7 +72,7 @@
                 <input id="supTitle" type="text" placeholder="Title" />
               </div>
               <div class="field">
-                <label>Email</label>
+                <label>Email <span class="req">*</span></label>
                 <input id="supEmail" type="email" placeholder="name@company.com" autocomplete="email" />
               </div>
             </div>
@@ -137,9 +137,10 @@
               </div>
             </div>
 
-            <div class="field">
-              <label>What do they sell? (one per line) <span class="req">*</span></label>
+            <div id="supProductsBlock" class="field isHidden">
+              <label>What do they sell? (one per line)</label>
               <textarea id="supProducts" rows="4" placeholder="Item 1&#10;Item 2&#10;Item 3"></textarea>
+            </div>
             </div>
 
             <div class="row2">
@@ -188,7 +189,7 @@
 
             <div class="btnrow">
               <button id="saveSupplierNew" type="button" class="btn btn--primary">Save & New</button>
-              <button id="clearSupplier" type="button" class="btn btn--ghost">Clear filters</button>
+              <button id="clearSupplier" type="button" class="btn btn--ghost">Clear</button>
               <button id="saveSupplierClose" type="button" class="btn btn--primary">Save & Close</button>
             </div>
 
@@ -203,7 +204,7 @@
                 <input id="buyContact" type="text" placeholder="Name" autocomplete="name" />
               </div>
               <div class="field">
-                <label>Company</label>
+                <label>Company <span class="req">*</span></label>
                 <input id="buyCompany" type="text" placeholder="Company" autocomplete="organization" />
               </div>
             </div>
@@ -214,7 +215,7 @@
                 <input id="buyTitle" type="text" placeholder="Title" />
               </div>
               <div class="field">
-                <label>Email</label>
+                <label>Email <span class="req">*</span></label>
                 <input id="buyEmail" type="email" placeholder="name@company.com" autocomplete="email" />
               </div>
             </div>
@@ -272,6 +273,7 @@
               <label>What do they want to buy? (one per line) <span class="req">*</span></label>
               <textarea id="buyNeeds" rows="4" placeholder="Item 1&#10;Item 2&#10;Item 3"></textarea>
             </div>
+            </div>
 
             <div class="row2">
               <div class="field">
@@ -319,7 +321,7 @@
 
             <div class="btnrow">
               <button id="saveBuyerNew" type="button" class="btn btn--primary">Save & New</button>
-              <button id="clearBuyer" type="button" class="btn btn--ghost">Clear filters</button>
+              <button id="clearBuyer" type="button" class="btn btn--ghost">Clear</button>
               <button id="saveBuyerClose" type="button" class="btn btn--primary">Save & Close</button>
             </div>
 
@@ -357,6 +359,7 @@
         <div class="kpis" id="kpis"></div>
 
         <div class="filters">
+          <div id="dashActiveChips" class="chips"></div>
           <div class="field">
             <label>Country</label>
             <div id="dashCountryCombo"></div>
@@ -398,8 +401,15 @@
           <div class="card__title">Leads</div>
           <div class="card__sub">Call / Email / Edit saved leads</div>
         </div>
+        <div class="leadshead">
+          <div class="seg seg--sm" id="leadsViewSeg">
+            <button id="leadsViewCards" class="seg__btn isActive" type="button">Cards</button>
+            <button id="leadsViewList" class="seg__btn" type="button">List</button>
+          </div>
+        </div>
 
         <div class="filters">
+          <div id="leadsActiveChips" class="chips"></div>
           <div class="field">
             <label>Country</label>
             <div id="leadsCountryCombo"></div>
@@ -577,7 +587,7 @@
 
         <div class="row2">
           <div class="field">
-            <label>Phone</label>
+            <label>Phone <span class="req">*</span></label>
             <input id="editPhone" type="tel" />
           </div>
           <div class="field">
@@ -661,6 +671,14 @@
   <script src="./vendor/html5-qrcode.min.js"></script>
 
   <!-- main app -->
-  <script src="app.js?v=20251229h"></script>
+  <script src="app.js?v=20251229i"></script>
+<!-- Sticky mobile actions -->
+<div id="stickyActions" class="stickyActions" aria-hidden="true">
+  <div class="stickyActions__inner">
+    <button id="stickySecondary" type="button" class="btn btn--ghost">Save & New</button>
+    <button id="stickyPrimary" type="button" class="btn btn--primary">Save & Close</button>
+  </div>
+</div>
+
 </body>
 </html>
