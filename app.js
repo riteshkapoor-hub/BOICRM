@@ -50,6 +50,19 @@ function getScriptUrl() {
   return (localStorage.getItem(LS_SCRIPT_URL) || DEFAULT_SCRIPT_URL).trim();
 }
 
+function getExecUrl(){
+  // Backward-compat alias (older code used getExecUrl()).
+  return getScriptUrl();
+}
+
+function requireExecUrl(){
+  const u = getScriptUrl();
+  if(!u) throw new Error("Missing Apps Script /exec URL. Open Settings and paste your Apps Script Web App URL.");
+  if(!isValidExecUrl(u)) throw new Error("Invalid Apps Script URL. Open Settings and paste the correct /exec URL.");
+  if(!u.endsWith("/exec")) throw new Error("Apps Script URL must end with /exec.");
+  return u;
+}
+
 function setStatus(msg) { $("status").textContent = msg || ""; }
 function updateSummary() { $("summary").textContent = `${sessionCount} leads this session`; }
 function setUserPill() {
@@ -444,10 +457,11 @@ async function collectUploads(catalogInputId, cardInputId){
 /* ---------- Backend calls ---------- */
 async function postPayload(obj){
   setStatus("Saving…");
+  const execUrl = requireExecUrl();
   const body = new URLSearchParams();
   body.set("payload", JSON.stringify(obj));
 
-  const res = await fetch(getScriptUrl(), { method:"POST", body });
+  const res = await fetch(execUrl, { method:"POST", body });
   const text = await res.text();
 
   let json;
@@ -460,9 +474,9 @@ async function postPayload(obj){
 }
 
 async function getJson(params){
-if(!execUrl){ throw new Error("Missing /exec URL. Open Settings and paste your Apps Script /exec URL."); }
+  const execUrl = requireExecUrl();
 
-  const url = new URL(getScriptUrl());
+  const url = new URL(execUrl);
   Object.entries(params).forEach(([k,v])=>{
     if(v!==undefined && v!==null && String(v).trim()!=="") url.searchParams.set(k,String(v));
   });
@@ -630,6 +644,21 @@ function formatISTFromInputs(dateVal, timeVal){
   } catch {
     return { label: dt.toLocaleString(), iso };
   }
+}
+
+function applyQuickFU(dateInputId, timeInputId, daysAhead){
+  const dEl = $(dateInputId);
+  const tEl = $(timeInputId);
+  if(!dEl || !tEl) return;
+  const base = new Date();
+  base.setDate(base.getDate() + (daysAhead||0));
+  const yyyy = base.getFullYear();
+  const mm = String(base.getMonth()+1).padStart(2,"0");
+  const dd = String(base.getDate()).padStart(2,"0");
+  dEl.value = `${yyyy}-${mm}-${dd}`;
+  tEl.value = "10:00";
+  dEl.dispatchEvent(new Event("input"));
+  tEl.dispatchEvent(new Event("input"));
 }
 
 function queueFollowUp(kind){
@@ -854,6 +883,54 @@ function svgWhatsApp(){
   </svg>`;
 }
 
+let leadsView = "cards"; // "cards" | "list"
+function setLeadsView(v){
+  leadsView = v;
+  const cBtn = $("btnLeadsViewCards");
+  const lBtn = $("btnLeadsViewList");
+  if(cBtn && lBtn){
+    cBtn.classList.toggle("isActive", v==="cards");
+    lBtn.classList.toggle("isActive", v==="list");
+  }
+  const cards = $("leadsCards");
+  const tableWrap = $("leadsTable")?.closest(".tablewrap");
+  if(cards) cards.style.display = (v==="cards") ? "" : "none";
+  if(tableWrap) tableWrap.style.display = (v==="list") ? "" : "none";
+}
+
+function renderLeadCard(r){
+  const wa1 = safeWa(r.phone);
+  const wa2 = safeWa(r.phone2);
+  const header = (r.company || r.contact || "—").trim();
+  const sub = [r.type, r.country, r.productType].filter(Boolean).join(" • ");
+  const tags = [r.markets].filter(Boolean).join(" • ");
+  return `
+    <div class="leadcard">
+      <div class="leadcard__top">
+        <div>
+          <div class="leadcard__title">${esc(header)}</div>
+          <div class="leadcard__sub">${esc(sub)}</div>
+          ${tags ? `<div class="leadcard__tags">${esc(tags)}</div>` : ``}
+        </div>
+        <div class="leadcard__time">${esc(r.timestampIST||"")}</div>
+      </div>
+
+      <div class="leadcard__body">
+        ${r.contact ? `<div class="leadcard__row"><span class="muted">Contact</span> <span>${esc(r.contact)}</span></div>` : ``}
+        ${r.email ? `<div class="leadcard__row"><span class="muted">Email</span> <a href="mailto:${esc(r.email)}">${esc(r.email)}</a></div>` : ``}
+        ${r.phone ? `<div class="leadcard__row"><span class="muted">Phone</span> <a href="tel:${esc(safeTel(r.phone))}">${esc(r.phone)}</a></div>` : ``}
+      </div>
+
+      <div class="leadcard__actions">
+        ${r.phone ? `<a class="iconbtn" href="tel:${esc(safeTel(r.phone))}">${svgPhone()} Call</a>` : ``}
+        ${wa1 ? `<a class="iconbtn" target="_blank" rel="noopener" href="${esc(wa1)}">${svgWhatsApp()} WhatsApp</a>` : ``}
+        ${r.email ? `<a class="iconbtn" href="mailto:${esc(r.email)}">${svgMail()} Email</a>` : ``}
+        ${r.leadId ? `<button class="iconbtn" type="button" data-edit="${esc(r.leadId)}">${svgEdit()} Edit</button>` : ``}
+      </div>
+    </div>
+  `;
+}
+
 /* ---------- Dashboard / Leads ---------- */
 function renderKpis(k){
   const el = $("kpis");
@@ -874,7 +951,7 @@ function renderKpis(k){
 
 async function refreshDashboard(){
   const execUrl = getExecUrl();
-  if(!execUrl){ return; }
+  if(!execUrl){ setStatus("Missing /exec URL. Open Settings."); return; }
 
   try{
     const data = await getJson({
@@ -915,7 +992,7 @@ async function refreshDashboard(){
 
 async function refreshLeads(){
   const execUrl = getExecUrl();
-  if(!execUrl){ return; }
+  if(!execUrl){ setStatus("Missing /exec URL. Open Settings."); return; }
 
   try{
     const data = await getJson({
@@ -929,10 +1006,26 @@ async function refreshLeads(){
 
     window.__leadsCache = data.rows || [];
 
+    const rows = (data.rows||[]);
+
+    // Cards
+    const cards = $("leadsCards");
+    if(cards){
+      cards.innerHTML = rows.map(renderLeadCard).join("");
+      cards.querySelectorAll("[data-edit]").forEach(btn=>{
+        btn.addEventListener("click", ()=>{
+          const id = btn.getAttribute("data-edit");
+          const row = rows.find(x=>String(x.leadId)===String(id));
+          openEdit(id, row);
+        });
+      });
+    }
+
+    // List
     const tbody = $("leadsTable").querySelector("tbody");
     tbody.innerHTML = "";
 
-    (data.rows||[]).forEach(r=>{
+    rows.forEach(r=>{
       const wa1 = safeWa(r.phone);
       const wa2 = safeWa(r.phone2);
 
@@ -1201,7 +1294,7 @@ function setCalView(v){
 /* --- refresh from sheet --- */
 async function refreshCalendar(){
   const execUrl = getExecUrl();
-  if(!execUrl){ return; }
+  if(!execUrl){ setStatus("Missing /exec URL. Open Settings."); return; }
 
   try{
     // leads cache (for call/email buttons in calendar)
@@ -1602,6 +1695,17 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   $("supFUQueueBtn").addEventListener("click", ()=>queueFollowUp("supplier"));
   $("buyFUQueueBtn").addEventListener("click", ()=>queueFollowUp("buyer"));
 
+  // Quick follow-up buttons
+  $("supFUQuickToday").addEventListener("click", ()=>applyQuickFU("supFUDate","supFUTime",0));
+  $("supFUQuick7").addEventListener("click", ()=>applyQuickFU("supFUDate","supFUTime",7));
+  $("supFUQuick14").addEventListener("click", ()=>applyQuickFU("supFUDate","supFUTime",14));
+  $("buyFUQuickToday").addEventListener("click", ()=>applyQuickFU("buyFUDate","buyFUTime",0));
+  $("buyFUQuick7").addEventListener("click", ()=>applyQuickFU("buyFUDate","buyFUTime",7));
+  $("buyFUQuick14").addEventListener("click", ()=>applyQuickFU("buyFUDate","buyFUTime",14));
+  $("editQuickToday").addEventListener("click", ()=>applyQuickFU("editFUDate","editFUTime",0));
+  $("editQuick7").addEventListener("click", ()=>applyQuickFU("editFUDate","editFUTime",7));
+  $("editQuick14").addEventListener("click", ()=>applyQuickFU("editFUDate","editFUTime",14));
+
   // save buttons
   $("saveSupplierNew").addEventListener("click", ()=>saveSupplier(false));
   $("saveSupplierClose").addEventListener("click", ()=>saveSupplier(true));
@@ -1613,7 +1717,17 @@ document.addEventListener("DOMContentLoaded", async ()=>{
 
   // refresh buttons
   $("btnDashRefresh").addEventListener("click", refreshDashboard);
+  $("btnDashClear").addEventListener("click", ()=>{
+    dashCountry.setValue("");
+    dashMarket.setValue("");
+    dashPT.setValue("");
+    $("dashQ").value = "";
+    refreshDashboard();
+  });
   $("btnLeadsRefresh").addEventListener("click", refreshLeads);
+  $("btnLeadsViewCards").addEventListener("click", ()=>{ setLeadsView("cards"); refreshLeads(); });
+  $("btnLeadsViewList").addEventListener("click", ()=>{ setLeadsView("list"); refreshLeads(); });
+  setLeadsView("cards");
 
   // calendar controls
   $("calViewDay").addEventListener("click", ()=>setCalView("day"));
