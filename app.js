@@ -1,5 +1,9 @@
-// BOI CRM — app.js (FINAL)
-// Works with your Leads headers and FollowUps headers
+// BOI CRM — app.js (FINAL UPDATED - SAFE PATCH)
+// Fixes included (only):
+// - QR library fallback loader (no more "QR library not loaded.")
+// - Markets/ProductType dropdowns never blank (fallback defaults if Lists is empty)
+// - Auto-save NEW Market/ProductType typed by user into Lists sheet (no duplicates on backend)
+// NOTE: Calendar + Edit behavior unchanged.
 
 const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzrHBqp6ZcS3lvRir9EchBhsldBS1jRghuQCWhj7XOY4nyuy8NRQP6mz3J1WGNYm-cD/exec";
 const LS_SCRIPT_URL = "boi_crm_script_url";
@@ -80,7 +84,7 @@ function addSessionRow(type, main, country){
   tbody.prepend(tr);
 }
 
-/* ---------- Combo (searchable dropdown) ---------- */
+/* ---------- Combo (searchable dropdown + supports auto-save typed value) ---------- */
 function createCombo(containerId, options, placeholder){
   const root = document.getElementById(containerId);
   root.classList.add("combo");
@@ -103,7 +107,14 @@ function createCombo(containerId, options, placeholder){
   function normalize(arr){
     return Array.from(new Set(arr.map(String).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
   }
-  options = normalize(options);
+
+  // Keep a case-insensitive set for quick lookup
+  let optionsSet = new Set();
+  function setOptionsInternal(arr){
+    options = normalize(arr);
+    optionsSet = new Set(options.map(x => String(x).toLowerCase()));
+  }
+  setOptionsInternal(options);
 
   function open(){ root.classList.add("open"); render(input.value); }
   function close(){ root.classList.remove("open"); }
@@ -112,6 +123,7 @@ function createCombo(containerId, options, placeholder){
     input.value = v || "";
     close();
   }
+
   function render(filter){
     list.innerHTML = "";
     const f = (filter||"").trim().toLowerCase();
@@ -147,7 +159,16 @@ function createCombo(containerId, options, placeholder){
   return {
     get value(){ return value || input.value.trim(); },
     setValue(v){ set(v); },
-    setOptions(newOpts){ options = normalize(newOpts); render(input.value); }
+    setOptions(newOpts){ setOptionsInternal(newOpts); render(input.value); },
+    hasOption(v){ return optionsSet.has(String(v||"").trim().toLowerCase()); },
+    addOption(v){
+      const val = String(v||"").trim();
+      if(!val) return;
+      if(optionsSet.has(val.toLowerCase())) { set(val); return; }
+      setOptionsInternal(options.concat([val]));
+      set(val);
+    },
+    _inputEl: input
   };
 }
 
@@ -165,6 +186,44 @@ const COUNTRIES = [
   "South Africa","Kenya","Nigeria","Egypt","Morocco",
   "Brazil","Mexico","Argentina","Chile",
   "Russia","Ukraine","Belarus","Poland","Czech Republic","Romania","Greece","Turkey"
+];
+
+// Your requested Product Types (exact)
+const DEFAULT_PRODUCT_TYPES = [
+  "Chips & Snacks",
+  "Powders",
+  "Onion & Garlic Products",
+  "Freeze Dried Food",
+  "Beverage",
+  "Sweetner"
+];
+
+// "Industry standard" export market buckets (simple + usable)
+const DEFAULT_MARKETS = [
+  "USA",
+  "Canada",
+  "UK",
+  "EU",
+  "GCC (UAE/KSA/Qatar/Oman/Kuwait/Bahrain)",
+  "UAE",
+  "Saudi Arabia",
+  "Qatar",
+  "India",
+  "Australia",
+  "New Zealand",
+  "Singapore",
+  "Malaysia",
+  "Indonesia",
+  "Thailand",
+  "Vietnam",
+  "Philippines",
+  "Japan",
+  "South Korea",
+  "South Africa",
+  "Nigeria",
+  "Kenya",
+  "Brazil",
+  "Mexico"
 ];
 
 function refreshAllCombos(){
@@ -189,7 +248,39 @@ function refreshAllCombos(){
 
 async function loadLists(){
   const data = await getJson({ action:"lists" });
-  LISTS = data.lists || { productTypes:[], markets:[] };
+  const got = data.lists || { productTypes:[], markets:[] };
+
+  // Never allow blanks
+  LISTS = {
+    productTypes: (got.productTypes && got.productTypes.length) ? got.productTypes : DEFAULT_PRODUCT_TYPES.slice(),
+    markets: (got.markets && got.markets.length) ? got.markets : DEFAULT_MARKETS.slice()
+  };
+}
+
+/* ---------- Auto-save NEW Market/ProductType typed by user ---------- */
+async function maybeSaveListItem(listType, combo){
+  const v = String(combo.value||"").trim();
+  if(!v) return;
+
+  // if option already exists, no need to save
+  if(combo.hasOption && combo.hasOption(v)) return;
+
+  // add locally so UI immediately shows it
+  if(combo.addOption) combo.addOption(v);
+
+  // save to backend Lists sheet
+  try{
+    await postPayload({ action:"addListItem", listType, value:v });
+    await loadLists();
+    refreshAllCombos();
+  }catch(e){
+    console.warn("Could not save list item:", e);
+  }
+}
+
+function wireAutosaveBlur(combo, listType){
+  if(!combo || !combo._inputEl) return;
+  combo._inputEl.addEventListener("blur", ()=>maybeSaveListItem(listType, combo));
 }
 
 /* ---------- Files to base64 ---------- */
@@ -261,7 +352,23 @@ async function getJson(params){
   return json;
 }
 
-/* ---------- QR Scan ---------- */
+/* ---------- QR Scan (FIXED: fallback loader) ---------- */
+async function ensureQrLibLoaded(){
+  if (window.Html5Qrcode) return true;
+
+  const src = "https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.10/minified/html5-qrcode.min.js";
+  await new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = src;
+    s.async = true;
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  }).catch(() => null);
+
+  return !!window.Html5Qrcode;
+}
+
 function parseVCard(text){
   const out={fullName:"",company:"",email:"",phone:""};
   const t=String(text||"").trim();
@@ -293,14 +400,16 @@ function applyScan(raw){
   }
 }
 
-function openQr(){
+async function openQr(){
   openOverlay("qrOverlay");
 
-  if(!window.Html5Qrcode){
-    alert("QR library not loaded.");
+  const ok = await ensureQrLibLoaded();
+  if(!ok){
+    alert("QR library not loaded. Check internet and try again.");
     closeQr();
     return;
   }
+
   if(!html5Qr) html5Qr = new Html5Qrcode("qr-reader");
   if(qrRunning) return;
 
@@ -412,6 +521,10 @@ async function saveSupplier(closeAfter){
   queueFollowUp("supplier");
   const enteredBy = (localStorage.getItem(LS_USER)||"Unknown").trim() || "Unknown";
 
+  // auto-save typed values (Markets/ProductType) before save
+  await maybeSaveListItem("market", supMarkets);
+  await maybeSaveListItem("productType", supProductType);
+
   const uploads = await collectUploads("supCatalogFiles","supCardFile");
 
   const payload = {
@@ -460,6 +573,10 @@ async function saveBuyer(closeAfter){
 
   queueFollowUp("buyer");
   const enteredBy = (localStorage.getItem(LS_USER)||"Unknown").trim() || "Unknown";
+
+  // auto-save typed values (Markets/ProductType) before save
+  await maybeSaveListItem("market", buyMarkets);
+  await maybeSaveListItem("productType", buyProductType);
 
   const uploads = await collectUploads("buyCatalogFiles","buyCardFile");
 
@@ -688,6 +805,10 @@ function clearEditFollowup(){
 async function saveEdit(){
   const leadId = $("editLeadId").value.trim();
   if(!leadId){ alert("Missing lead id"); return; }
+
+  // auto-save typed values in edit as well
+  await maybeSaveListItem("market", editMarket);
+  await maybeSaveListItem("productType", editPT);
 
   let newFollowUp = null;
   const d = $("editFUDate").value;
@@ -1029,6 +1150,12 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   editMarket = createCombo("editMarketCombo", [], "Search markets…");
   editPT = createCombo("editPTCombo", [], "Search product type…");
 
+  // Auto-save new Markets/ProductTypes typed anywhere (blur)
+  [
+    [supMarkets, "market"], [buyMarkets, "market"], [dashMarket, "market"], [leadsMarket, "market"], [editMarket, "market"],
+    [supProductType, "productType"], [buyProductType, "productType"], [dashPT, "productType"], [leadsPT, "productType"], [editPT, "productType"]
+  ].forEach(([combo, type])=> wireAutosaveBlur(combo, type));
+
   // follow-up queue buttons
   $("supFUQueueBtn").addEventListener("click", ()=>queueFollowUp("supplier"));
   $("buyFUQueueBtn").addEventListener("click", ()=>queueFollowUp("buyer"));
@@ -1072,7 +1199,7 @@ document.addEventListener("DOMContentLoaded", async ()=>{
     await loadLists();
   } catch(e){
     console.warn("Lists failed. Using fallback defaults.", e);
-    LISTS = { productTypes:["Chips","Dehydrated powders","Sweeteners"], markets:["USA","GCC","EU","India","UAE"] };
+    LISTS = { productTypes: DEFAULT_PRODUCT_TYPES.slice(), markets: DEFAULT_MARKETS.slice() };
   }
   refreshAllCombos();
 
