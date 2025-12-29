@@ -25,6 +25,51 @@ function getScriptUrl() {
   return (localStorage.getItem(LS_SCRIPT_URL) || DEFAULT_SCRIPT_URL).trim();
 }
 
+
+function renderDashCards(rows){
+  const mount = $("dashCards");
+  if(!mount) return;
+  const items = rows || [];
+  if(!items.length){
+    mount.innerHTML = `<div class="smallmuted">No leads found.</div>`;
+    return;
+  }
+  mount.innerHTML = items.map(r=>{
+    const badges = [
+      ...splitBadges(r.country ? `Country: ${r.country}` : ""),
+      ...splitBadges(r.markets).map(x=>`Market: ${x}`),
+      ...splitBadges(r.productType).map(x=>`Type: ${x}`)
+    ].slice(0,6);
+
+    const actions = [];
+    if(r.email) actions.push(`<a class="iconbtn" href="mailto:${esc(r.email)}">${svgMail()}<span>Email</span></a>`);
+    if(r.phone) actions.push(`<a class="iconbtn" href="tel:${esc(safeTel(r.phone))}">${svgPhone()}<span>Call</span></a>`);
+    if(r.folderUrl) actions.push(`<a class="iconbtn" href="${esc(r.folderUrl)}" target="_blank" rel="noopener">${svgLink()}<span>Drive</span></a>`);
+
+    return `
+      <div class="leadcard">
+        <div class="leadcard__top">
+          <div>
+            <div class="leadcard__title">${esc(r.company||"(No Company)")}</div>
+            <div class="leadcard__meta">
+              ${esc(r.contact||"")} ${r.contact && r.type ? "•" : ""} ${esc(r.type||"")}
+              ${r.timestampIST ? ` • ${esc(r.timestampIST)}` : ""}
+            </div>
+          </div>
+          <div class="smallmuted">${esc(r.country||"")}</div>
+        </div>
+
+        ${badges.length ? `<div class="badges">${badges.map(b=>`<span class="badge">${esc(b)}</span>`).join("")}</div>` : ""}
+
+        <div class="leadcard__actions">
+          ${actions.join("")}
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+
 function setStatus(msg) { $("status").textContent = msg || ""; }
 function updateSummary() { $("summary").textContent = `${sessionCount} leads this session`; }
 function setUserPill() {
@@ -34,6 +79,64 @@ function setUserPill() {
 
 function openOverlay(id) { $(id).classList.add("open"); $(id).setAttribute("aria-hidden","false"); }
 function closeOverlay(id) { $(id).classList.remove("open"); $(id).setAttribute("aria-hidden","true"); }
+
+
+/* ---------- STICKY MOBILE ACTIONS ---------- */
+function isSmallScreen(){ return window.matchMedia && window.matchMedia("(max-width: 720px)").matches; }
+
+function setStickyActions({ show, primaryText, secondaryText, onPrimary, onSecondary }){
+  const bar = $("stickyActions");
+  const primary = $("stickyPrimary");
+  const secondary = $("stickySecondary");
+  if(!bar || !primary || !secondary) return;
+
+  if(!show){
+    bar.classList.add("hidden");
+    bar.setAttribute("aria-hidden","true");
+    primary.onclick = null;
+    secondary.onclick = null;
+    return;
+  }
+  bar.classList.remove("hidden");
+  bar.setAttribute("aria-hidden","false");
+  primary.textContent = primaryText || "Save";
+  secondary.textContent = secondaryText || "Cancel";
+  primary.onclick = onPrimary || null;
+  secondary.onclick = onSecondary || null;
+}
+
+function updateSticky(){
+  // Edit overlay takes priority
+  const editOpen = $("editOverlay")?.classList.contains("open");
+  if(editOpen && isSmallScreen()){
+    setStickyActions({
+      show:true,
+      primaryText:"Save Changes",
+      secondaryText:"Close",
+      onPrimary: ()=> $("btnSaveEdit")?.click(),
+      onSecondary: ()=> { closeOverlay("editOverlay"); updateSticky(); }
+    });
+    return;
+  }
+
+  const captureVisible = $("viewCapture") && $("viewCapture").style.display !== "none";
+  if(captureVisible && isSmallScreen()){
+    const isSupplier = (mode === "supplier");
+    const primaryBtn = isSupplier ? $("saveSupplierNew") : $("saveBuyerNew");
+    const secondaryBtn = isSupplier ? $("saveSupplierClose") : $("saveBuyerClose");
+    setStickyActions({
+      show:true,
+      primaryText:"Save & New",
+      secondaryText:"Save & Close",
+      onPrimary: ()=> primaryBtn?.click(),
+      onSecondary: ()=> secondaryBtn?.click()
+    });
+    return;
+  }
+
+  // Otherwise hide
+  setStickyActions({ show:false });
+}
 
 function ensureUser() {
   const u = (localStorage.getItem(LS_USER) || "").trim();
@@ -50,7 +153,118 @@ function showTab(which){
   if(which==="Dashboard") refreshDashboard();
   if(which==="Leads") refreshLeads();
   if(which==="Calendar") refreshCalendar();
+  if(which==="Leads") applyLeadsView();
+  if(which==="Dashboard") applyDashView();
+  updateSticky();
 }
+
+// --- View preferences (List vs Cards) ---
+const LS_VIEW_LEADS = "boi_view_leads";
+const LS_VIEW_DASH  = "boi_view_dash";
+
+function getViewPref(key, fallback="list"){
+  try{ return localStorage.getItem(key) || fallback; }catch{ return fallback; }
+}
+function setViewPref(key, val){
+  try{ localStorage.setItem(key, val); }catch{}
+}
+
+function setSegActive(listBtn, cardsBtn, mode){
+  if(!listBtn || !cardsBtn) return;
+  listBtn.classList.toggle("is-active", mode==="list");
+  cardsBtn.classList.toggle("is-active", mode==="cards");
+}
+
+function applyLeadsView(){
+  const mode = getViewPref(LS_VIEW_LEADS,"list");
+  setSegActive($("leadsViewList"), $("leadsViewCards"), mode);
+  const tableWrap = $("leadsTable")?.closest(".tablewrap");
+  const cards = $("leadsCards");
+  if(tableWrap) tableWrap.style.display = (mode==="list") ? "" : "none";
+  if(cards) cards.style.display = (mode==="cards") ? "" : "none";
+}
+function applyDashView(){
+  const mode = getViewPref(LS_VIEW_DASH,"list");
+  setSegActive($("dashViewList"), $("dashViewCards"), mode);
+  const tableWrap = $("dashTable")?.closest(".tablewrap");
+  const cards = $("dashCards");
+  if(tableWrap) tableWrap.style.display = (mode==="list") ? "" : "none";
+  if(cards) cards.style.display = (mode==="cards") ? "" : "none";
+}
+
+function splitBadges(s){
+  return String(s||"")
+    .split(/[,;\n]+/)
+    .map(x=>x.trim())
+    .filter(Boolean)
+    .slice(0,6);
+}
+
+function renderLeadCards(rows, mountId){
+  const mount = $(mountId);
+  if(!mount) return;
+  const items = rows || [];
+  if(!items.length){
+    mount.innerHTML = `<div class="smallmuted">No leads found.</div>`;
+    return;
+  }
+  mount.innerHTML = items.map(r=>{
+    const wa1 = safeWa(r.phone);
+    const wa2 = safeWa(r.phone2);
+    const badges = [
+      ...splitBadges(r.country ? `Country: ${r.country}` : ""),
+      ...splitBadges(r.markets).map(x=>`Market: ${x}`),
+      ...splitBadges(r.productType).map(x=>`Type: ${x}`)
+    ].slice(0,6);
+
+    const actions = [];
+    if(r.email) actions.push(`<a class="iconbtn" href="mailto:${esc(r.email)}" title="Email">${svgMail()}<span>Email</span></a>`);
+    if(r.phone) actions.push(`<a class="iconbtn" href="tel:${esc(safeTel(r.phone))}" title="Call">${svgPhone()}<span>Call</span></a>`);
+    if(wa1) actions.push(`<a class="iconbtn" href="${esc(wa1)}" target="_blank" rel="noopener" title="WhatsApp">${svgWhatsApp()}<span>WhatsApp</span></a>`);
+    if(r.phone2) actions.push(`<a class="iconbtn" href="tel:${esc(safeTel(r.phone2))}" title="Call 2">${svgPhone()}<span>Call 2</span></a>`);
+    if(wa2) actions.push(`<a class="iconbtn" href="${esc(wa2)}" target="_blank" rel="noopener" title="WhatsApp 2">${svgWhatsApp()}<span>WA 2</span></a>`);
+
+    const editBtn = (r.leadId) ? `<a class="iconbtn iconbtn--primary" href="#" data-edit="${esc(r.leadId)}">${svgEdit()}<span>Edit</span></a>` : "";
+
+    return `
+      <div class="leadcard">
+        <div class="leadcard__top">
+          <div>
+            <div class="leadcard__title">${esc(r.company||"(No Company)")}</div>
+            <div class="leadcard__meta">
+              ${esc(r.contact||"")} ${r.contact && r.type ? "•" : ""} ${esc(r.type||"")}
+              ${r.timestampIST ? ` • ${esc(r.timestampIST)}` : ""}
+            </div>
+            <div class="leadcard__meta">
+              ${r.enteredBy ? `Entered by ${esc(r.enteredBy)}` : ""}
+            </div>
+          </div>
+          <div class="smallmuted">${esc(r.country||"")}</div>
+        </div>
+
+        ${badges.length ? `<div class="badges">${badges.map(b=>`<span class="badge">${esc(b)}</span>`).join("")}</div>` : ""}
+
+        <div class="leadcard__actions">
+          ${actions.join("")}
+          ${editBtn}
+          ${r.folderUrl ? `<a class="iconbtn" href="${esc(r.folderUrl)}" target="_blank" rel="noopener">${svgLink()}<span>Drive</span></a>` : ""}
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  // wire Edit buttons
+  mount.querySelectorAll("[data-edit]").forEach(a=>{
+    a.addEventListener("click", (e)=>{
+      e.preventDefault();
+      const id = a.getAttribute("data-edit");
+      const row = (window.__leadsCache||[]).find(x=>String(x.leadId)===String(id));
+      if(id) openEdit(id, row || {});
+    });
+  });
+}
+
+
 
 function setMode(newMode){
   mode = newMode;
@@ -59,7 +273,9 @@ function setMode(newMode){
   $("supplierForm").style.display = mode==="supplier" ? "" : "none";
   $("buyerForm").style.display = mode==="buyer" ? "" : "none";
   $("formTitle").textContent = mode==="supplier" ? "Supplier details" : "Buyer details";
+  updateSticky();
 }
+
 
 function esc(s){
   return String(s||"")
@@ -931,6 +1147,10 @@ async function refreshLeads(){
         eb.addEventListener("click", ()=> openEdit(r.leadId, r));
       }
     });
+
+    // Cards view
+    renderLeadCards(data.rows||[], "leadsCards");
+    applyLeadsView();
   } catch(e){
     console.error(e);
     setStatus("Leads load failed.");
@@ -972,6 +1192,7 @@ function openEdit(leadId, row){
 
   $("editSub").textContent = `${row?.leadId||leadId||""} • ${row?.company||row?.contact||""}`;
   openOverlay("editOverlay");
+  updateSticky();
 }
 
 function clearEditFollowup(){
@@ -1461,10 +1682,13 @@ function renderSideListForRange(range){
 /* ---------- BOOT (FULL) ---------- */
 document.addEventListener("DOMContentLoaded", async ()=>{
   // tabs
+  window.addEventListener("resize", ()=> updateSticky());
   $("tabCapture").addEventListener("click", ()=>showTab("Capture"));
   $("tabDashboard").addEventListener("click", ()=>showTab("Dashboard"));
   $("tabLeads").addEventListener("click", ()=>showTab("Leads"));
   $("tabCalendar").addEventListener("click", ()=>showTab("Calendar"));
+
+  updateSticky();
 
   // lead type
   $("btnSupplier").addEventListener("click", ()=>setMode("supplier"));
@@ -1477,7 +1701,7 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   });
 
   // edit overlay
-  $("btnCloseEdit").addEventListener("click", ()=>closeOverlay("editOverlay"));
+  $("btnCloseEdit").addEventListener("click", ()=>{ closeOverlay("editOverlay"); updateSticky(); });
   $("btnSaveEdit").addEventListener("click", saveEdit);
   $("btnClearEditFU").addEventListener("click", clearEditFollowup);
 
@@ -1607,4 +1831,39 @@ document.addEventListener("DOMContentLoaded", async ()=>{
 
   setStatus("Ready");
   updateSummary();
+
+  // View toggles (List vs Cards)
+  const leadsListBtn = $("leadsViewList");
+  const leadsCardsBtn = $("leadsViewCards");
+  if(leadsListBtn && leadsCardsBtn){
+    leadsListBtn.addEventListener("click", ()=>{
+      setViewPref(LS_VIEW_LEADS,"list");
+      applyLeadsView();
+    });
+    leadsCardsBtn.addEventListener("click", ()=>{
+      setViewPref(LS_VIEW_LEADS,"cards");
+      applyLeadsView();
+    });
+  }
+
+  const dashListBtn = $("dashViewList");
+  const dashCardsBtn = $("dashViewCards");
+  if(dashListBtn && dashCardsBtn){
+    dashListBtn.addEventListener("click", ()=>{
+      setViewPref(LS_VIEW_DASH,"list");
+      applyDashView();
+    });
+    dashCardsBtn.addEventListener("click", ()=>{
+      setViewPref(LS_VIEW_DASH,"cards");
+      applyDashView();
+    });
+  }
+
+  // Apply views on load + when rotating device
+  window.addEventListener("resize", ()=>{
+    applyLeadsView();
+    applyDashView();
+  });
+
+
 });
