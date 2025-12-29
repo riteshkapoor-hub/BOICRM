@@ -1537,17 +1537,29 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   $("calViewWeek").addEventListener("click", ()=>setCalView("week"));
   $("calViewMonth").addEventListener("click", ()=>setCalView("month"));
 
+  // IST-safe month shifting (keeps calendar consistent for IST)
+  function shiftMonthIST(d, deltaMonths){
+    // relies on istKey() existing in Calendar block
+    const k = istKey(d); // YYYY-MM-DD in IST
+    const y = parseInt(k.slice(0,4),10);
+    const m = parseInt(k.slice(5,7),10);
+    const first = new Date(`${y}-${String(m).padStart(2,'0')}-01T00:00:00+05:30`);
+    first.setMonth(first.getMonth() + deltaMonths);
+    return first;
+  }
+
+  // IMPORTANT: these rely on addDaysIST() existing in Calendar block
   $("calPrev").addEventListener("click", ()=>{
-    if(calView==="month") calCursor = new Date(calCursor.getFullYear(), calCursor.getMonth()-1, 1);
-    else if(calView==="week") calCursor = addDays(calCursor, -7);
-    else calCursor = addDays(calCursor, -1);
+    if(calView==="month") calCursor = shiftMonthIST(calCursor, -1);
+    else if(calView==="week") calCursor = addDaysIST(calCursor, -7);
+    else calCursor = addDaysIST(calCursor, -1);
     renderCalendar();
   });
 
   $("calNext").addEventListener("click", ()=>{
-    if(calView==="month") calCursor = new Date(calCursor.getFullYear(), calCursor.getMonth()+1, 1);
-    else if(calView==="week") calCursor = addDays(calCursor, 7);
-    else calCursor = addDays(calCursor, 1);
+    if(calView==="month") calCursor = shiftMonthIST(calCursor, 1);
+    else if(calView==="week") calCursor = addDaysIST(calCursor, 7);
+    else calCursor = addDaysIST(calCursor, 1);
     renderCalendar();
   });
 
@@ -1565,5 +1577,6 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   setStatus("Ready");
   updateSummary();
 });
+
 
 
