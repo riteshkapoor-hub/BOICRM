@@ -299,3 +299,41 @@ input:focus,select:focus,textarea:focus{border-color:rgba(47,107,255,.55)}
 .caldayitem__when{ font-weight:700; margin-bottom:4px; }
 .caldayitem__who{ opacity:.9; }
 .caldayitem__note{ opacity:.8; margin-top:6px; font-size:13px; }
+
+
+/* Responsive header + lead type visibility */
+/* Make the capture header area wrap nicely on phones */
+.captureTop, .capture-top, .capture-head, .toolbar, .top-actions{
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.seg, .segmented, .leadtype, .lead-type{
+  flex: 0 0 auto;
+  min-width: 220px;
+}
+
+/* Ensure the lead type switch stays visible */
+@media (max-width: 900px){
+  .topbar .topbar__right, .topbar .actions, .topbar .top-actions{
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+  .topbar .brand{align-items: center;}
+}
+
+/* When sticky bar is shown, keep content above it */
+body.has-sticky{ padding-bottom: 96px; }
+
+
+/* Leads table mobile columns */
+@media (max-width: 900px){
+  /* hide some columns to avoid left/right scrolling in list view */
+  #leadsTable th:nth-child(n+6),
+  #leadsTable td:nth-child(n+6){
+    display:none;
+  }
+  /* keep row tap-friendly */
+  #leadsTable td, #leadsTable th{ padding: 12px 10px; }
+  #leadsTable tbody tr{ cursor: pointer; }
+}
