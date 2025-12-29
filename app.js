@@ -1039,76 +1039,86 @@ async function saveEdit(){
   }
 }
 
-/* ---------- Calendar (FULL FIX: IST-safe + Week/Day UI) ---------- */
-let calView = "day";
+/* ---------- Calendar (FULL FIX: Month + Week + Day grids + arrows) ---------- */
+let calView = "month";
 let calCursor = new Date();
 let followUpsCache = [];
 
-/* ---- IST helpers (device independent) ---- */
-function istKey(d){
-  // YYYY-MM-DD in Asia/Kolkata
+/* --- date math helpers (must exist before BOOT arrows) --- */
+function startOfDay(d){ const x=new Date(d); x.setHours(0,0,0,0); return x; }
+function addDays(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
+function startOfWeek(d){
+  const x = startOfDay(d);
+  x.setDate(x.getDate() - x.getDay()); // Sunday start
+  return x;
+}
+function endOfWeek(d){ return addDays(startOfWeek(d), 6); }
+
+/* --- IST helpers for correct grouping on calendar cells --- */
+function istKey(dt){
   try{
-    return new Intl.DateTimeFormat("en-CA", {
+    const s = new Intl.DateTimeFormat("en-CA", {
       timeZone:"Asia/Kolkata",
       year:"numeric", month:"2-digit", day:"2-digit"
-    }).format(d);
+    }).format(dt); // YYYY-MM-DD
+    return s;
   }catch{
-    return new Date(d).toISOString().slice(0,10);
+    // fallback: local day key
+    const x = new Date(dt);
+    return x.toISOString().slice(0,10);
   }
 }
 
-function istMidnight(d){
-  const key = istKey(d);
-  return new Date(`${key}T00:00:00+05:30`);
-}
-
-function addDaysIST(d, n){
-  return new Date(istMidnight(d).getTime() + n * 86400000);
-}
-
-function istDayIndex(d){
-  // 0..6 in IST (Sun..Sat)
-  const map = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
-  try{
-    const wd = new Intl.DateTimeFormat("en-US", { timeZone:"Asia/Kolkata", weekday:"short" }).format(d);
-    return map[wd] ?? 0;
-  }catch{
-    return 0;
-  }
-}
-
-function startOfWeekIST(d){ return addDaysIST(d, -istDayIndex(d)); }
-function endOfWeekIST(d){ return addDaysIST(startOfWeekIST(d), 6); }
-
-function fmtISTDate(d){
+function fmtWhenIST(dt){
   try{
     return new Intl.DateTimeFormat("en-US", {
       timeZone:"Asia/Kolkata",
-      month:"2-digit", day:"2-digit", year:"numeric"
-    }).format(d);
+      weekday:"short",
+      month:"short",
+      day:"2-digit",
+      year:"numeric",
+      hour:"numeric",
+      minute:"2-digit",
+      hour12:true
+    }).format(dt);
   }catch{
-    return d.toLocaleDateString();
+    return dt.toLocaleString();
   }
 }
 
-function fmtMonthTitleIST(d){
+function fmtDayTitleIST(dt){
   try{
     return new Intl.DateTimeFormat("en-US", {
       timeZone:"Asia/Kolkata",
-      month:"long", year:"numeric"
-    }).format(d);
+      weekday:"long",
+      month:"long",
+      day:"numeric",
+      year:"numeric"
+    }).format(dt);
   }catch{
-    return d.toDateString();
+    return dt.toDateString();
   }
 }
 
-/* ---- parsing from sheet ---- */
+function fmtMonthTitleIST(dt){
+  try{
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone:"Asia/Kolkata",
+      month:"long",
+      year:"numeric"
+    }).format(dt);
+  }catch{
+    return dt.toDateString();
+  }
+}
+
+/* --- parsers --- */
 function parseIso(iso){
   const dt = iso ? new Date(iso) : null;
   return (dt && !isNaN(dt.getTime())) ? dt : null;
 }
 
-// Parses IST label like "12/28/25 04:15 PM"
+// Parses legacy IST label like "12/28/25 04:15 PM"
 function parseISTLabel(label){
   const s = String(label||"").trim();
   const m = s.match(/^(\d{2})\/(\d{2})\/(\d{2})\s+(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
@@ -1129,7 +1139,17 @@ function parseISTLabel(label){
   return isNaN(dt.getTime()) ? null : dt;
 }
 
-/* ---- view switch ---- */
+/* --- ranges --- */
+function monthRange(cursor){
+  // build a 6-row month grid range (Sun..Sat) including previous/next month days
+  const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+  const start = startOfWeek(first);
+  const last = new Date(cursor.getFullYear(), cursor.getMonth()+1, 0);
+  const end = addDays(endOfWeek(last), 1); // exclusive
+  return { start, end, label: fmtMonthTitleIST(cursor) };
+}
+
+/* --- view switch --- */
 function setCalView(v){
   calView = v;
   ["Day","Week","Month"].forEach(x=>{
@@ -1138,10 +1158,10 @@ function setCalView(v){
   renderCalendar();
 }
 
-/* ---- main load ---- */
+/* --- refresh from sheet --- */
 async function refreshCalendar(){
   try{
-    // ensure leads cache available for call/email
+    // leads cache (for call/email buttons in calendar)
     if(!window.__leadsCache || !window.__leadsCache.length){
       try{
         const dataLeads = await getJson({ action:"listLeads", limit:"2000" });
@@ -1152,10 +1172,10 @@ async function refreshCalendar(){
     const data = await getJson({ action:"listFollowUps", limit:"5000" });
 
     followUpsCache = (data.rows || []).map(r=>{
+      // prefer ISO; fallback to IST label
       const dt = parseIso(r.scheduledAtISO) || parseISTLabel(r.scheduledAtIST);
-      const key = (r.scheduledAtISO || "").slice(0,10) || (dt ? istKey(dt) : "");
-      return { ...r, _dt: dt, _key: key };
-    }).filter(r=>r._dt && r._key)
+      return { ...r, _dt: dt };
+    }).filter(r=>r._dt)
       .sort((a,b)=>a._dt - b._dt);
 
     renderCalendar();
@@ -1165,60 +1185,49 @@ async function refreshCalendar(){
   }
 }
 
-/* ---- ranges + render router ---- */
-function monthRangeIST(d){
-  const md = istMidnight(d);
-  const y = parseInt(istKey(md).slice(0,4),10);
-  const m = parseInt(istKey(md).slice(5,7),10);
-
-  const first = new Date(`${y}-${String(m).padStart(2,'0')}-01T00:00:00+05:30`);
-  const start = addDaysIST(first, -istDayIndex(first));
-
-  const last = new Date(`${y}-${String(m).padStart(2,'0')}-01T00:00:00+05:30`);
-  last.setMonth(last.getMonth()+1);
-  last.setDate(0);
-
-  const end = addDaysIST(endOfWeekIST(last), 1);
-  return { start, end, label: fmtMonthTitleIST(md) };
-}
-
+/* --- render main --- */
 function renderCalendar(){
+  if(!$("calGrid") || !$("calTitle")) return;
+
   if(calView==="month"){
     $("calTitle").textContent = fmtMonthTitleIST(calCursor);
-    renderMonthGridIST();
-    const range = monthRangeIST(calCursor);
-    renderSideListForRangeIST(range);
+    renderMonthGrid();
+    renderSideListForRange(rangeForMonth());
     return;
   }
 
   if(calView==="week"){
-    const s = startOfWeekIST(calCursor);
-    const e = endOfWeekIST(calCursor);
-    $("calTitle").textContent = `${fmtISTDate(s)} – ${fmtISTDate(e)}`;
-    renderWeekGridIST(s);
-    renderSideListForRangeIST({ start:s, end:addDaysIST(e,1), label:"This week" });
+    const s = startOfWeek(calCursor), e = endOfWeek(calCursor);
+    $("calTitle").textContent = `${fmtDayTitleIST(s)} – ${fmtDayTitleIST(e)}`;
+    renderWeekGrid(s);
+    renderSideListForRange({ start:s, end:addDays(e,1), label:"This week" });
     return;
   }
 
   // day
-  const d = istMidnight(calCursor);
-  $("calTitle").textContent = fmtISTDate(d);
-  renderDayGridIST(d);
-  renderSideListForRangeIST({ start:d, end:addDaysIST(d,1), label:"Today" });
+  $("calTitle").textContent = fmtDayTitleIST(calCursor);
+  renderDayGrid(calCursor);
+  renderSideListForRange({ start:startOfDay(calCursor), end:addDays(startOfDay(calCursor),1), label:"Today" });
 }
 
-/* ---- LEFT PANEL: Month ---- */
-function renderMonthGridIST(){
-  const range = monthRangeIST(calCursor);
+function rangeForMonth(){
+  const r = monthRange(calCursor);
+  return { start:r.start, end:r.end, label:r.label };
+}
+
+/* --- month grid --- */
+function renderMonthGrid(){
+  const range = monthRange(calCursor);
   const start = range.start;
   const end = range.end;
 
   const days = [];
-  for(let dt=new Date(start); dt<end; dt=addDaysIST(dt,1)) days.push(new Date(dt));
+  for(let dt=new Date(start); dt<end; dt=addDays(dt,1)) days.push(new Date(dt));
 
   const grid = $("calGrid");
   grid.innerHTML = "";
 
+  // header
   const headRow = document.createElement("div");
   headRow.className = "calrow calhead";
   ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].forEach(n=>{
@@ -1230,30 +1239,24 @@ function renderMonthGridIST(){
   });
   grid.appendChild(headRow);
 
-  const cursorMonth = parseInt(istKey(calCursor).slice(5,7),10);
-
+  // 6 weeks (or computed weeks)
   for(let w=0; w<days.length/7; w++){
     const row=document.createElement("div");
     row.className="calrow";
 
     for(let i=0;i<7;i++){
       const dt = days[w*7+i];
-      const key = istKey(dt);
-
       const cell=document.createElement("div");
       cell.className="calcell";
 
-      const todayKey = istKey(new Date());
-      if(key===todayKey) cell.classList.add("isToday");
+      const today = startOfDay(new Date());
+      if(startOfDay(dt).getTime()===today.getTime()) cell.classList.add("isToday");
+      if(dt.getMonth()!==calCursor.getMonth()) cell.classList.add("isOtherMonth");
 
-      const m = parseInt(key.slice(5,7),10);
-      if(m!==cursorMonth) cell.classList.add("isOtherMonth");
+      const key = istKey(dt);
+      const items = followUpsCache.filter(x=> istKey(x._dt) === key);
 
-      const items = followUpsCache.filter(x=> x._key === key);
-
-      cell.innerHTML =
-        `<div class="calday"><span class="calnum">${parseInt(key.slice(8,10),10)}</span>`+
-        `<span>${items.length? items.length+" FU":""}</span></div>`;
+      cell.innerHTML = `<div class="calday"><span class="calnum">${dt.getDate()}</span><span>${items.length? items.length+" FU":""}</span></div>`;
 
       if(items.length){
         const b = document.createElement("div");
@@ -1272,11 +1275,12 @@ function renderMonthGridIST(){
   }
 }
 
-/* ---- LEFT PANEL: Week ---- */
-function renderWeekGridIST(weekStartIST){
+/* --- week grid --- */
+function renderWeekGrid(weekStart){
   const grid = $("calGrid");
   grid.innerHTML = "";
 
+  // header
   const headRow = document.createElement("div");
   headRow.className = "calrow calhead";
   ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].forEach(n=>{
@@ -1288,32 +1292,48 @@ function renderWeekGridIST(weekStartIST){
   });
   grid.appendChild(headRow);
 
+  // one week row
   const row = document.createElement("div");
   row.className = "calrow";
 
   for(let i=0;i<7;i++){
-    const d = addDaysIST(weekStartIST, i);
-    const key = istKey(d);
-    const items = followUpsCache.filter(x=>x._key===key);
-
+    const dt = addDays(weekStart, i);
     const cell = document.createElement("div");
-    cell.className="calcell";
+    cell.className = "calcell";
 
-    cell.innerHTML = `
-      <div class="calday">
-        <span class="calnum">${parseInt(key.slice(8,10),10)}</span>
-        <span>${items.length ? items.length+" FU" : ""}</span>
-      </div>
-      <div class="calmini">
-        ${items.slice(0,3).map(f=>`<div class="calmini__it">${esc(f.scheduledAtIST || "")}</div>`).join("")}
-        ${items.length>3 ? `<div class="calmini__more">+${items.length-3} more</div>` : ""}
-      </div>
-    `;
+    const today = startOfDay(new Date());
+    if(startOfDay(dt).getTime()===today.getTime()) cell.classList.add("isToday");
 
-    cell.addEventListener("click", ()=>{
-      calCursor = d;
-      setCalView("day");
-    });
+    const key = istKey(dt);
+    const items = followUpsCache.filter(x=> istKey(x._dt) === key);
+
+    cell.innerHTML = `<div class="calday"><span class="calnum">${dt.getDate()}</span><span>${items.length? items.length+" FU":""}</span></div>`;
+
+    // show up to 2 items in the cell
+    if(items.length){
+      const mini = document.createElement("div");
+      mini.className = "calmini";
+      items.slice(0,2).forEach(f=>{
+        const it = document.createElement("div");
+        it.className = "calmini__it";
+        const who = (f.company || f.contact || "Follow-up").trim();
+        it.textContent = `${fmtWhenIST(f._dt)} — ${who}`;
+        mini.appendChild(it);
+      });
+      if(items.length>2){
+        const more = document.createElement("div");
+        more.className = "calmini__more";
+        more.textContent = `+${items.length-2} more`;
+        mini.appendChild(more);
+      }
+      cell.appendChild(mini);
+
+      const b = document.createElement("div");
+      b.className="caltag";
+      b.textContent="View";
+      b.addEventListener("click", ()=>{ calCursor = dt; setCalView("day"); });
+      cell.appendChild(b);
+    }
 
     row.appendChild(cell);
   }
@@ -1321,43 +1341,66 @@ function renderWeekGridIST(weekStartIST){
   grid.appendChild(row);
 }
 
-/* ---- LEFT PANEL: Day ---- */
-function renderDayGridIST(dayIST){
+/* --- day grid --- */
+function renderDayGrid(day){
   const grid = $("calGrid");
   grid.innerHTML = "";
-
-  const key = istKey(dayIST);
-  const items = followUpsCache.filter(x=>x._key===key);
 
   const box = document.createElement("div");
   box.className = "caldaybox";
 
+  const key = istKey(day);
+  const items = followUpsCache.filter(x=> istKey(x._dt) === key);
+
   if(!items.length){
-    box.innerHTML = `<div class="hint">No follow-ups for this day (IST).</div>`;
+    box.innerHTML = `<div class="hint">No follow-ups scheduled for this day.</div>`;
     grid.appendChild(box);
     return;
   }
 
-  box.innerHTML = items.map(f=>{
+  items.forEach(f=>{
+    const el = document.createElement("div");
+    el.className = "caldayitem";
+
     const who = (f.company || f.contact || "").trim();
     const meta = [f.type, f.country, f.productType].filter(Boolean).join(" • ");
-    return `
-      <div class="caldayitem">
-        <div class="caldayitem__when">${esc(f.scheduledAtIST || "")}</div>
-        <div class="caldayitem__who">${esc(who)}${meta ? ` — ${esc(meta)}` : ""}</div>
-        ${f.notes ? `<div class="caldayitem__note">${esc(f.notes)}</div>` : ``}
+
+    const lead = (window.__leadsCache||[]).find(x=>x.leadId===f.leadId);
+    const phone = (lead?.phone || "").trim();
+    const email = (lead?.email || "").trim();
+
+    el.innerHTML = `
+      <div class="caldayitem__when">${esc(fmtWhenIST(f._dt))}</div>
+      <div class="caldayitem__who">${esc(who)}${meta? " — "+esc(meta):""}</div>
+      ${f.notes ? `<div class="caldayitem__note">${esc(f.notes)}</div>` : ``}
+      <div class="calitem__actions">
+        ${phone ? `<a class="iconbtn" href="tel:${esc(safeTel(phone))}">${svgPhone()} Call</a>` : ``}
+        ${phone ? `<a class="iconbtn" target="_blank" rel="noopener" href="https://wa.me/${esc(digitsOnly(phone))}">${svgPhone()} WhatsApp</a>` : ``}
+        ${email ? `<a class="iconbtn" href="mailto:${esc(email)}">${svgMail()} Email</a>` : ``}
+        ${f.leadId ? `<a class="iconbtn" href="#" data-open="${esc(f.leadId)}">${svgEdit()} Open Lead</a>` : ``}
       </div>
     `;
-  }).join("");
+
+    const openBtn = el.querySelector('[data-open]');
+    if(openBtn){
+      openBtn.addEventListener("click",(e)=>{
+        e.preventDefault();
+        const leadRow = (window.__leadsCache||[]).find(x=>x.leadId===f.leadId);
+        if(leadRow) openEdit(f.leadId, leadRow);
+        else openEdit(f.leadId, { leadId:f.leadId, type:f.type, company:f.company, contact:f.contact, country:f.country, markets:f.markets, productType:f.productType, enteredBy:f.enteredBy });
+      });
+    }
+
+    box.appendChild(el);
+  });
 
   grid.appendChild(box);
 }
 
-/* ---- RIGHT PANEL: list for selected IST range ---- */
-function renderSideListForRangeIST(range){
+/* --- right panel list --- */
+function renderSideListForRange(range){
   const start = range.start;
   const end = range.end;
-
   const items = followUpsCache.filter(f=> f._dt >= start && f._dt < end);
 
   $("calPanelTitle").textContent = range.label || "Follow-ups";
@@ -1385,20 +1428,17 @@ function renderSideListForRangeIST(range){
     const phone = (lead?.phone || "").trim();
     const email = (lead?.email || "").trim();
 
-    const waDigits = digitsOnly(phone);
-    const waHref = waDigits ? `https://wa.me/${waDigits}` : "";
-
     el.innerHTML = `
       <div class="calitem__top">
         <div>
-          <div class="calitem__when">${esc(f.scheduledAtIST || f._dt.toString())}</div>
+          <div class="calitem__when">${esc(fmtWhenIST(f._dt))}</div>
           <div class="calitem__meta">${esc(who)}${meta? " — "+esc(meta):""}</div>
         </div>
       </div>
       ${f.notes ? `<div class="calitem__note">${esc(f.notes)}</div>` : ``}
       <div class="calitem__actions">
         ${phone ? `<a class="iconbtn" href="tel:${esc(safeTel(phone))}">${svgPhone()} Call</a>` : ``}
-        ${waHref ? `<a class="iconbtn" target="_blank" rel="noopener" href="${esc(waHref)}">WhatsApp</a>` : ``}
+        ${phone ? `<a class="iconbtn" target="_blank" rel="noopener" href="https://wa.me/${esc(digitsOnly(phone))}">${svgPhone()} WhatsApp</a>` : ``}
         ${email ? `<a class="iconbtn" href="mailto:${esc(email)}">${svgMail()} Email</a>` : ``}
         ${f.leadId ? `<a class="iconbtn" href="#" data-open="${esc(f.leadId)}">${svgEdit()} Open Lead</a>` : ``}
       </div>
@@ -1418,7 +1458,7 @@ function renderSideListForRangeIST(range){
   });
 }
 
-/* ---------- BOOT ---------- */
+/* ---------- BOOT (FULL) ---------- */
 document.addEventListener("DOMContentLoaded", async ()=>{
   // tabs
   $("tabCapture").addEventListener("click", ()=>showTab("Capture"));
@@ -1495,7 +1535,7 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   editMarket = createCombo("editMarketCombo", [], "Search markets…");
   editPT = createCombo("editPTCombo", [], "Search product type…");
 
-  // Auto-prefill country code into phone fields when country is picked
+  // Auto-prefill country code into phone fields
   supCountry._inputEl.addEventListener("blur", ()=> {
     applyCountryCodeToInput(supCountry.value, $("supPhone"));
     applyCountryCodeToInput(supCountry.value, $("supPhone2"));
@@ -1537,35 +1577,23 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   $("calViewWeek").addEventListener("click", ()=>setCalView("week"));
   $("calViewMonth").addEventListener("click", ()=>setCalView("month"));
 
-  // IST-safe month shifting (keeps calendar consistent for IST)
-  function shiftMonthIST(d, deltaMonths){
-    // relies on istKey() existing in Calendar block
-    const k = istKey(d); // YYYY-MM-DD in IST
-    const y = parseInt(k.slice(0,4),10);
-    const m = parseInt(k.slice(5,7),10);
-    const first = new Date(`${y}-${String(m).padStart(2,'0')}-01T00:00:00+05:30`);
-    first.setMonth(first.getMonth() + deltaMonths);
-    return first;
-  }
-
-  // IMPORTANT: these rely on addDaysIST() existing in Calendar block
   $("calPrev").addEventListener("click", ()=>{
-    if(calView==="month") calCursor = shiftMonthIST(calCursor, -1);
-    else if(calView==="week") calCursor = addDaysIST(calCursor, -7);
-    else calCursor = addDaysIST(calCursor, -1);
+    if(calView==="month") calCursor = new Date(calCursor.getFullYear(), calCursor.getMonth()-1, 1);
+    else if(calView==="week") calCursor = addDays(calCursor, -7);
+    else calCursor = addDays(calCursor, -1);
     renderCalendar();
   });
 
   $("calNext").addEventListener("click", ()=>{
-    if(calView==="month") calCursor = shiftMonthIST(calCursor, 1);
-    else if(calView==="week") calCursor = addDaysIST(calCursor, 7);
-    else calCursor = addDaysIST(calCursor, 1);
+    if(calView==="month") calCursor = new Date(calCursor.getFullYear(), calCursor.getMonth()+1, 1);
+    else if(calView==="week") calCursor = addDays(calCursor, 7);
+    else calCursor = addDays(calCursor, 1);
     renderCalendar();
   });
 
   $("btnCalRefresh").addEventListener("click", refreshCalendar);
 
-  // load lists from backend
+  // load lists
   try{
     await loadLists();
   } catch(e){
@@ -1574,9 +1602,9 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   }
   refreshAllCombos();
 
+  // IMPORTANT: load calendar data once on boot so Month/Week/Day all have data
+  try{ await refreshCalendar(); }catch{}
+
   setStatus("Ready");
   updateSummary();
 });
-
-
-
