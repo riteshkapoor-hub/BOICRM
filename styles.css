@@ -1,11 +1,17 @@
 :root{
+  --brandBlue:#0532B5;
+  --brandNavy:#071A3A;
+  --brandLight:#EAF1FF;
+  --accentOrange:#F2992E;
+  --accentGreen:#41B883;
+
   --bg:#070b14;
   --panel:#0b1222;
   --panel2:#0c162b;
   --text:#e8eefc;
   --muted:#9fb0d8;
   --line:rgba(255,255,255,.08);
-  --accent:#2f6bff;
+  --accent:#0A46D6;
   --good:#22c55e;
   --danger:#ff4d4d;
   --shadow:0 18px 60px rgba(0,0,0,.55);
@@ -29,7 +35,7 @@ body{
   align-items:center;
   padding:14px 18px;
   border-bottom:1px solid var(--line);
-  background: linear-gradient(90deg, rgba(47,107,255,.18), rgba(12,22,43,.85));
+  background: linear-gradient(90deg, rgba(5,50,181,.28), rgba(12,22,43,.85));
 }
 .brand{display:flex;gap:12px;align-items:center}
 .brand__logo{width:44px;height:44px;border-radius:12px;background:#fff;padding:6px}
@@ -300,3 +306,139 @@ input:focus,select:focus,textarea:focus{border-color:rgba(47,107,255,.55)}
 .caldayitem__who{ opacity:.9; }
 .caldayitem__note{ opacity:.8; margin-top:6px; font-size:13px; }
 
+
+
+/* =========================
+   Mobile & Tablet UX Boost
+   (added 2025-12-29)
+   ========================= */
+
+/* Prevent iOS zoom + improve touch targets */
+input, select, textarea { font-size:16px; }
+button, .btn, input, select, textarea { min-height:44px; }
+
+/* Sticky mobile action bar (Capture + Edit) */
+.sticky-actions{
+  position:fixed;
+  left:0; right:0; bottom:0;
+  display:flex;
+  gap:10px;
+  padding:10px;
+  background:rgba(10,10,12,.86);
+  border-top:1px solid var(--line);
+  z-index:1000;
+  backdrop-filter: blur(10px);
+}
+.sticky-actions.hidden{ display:none !important; }
+.sticky-actions .btn{ flex:1; border-radius:14px; }
+
+/* Make room for bottom bars on mobile */
+@media (max-width: 720px){
+  body{ padding-bottom: 86px; }
+}
+
+/* Turn top tabs into a bottom nav on phones */
+@media (max-width: 720px){
+  .tabs{
+    position:fixed;
+    left:10px; right:10px; bottom:10px;
+    z-index:900;
+    border-radius:18px;
+    padding:10px;
+    box-shadow: 0 12px 40px rgba(0,0,0,.45);
+    overflow-x:auto;
+    flex-wrap:nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+  .tabs__spacer{ display:none; }
+  .tab{ white-space:nowrap; }
+}
+
+/* Full-screen edit modal on mobile */
+@media (max-width: 720px){
+  .modal, .overlay, #editOverlay{
+    align-items: stretch !important;
+  }
+  .modal__panel, .modal__card{
+    width:100% !important;
+    height:100% !important;
+    max-width:none !important;
+    border-radius:0 !important;
+  }
+  .modal__body{ max-height: calc(100vh - 120px) !important; }
+}
+
+/* Tables: add horizontal scroll wrapper support */
+.table-wrap{
+  overflow-x:auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Inputs: slightly larger hit area */
+.field input, .field select, .field textarea{
+  padding:12px 12px;
+}
+
+
+/* --- Brand polish + view toggle + cards --- */
+a{color:var(--brandLight)}
+.btn--primary, .btn-primary, .btn.btn--primary{background:var(--accent); border-color:rgba(255,255,255,.08)}
+.btn--primary:hover, .btn-primary:hover{filter:brightness(1.05)}
+
+.segmented{
+  display:flex;
+  border:1px solid var(--line);
+  border-radius:999px;
+  overflow:hidden;
+  background:rgba(255,255,255,.04);
+}
+.segbtn{
+  flex:1;
+  padding:10px 12px;
+  border:0;
+  background:transparent;
+  color:var(--text);
+  cursor:pointer;
+  min-height:44px;
+}
+.segbtn.is-active{
+  background:rgba(5,50,181,.35);
+  color:#fff;
+}
+
+.cardlist{display:grid; gap:10px; margin-top:12px;}
+.leadcard{
+  border:1px solid var(--line);
+  background:rgba(255,255,255,.03);
+  border-radius:var(--r);
+  padding:12px;
+}
+.leadcard__top{display:flex; justify-content:space-between; gap:12px; align-items:flex-start;}
+.leadcard__title{font-weight:800; font-size:16px; line-height:1.2;}
+.leadcard__meta{color:var(--muted); font-size:13px; margin-top:4px;}
+.badges{display:flex; flex-wrap:wrap; gap:6px; margin-top:10px;}
+.badge{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid var(--line);
+  background:rgba(255,255,255,.03);
+  color:var(--text);
+  font-size:12px;
+}
+.leadcard__actions{display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;}
+.iconbtn{
+  display:inline-flex; align-items:center; gap:8px;
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px solid var(--line);
+  background:rgba(255,255,255,.03);
+  color:var(--text);
+  text-decoration:none;
+  min-height:44px;
+}
+.iconbtn svg{width:18px; height:18px}
+.iconbtn--primary{background:rgba(10,70,214,.18); border-color:rgba(10,70,214,.35)}
+@media (max-width: 900px){
+  /* tables hide only when Cards view is selected via JS */
+}
