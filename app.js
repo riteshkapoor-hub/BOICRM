@@ -352,23 +352,7 @@ async function getJson(params){
   return json;
 }
 
-/* ---------- QR Scan (FIXED: fallback loader) ---------- */
-async function ensureQrLibLoaded(){
-  if (window.Html5Qrcode) return true;
-
-  const src = "https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.10/minified/html5-qrcode.min.js";
-  await new Promise((resolve, reject) => {
-    const s = document.createElement("script");
-    s.src = src;
-    s.async = true;
-    s.onload = resolve;
-    s.onerror = reject;
-    document.head.appendChild(s);
-  }).catch(() => null);
-
-  return !!window.Html5Qrcode;
-}
-
+/* ---------- QR Scan (LOCAL, PERMANENT) ---------- */
 function parseVCard(text){
   const out={fullName:"",company:"",email:"",phone:""};
   const t=String(text||"").trim();
@@ -400,12 +384,35 @@ function applyScan(raw){
   }
 }
 
+function isSecureContextForCamera(){
+  // Camera requires HTTPS (GitHub Pages is HTTPS) or localhost
+  return window.isSecureContext || location.hostname === "localhost";
+}
+
 async function openQr(){
   openOverlay("qrOverlay");
 
-  const ok = await ensureQrLibLoaded();
-  if(!ok){
-    alert("QR library not loaded. Check internet and try again.");
+  if(!isSecureContextForCamera()){
+    alert("QR scanner requires HTTPS to access the camera. Please open the CRM using the https:// link.");
+    closeQr();
+    return;
+  }
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    alert("Camera is not available in this browser/environment.");
+    closeQr();
+    return;
+  }
+
+  // Must be loaded by index.html: <script src="./vendor/html5-qrcode.min.js"></script>
+  if(!window.Html5Qrcode){
+    alert("QR library not loaded. Confirm index.html includes ./vendor/html5-qrcode.min.js above app.js");
+    closeQr();
+    return;
+  }
+
+  const el = document.getElementById("qr-reader");
+  if(!el){
+    alert("QR reader container not found (qr-reader).");
     closeQr();
     return;
   }
@@ -413,17 +420,19 @@ async function openQr(){
   if(!html5Qr) html5Qr = new Html5Qrcode("qr-reader");
   if(qrRunning) return;
 
-  html5Qr.start(
-    { facingMode:"environment" },
-    { fps:10, qrbox:{ width:260, height:260 } },
-    (decodedText)=>{ applyScan(decodedText); closeQr(); },
-    ()=>{}
-  ).then(()=>{ qrRunning = true; })
-   .catch(err=>{
-      console.error(err);
-      alert("Could not start camera. Allow camera permission and try again.");
-      closeQr();
-   });
+  try{
+    await html5Qr.start(
+      { facingMode:"environment" },
+      { fps:10, qrbox:{ width:260, height:260 } },
+      (decodedText)=>{ applyScan(decodedText); closeQr(); },
+      ()=>{}
+    );
+    qrRunning = true;
+  }catch(err){
+    console.error(err);
+    alert("Could not start camera. Allow camera permission and try again.");
+    closeQr();
+  }
 }
 
 async function closeQr(){
@@ -1206,3 +1215,4 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   setStatus("Ready");
   updateSummary();
 });
+
