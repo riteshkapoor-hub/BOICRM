@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>BOI CRM</title>
-  <link rel="stylesheet" href="styles.css?v=20251229i" />
+  <link rel="stylesheet" href="styles.css?v=20251229Z" />
 </head>
 <body>
   <header class="topbar">
@@ -187,11 +187,7 @@
               </div>
             </div>
 
-            <div class="btnrow">
-              <button id="saveSupplierNew" type="button" class="btn btn--primary">Save & New</button>
-              <button id="clearSupplier" type="button" class="btn btn--ghost">Clear</button>
-              <button id="saveSupplierClose" type="button" class="btn btn--primary">Save & Close</button>
-            </div>
+            
 
             <div id="supResult" class="result"></div>
           </form>
@@ -269,8 +265,8 @@
               </div>
             </div>
 
-            <div class="field">
-              <label>What do they want to buy? (one per line) <span class="req">*</span></label>
+            <div class="field" id="buyNeedsBlock">
+              <label>What do they want to buy? (one per line)</label>
               <textarea id="buyNeeds" rows="4" placeholder="Item 1&#10;Item 2&#10;Item 3"></textarea>
             </div>
             </div>
@@ -319,11 +315,7 @@
               </div>
             </div>
 
-            <div class="btnrow">
-              <button id="saveBuyerNew" type="button" class="btn btn--primary">Save & New</button>
-              <button id="clearBuyer" type="button" class="btn btn--ghost">Clear</button>
-              <button id="saveBuyerClose" type="button" class="btn btn--primary">Save & Close</button>
-            </div>
+            
 
             <div id="buyResult" class="result"></div>
           </form>
@@ -346,7 +338,19 @@
           </table>
         </div>
       </div>
-    </section>
+    
+            <div class="btnrow">
+              <button id="saveSupplierNew" type="button" class="btn btn--primary">Save & New</button>
+              <button id="clearSupplier" type="button" class="btn btn--ghost">Clear</button>
+              <button id="saveSupplierClose" type="button" class="btn btn--primary">Save & Close</button>
+            </div>
+
+            <div class="btnrow">
+              <button id="saveBuyerNew" type="button" class="btn btn--primary">Save & New</button>
+              <button id="clearBuyer" type="button" class="btn btn--ghost">Clear</button>
+              <button id="saveBuyerClose" type="button" class="btn btn--primary">Save & Close</button>
+            </div>
+</section>
 
     <!-- DASHBOARD -->
     <section id="viewDashboard" class="view" style="display:none;">
@@ -671,7 +675,7 @@
   <script src="./vendor/html5-qrcode.min.js"></script>
 
   <!-- main app -->
-  <script src="app.js?v=20251229i"></script>
+  <script src="app.js?v=20251229Z"></script>
 <!-- Sticky mobile actions -->
 <div id="stickyActions" class="stickyActions" aria-hidden="true">
   <div class="stickyActions__inner">
@@ -680,5 +684,10 @@
   </div>
 </div>
 
+<div id="stickyBar" class="stickybar" aria-hidden="true">
+      <button id="stickyPrimary" type="button" class="btn btn--primary">Save</button>
+      <button id="stickySecondary" type="button" class="btn btn--ghost">Close</button>
+    </div>
 </body>
+
 </html>
