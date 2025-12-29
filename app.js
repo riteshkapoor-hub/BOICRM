@@ -868,7 +868,7 @@ function renderKpis(k){
   });
 }
 
-async let dashKpiType = "";   // "supplier" | "buyer" | ""
+let dashKpiType = "";   // "supplier" | "buyer" | ""
 let dashKpiToday = false;
 
 function applyKpiFilter(key){
@@ -877,7 +877,7 @@ function applyKpiFilter(key){
   refreshDashboard();
 }
 
-function refreshDashboard(){
+async function refreshDashboard(){
   try{
     const data = await getJson({
       action:"listLeads",
