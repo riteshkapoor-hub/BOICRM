@@ -188,6 +188,115 @@ const COUNTRIES = [
   "Russia","Ukraine","Belarus","Poland","Czech Republic","Romania","Greece","Turkey"
 ];
 
+/* ---------- Phone country code helpers ---------- */
+const DIAL_CODES = {
+  "India": "91",
+  "United States": "1",
+  "Canada": "1",
+  "United Arab Emirates": "971",
+  "Saudi Arabia": "966",
+  "Qatar": "974",
+  "Oman": "968",
+  "Kuwait": "965",
+  "Bahrain": "973",
+  "United Kingdom": "44",
+  "Germany": "49",
+  "France": "33",
+  "Netherlands": "31",
+  "Italy": "39",
+  "Spain": "34",
+  "Belgium": "32",
+  "Sweden": "46",
+  "Norway": "47",
+  "Denmark": "45",
+  "Australia": "61",
+  "New Zealand": "64",
+  "Singapore": "65",
+  "Malaysia": "60",
+  "Indonesia": "62",
+  "Thailand": "66",
+  "Vietnam": "84",
+  "Philippines": "63",
+  "Japan": "81",
+  "South Korea": "82",
+  "China": "86",
+  "Hong Kong": "852",
+  "Taiwan": "886",
+  "South Africa": "27",
+  "Kenya": "254",
+  "Nigeria": "234",
+  "Egypt": "20",
+  "Morocco": "212",
+  "Brazil": "55",
+  "Mexico": "52",
+  "Argentina": "54",
+  "Chile": "56",
+  "Russia": "7",
+  "Ukraine": "380",
+  "Belarus": "375",
+  "Poland": "48",
+  "Czech Republic": "420",
+  "Romania": "40",
+  "Greece": "30",
+  "Turkey": "90"
+};
+
+function digitsOnly2(s){ return String(s||"").replace(/[^\d]/g,""); }
+
+function dialCodeForCountry(country){
+  const c = String(country||"").trim();
+  return DIAL_CODES[c] || "";
+}
+
+// Normalize to E.164-ish: +<code><digits>
+// - If user already typed +..., keep + and digits
+// - If user typed digits without +, prepend selected country code (if known)
+function normalizePhone(country, raw){
+  const s = String(raw||"").trim();
+  if(!s) return "";
+
+  // If user already used +, keep it (strip spaces/dashes)
+  if(s.startsWith("+")){
+    const d = digitsOnly2(s);
+    return d ? ("+" + d) : "";
+  }
+
+  const d = digitsOnly2(s);
+  if(!d) return "";
+
+  // If user typed country code but forgot + (example: 9198xxxx), we still add +
+  const cc = dialCodeForCountry(country);
+
+  if(cc){
+    // If they already started with cc, just add +
+    if(d.startsWith(cc)) return "+" + d;
+    return "+" + cc + d;
+  }
+
+  // Unknown country => best effort: add +
+  return "+" + d;
+}
+
+// Auto-prefill +<code> into input if empty, or normalize if user typed digits
+function applyCountryCodeToInput(country, inputEl){
+  if(!inputEl) return;
+  const cc = dialCodeForCountry(country);
+  if(!cc) return;
+
+  const v = String(inputEl.value||"").trim();
+
+  // If empty, prefill with +code and a space (nice UX)
+  if(!v){
+    inputEl.value = "+" + cc + " ";
+    return;
+  }
+
+  // If has digits but no +, normalize it
+  if(v && !v.startsWith("+")){
+    inputEl.value = normalizePhone(country, v);
+  }
+}
+
 // Your requested Product Types (exact)
 const DEFAULT_PRODUCT_TYPES = [
   "Chips & Snacks",
@@ -543,8 +652,8 @@ async function saveSupplier(closeAfter){
     contact:$("supContact").value.trim(),
     title:$("supTitle").value.trim(),
     email:$("supEmail").value.trim(),
-    phone:$("supPhone").value.trim(),
-    phone2:$("supPhone2").value.trim(),
+    phone: normalizePhone(supCountry.value, $("supPhone").value),
+    phone2: normalizePhone(supCountry.value, $("supPhone2").value),
     website:$("supWebsite").value.trim(),
     social:$("supSocial").value.trim(),
     country:supCountry.value,
@@ -596,8 +705,8 @@ async function saveBuyer(closeAfter){
     contact,
     title:$("buyTitle").value.trim(),
     email:$("buyEmail").value.trim(),
-    phone:$("buyPhone").value.trim(),
-    phone2:$("buyPhone2").value.trim(),
+    phone: normalizePhone(buyCountry.value, $("buyPhone").value),
+    phone2: normalizePhone(buyCountry.value, $("buyPhone2").value),
     website:$("buyWebsite").value.trim(),
     social:$("buySocial").value.trim(),
     country:buyCountry.value,
@@ -838,8 +947,8 @@ async function saveEdit(){
     contact: $("editContact").value.trim(),
     title: $("editTitle").value.trim(),
     email: $("editEmail").value.trim(),
-    phone: $("editPhone").value.trim(),
-    phone2: $("editPhone2").value.trim(),
+    phone: normalizePhone(editCountry.value, $("editPhone").value),
+    phone2: normalizePhone(editCountry.value, $("editPhone2").value),
     country: editCountry.value,
     markets: editMarket.value,
     privateLabel: $("editPL").value.trim(),
@@ -1158,6 +1267,22 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   editCountry = createCombo("editCountryCombo", COUNTRIES, "Search country…");
   editMarket = createCombo("editMarketCombo", [], "Search markets…");
   editPT = createCombo("editPTCombo", [], "Search product type…");
+  // Auto-fill country code into phone fields when country is selected/changed
+  supCountry._inputEl.addEventListener("blur", ()=> {
+    applyCountryCodeToInput(supCountry.value, $("supPhone"));
+    applyCountryCodeToInput(supCountry.value, $("supPhone2"));
+  });
+
+  buyCountry._inputEl.addEventListener("blur", ()=> {
+    applyCountryCodeToInput(buyCountry.value, $("buyPhone"));
+    applyCountryCodeToInput(buyCountry.value, $("buyPhone2"));
+  });
+
+  editCountry._inputEl.addEventListener("blur", ()=> {
+    applyCountryCodeToInput(editCountry.value, $("editPhone"));
+    applyCountryCodeToInput(editCountry.value, $("editPhone2"));
+  });
+
 
   // Auto-save new Markets/ProductTypes typed anywhere (blur)
   [
@@ -1215,4 +1340,5 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   setStatus("Ready");
   updateSummary();
 });
+
 
