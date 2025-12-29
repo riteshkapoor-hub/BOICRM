@@ -1,3 +1,17 @@
+function fallbackLists(){
+  return {
+    countries: ["All","United States","India","UAE","Saudi Arabia","Qatar","Kuwait","Oman","Bahrain","UK","Germany","France","Netherlands","Italy","Spain","Canada","Australia"],
+    markets: ["All","USA","EU","GCC","India","UK","Canada","Australia"],
+    productTypes: ["All","Chips & Snacks","Powders","Sweeteners","Beverage","Other"]
+  };
+}
+function applyLists(lists){
+  // best-effort: if your combo components exist, re-populate through existing setters
+  try{
+    window.__lists = lists;
+  }catch(e){}
+}
+
 // BOI CRM — app.js (FULL)
 // Adds:
 // - WhatsApp action next to phone (Leads + Calendar)
@@ -7,6 +21,17 @@
 // - Your existing theme, Calendar UI, Edit UI behaviors
 
 const DEFAULT_SCRIPT_URL = "";
+
+function isValidExecUrl(u){
+  if(!u) return false;
+  try{
+    const url = new URL(u);
+    return /^https?:$/.test(url.protocol);
+  }catch(e){
+    return false;
+  }
+}
+
 const LS_SCRIPT_URL = "boi_crm_script_url";
 const LS_USER = "boi_crm_user";
 
@@ -343,6 +368,13 @@ function refreshAllCombos(){
 }
 
 async function loadLists(){
+  const execUrl = getExecUrl();
+  if(!execUrl){
+    console.warn("Lists failed. Using fallback defaults. Missing /exec URL.");
+    applyLists(fallbackLists());
+    return;
+  }
+
   const data = await getJson({ action:"lists" });
   const got = data.lists || { productTypes:[], markets:[] };
 
@@ -428,6 +460,8 @@ async function postPayload(obj){
 }
 
 async function getJson(params){
+if(!execUrl){ throw new Error("Missing /exec URL. Open Settings and paste your Apps Script /exec URL."); }
+
   const url = new URL(getScriptUrl());
   Object.entries(params).forEach(([k,v])=>{
     if(v!==undefined && v!==null && String(v).trim()!=="") url.searchParams.set(k,String(v));
@@ -839,6 +873,9 @@ function renderKpis(k){
 }
 
 async function refreshDashboard(){
+  const execUrl = getExecUrl();
+  if(!execUrl){ return; }
+
   try{
     const data = await getJson({
       action:"listLeads",
@@ -877,6 +914,9 @@ async function refreshDashboard(){
 }
 
 async function refreshLeads(){
+  const execUrl = getExecUrl();
+  if(!execUrl){ return; }
+
   try{
     const data = await getJson({
       action:"listLeads",
@@ -1160,6 +1200,9 @@ function setCalView(v){
 
 /* --- refresh from sheet --- */
 async function refreshCalendar(){
+  const execUrl = getExecUrl();
+  if(!execUrl){ return; }
+
   try{
     // leads cache (for call/email buttons in calendar)
     if(!window.__leadsCache || !window.__leadsCache.length){
