@@ -4,7 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>BOI CRM</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="boi-logo.png" />
+  <link rel="stylesheet" href="styles.css?v=20251229c" />
 </head>
 <body>
   <header class="topbar">
@@ -46,13 +47,6 @@
 
     <!-- CAPTURE -->
     <section id="viewCapture" class="view">
-      <div id="draftBanner" class="banner hidden" role="status" aria-live="polite">
-        <div class="banner__text"><strong>Draft found.</strong> Restore your last entry?</div>
-        <div class="banner__actions">
-          <button id="btnRestoreDraft" type="button" class="btn btn--primary">Restore</button>
-          <button id="btnDismissDraft" type="button" class="btn btn--ghost">Dismiss</button>
-        </div>
-      </div>
       <div class="grid">
         <div class="card">
           <div class="card__hdr">
@@ -68,7 +62,7 @@
                 <input id="supCompany" type="text" placeholder="Company" autocomplete="organization" />
               </div>
               <div class="field">
-                <label>Contact person <span class="req">*</span></label>
+                <label>Contact person</label>
                 <input id="supContact" type="text" placeholder="Name" autocomplete="name" />
               </div>
             </div>
@@ -145,7 +139,7 @@
             </div>
 
             <div class="field">
-              <label>What do they sell? (one per line)</label>
+              <label>What do they sell? (one per line) <span class="req">*</span></label>
               <textarea id="supProducts" rows="4" placeholder="Item 1&#10;Item 2&#10;Item 3"></textarea>
             </div>
 
@@ -173,12 +167,6 @@
             <!-- FOLLOW-UP -->
             <div class="follow">
               <div class="follow__hdr">Schedule follow-up (IST)</div>
-               <div class="chips" data-fuchips="supplier">
-                 <button type="button" class="chip" data-fu="tomorrow">Tomorrow 10:00</button>
-                 <button type="button" class="chip" data-fu="nextweek">Next Week</button>
-                 <button type="button" class="chip" data-fu="twoweeks">+2 Weeks</button>
-                 <button type="button" class="chip chip--ghost" data-fu="clear">Clear</button>
-               </div>
               <div class="row2">
                 <div class="field">
                   <label>Date</label>
@@ -199,8 +187,6 @@
               </div>
             </div>
 
-            </div>
-
             <div class="btnrow">
               <button id="saveSupplierNew" type="button" class="btn btn--primary">Save & New</button>
               <button id="clearSupplier" type="button" class="btn btn--ghost">Clear</button>
@@ -218,7 +204,7 @@
                 <input id="buyContact" type="text" placeholder="Name" autocomplete="name" />
               </div>
               <div class="field">
-                <label>Company <span class="req">*</span></label>
+                <label>Company</label>
                 <input id="buyCompany" type="text" placeholder="Company" autocomplete="organization" />
               </div>
             </div>
@@ -284,7 +270,7 @@
             </div>
 
             <div class="field">
-              <label>What do they want to buy? (one per line)</label>
+              <label>What do they want to buy? (one per line) <span class="req">*</span></label>
               <textarea id="buyNeeds" rows="4" placeholder="Item 1&#10;Item 2&#10;Item 3"></textarea>
             </div>
 
@@ -312,12 +298,6 @@
             <!-- FOLLOW-UP -->
             <div class="follow">
               <div class="follow__hdr">Schedule follow-up (IST)</div>
-               <div class="chips" data-fuchips="buyer">
-                 <button type="button" class="chip" data-fu="tomorrow">Tomorrow 10:00</button>
-                 <button type="button" class="chip" data-fu="nextweek">Next Week</button>
-                 <button type="button" class="chip" data-fu="twoweeks">+2 Weeks</button>
-                 <button type="button" class="chip chip--ghost" data-fu="clear">Clear</button>
-               </div>
               <div class="row2">
                 <div class="field">
                   <label>Date</label>
@@ -336,8 +316,6 @@
                 <button id="buyFUQueueBtn" type="button" class="btn btn--ghost">Add Follow-up</button>
                 <div id="buyFULast" class="hint"></div>
               </div>
-            </div>
-
             </div>
 
             <div class="btnrow">
@@ -397,15 +375,6 @@
             <input id="dashQ" type="text" placeholder="company, contact, email…" />
           </div>
 
-
-          <div class="field">
-            <label>View</label>
-            <div class="segmented" role="group" aria-label="Dashboard view toggle">
-              <button id="dashViewList" class="segbtn" type="button">List</button>
-              <button id="dashViewCards" class="segbtn" type="button">Cards</button>
-            </div>
-          </div>
-
           <button id="btnDashRefresh" class="btn btn--ghost" type="button">Refresh</button>
         </div>
 
@@ -413,16 +382,13 @@
           <table class="table" id="dashTable">
             <thead>
               <tr>
-                <th>Time (IST)</th><th>Type</th><th>Company</th><th>Contact</th><th>Actions</th>
-                <th>Country</th<th>Markets</th><th>Product Type</th><th>Entered By</th><th>Drive</th>
+                <th>Time (IST)</th><th>Type</th><th>Company</th><th>Contact</th>
+                <th>Country</th><th>Markets</th><th>Product Type</th><th>Entered By</th><th>Drive</th>
               </tr>
             </thead>
             <tbody></tbody>
           </table>
         </div>
-
-        <div id="dashCards" class="cardlist" style="display:none;"></div>
-
       </div>
     </section>
 
@@ -452,15 +418,6 @@
             <input id="leadsQ" type="text" placeholder="company, contact, email…" />
           </div>
 
-
-          <div class="field">
-            <label>View</label>
-            <div class="segmented" role="group" aria-label="Leads view toggle">
-              <button id="leadsViewList" class="segbtn" type="button">List</button>
-              <button id="leadsViewCards" class="segbtn" type="button">Cards</button>
-            </div>
-          </div>
-
           <button id="btnLeadsRefresh" class="btn btn--ghost" type="button">Refresh</button>
         </div>
 
@@ -476,9 +433,6 @@
             <tbody></tbody>
           </table>
         </div>
-
-        <div id="leadsCards" class="cardlist" style="display:none;"></div>
-
       </div>
     </section>
 
@@ -548,16 +502,6 @@
         <div class="field">
           <label>Apps Script Web App URL (ends with /exec)</label>
           <input id="scriptUrlInput" type="url" />
-        </div>
-        <div class="field field--switch">
-          <label class="switchrow">
-            <span>Trade Show Mode</span>
-            <span class="switch">
-              <input id="tradeModeToggle" type="checkbox" />
-              <span class="switch__ui" aria-hidden="true"></span>
-            </span>
-          </label>
-          <div class="hint">Optimizes Capture for fast entry (Quick step, bigger actions, keeps common fields).</div>
         </div>
         <button id="btnSaveSettings" class="btn btn--primary" type="button">Save</button>
         <div class="hint">Tip: after updating Apps Script, deploy a new version and keep this URL updated.</div>
@@ -718,14 +662,6 @@
   <script src="./vendor/html5-qrcode.min.js"></script>
 
   <!-- main app -->
-  <script src="app.js"></script>
-
-  <!-- Sticky mobile actions (shows on small screens for Capture + Edit) -->
-  <div id="stickyActions" class="sticky-actions hidden" aria-hidden="true">
-    <button id="stickyPrimary" class="btn btn--primary" type="button">Save</button>
-    <button id="stickySecondary" class="btn btn--ghost" type="button">Cancel</button>
-  </div>
-
-  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+  <script src="app.js?v=20251229c"></script>
 </body>
 </html>
