@@ -1,13 +1,10 @@
-// BOI CRM — app.js (FINAL UPDATED - FULL)
-// Includes:
-// - QR Scanner: LOCAL, permanent (uses /vendor/html5-qrcode.min.js; no CDN dependency)
-// - Markets/ProductType dropdowns never blank (fallback defaults if Lists is empty)
-// - Auto-save NEW Market/ProductType typed by user into Lists sheet (no duplicates UI-side; backend should dedupe too)
-// - Phone normalization: stores +countrycode automatically based on selected country
-// - Auto-prefill country code into phone inputs when country selected
-// - Pretty IST Date/Time display in Dashboard + Leads (avoids long GMT strings on mobile)
-//
-// NOTE: Calendar + Edit behavior otherwise unchanged.
+// BOI CRM — app.js (FULL)
+// Adds:
+// - WhatsApp action next to phone (Leads + Calendar)
+// - Duplicate detection before save (email/phone) via backend checkDuplicate
+// - Works with Google Calendar sync fields (calendarEventId/calendarEventUrl) returned by backend
+// Keeps:
+// - Your existing theme, Calendar UI, Edit UI behaviors
 
 const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzrHBqp6ZcS3lvRir9EchBhsldBS1jRghuQCWhj7XOY4nyuy8NRQP6mz3J1WGNYm-cD/exec";
 const LS_SCRIPT_URL = "boi_crm_script_url";
@@ -81,33 +78,6 @@ function istTimeLabel(){
   }
 }
 
-// Pretty IST Date/Time for tables (fixes long GMT strings on mobile)
-function fmtISTPretty(v){
-  const raw = String(v || "").trim();
-  if(!raw) return "";
-
-  const dt = new Date(raw);
-  if(!isNaN(dt.getTime())){
-    try{
-      const s = new Intl.DateTimeFormat("en-US", {
-        timeZone: "Asia/Kolkata",
-        month: "short",
-        day: "2-digit",
-        year: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true
-      }).format(dt);
-
-      // "Dec 29, 2025, 11:36 AM" -> "Dec 29, 2025 • 11:36 AM"
-      return s.replace(", 20", ", 20").replace(", ", ", ").replace(/,\s(\d{4}),\s/, ", $1 • ");
-    }catch{
-      return dt.toLocaleString();
-    }
-  }
-  return raw;
-}
-
 function addSessionRow(type, main, country){
   const tbody = $("tbl").querySelector("tbody");
   const tr = document.createElement("tr");
@@ -139,7 +109,6 @@ function createCombo(containerId, options, placeholder){
     return Array.from(new Set(arr.map(String).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
   }
 
-  // Case-insensitive set for quick lookup
   let optionsSet = new Set();
   function setOptionsInternal(arr){
     options = normalize(arr);
@@ -168,7 +137,6 @@ function createCombo(containerId, options, placeholder){
       it.addEventListener("click", ()=> set(opt));
       list.appendChild(it);
     });
-
     if(!filtered.length){
       const it = document.createElement("div");
       it.className="combo__item";
@@ -280,7 +248,6 @@ function dialCodeForCountry(country){
   return DIAL_CODES[c] || "";
 }
 
-// Normalize to E.164-ish: +<code><digits>
 function normalizePhone(country, raw){
   const s = String(raw||"").trim();
   if(!s) return "";
@@ -294,11 +261,11 @@ function normalizePhone(country, raw){
   if(!d) return "";
 
   const cc = dialCodeForCountry(country);
+
   if(cc){
     if(d.startsWith(cc)) return "+" + d;
     return "+" + cc + d;
   }
-
   return "+" + d;
 }
 
@@ -308,18 +275,16 @@ function applyCountryCodeToInput(country, inputEl){
   if(!cc) return;
 
   const v = String(inputEl.value||"").trim();
-
   if(!v){
     inputEl.value = "+" + cc + " ";
     return;
   }
-
   if(v && !v.startsWith("+")){
     inputEl.value = normalizePhone(country, v);
   }
 }
 
-// Your requested Product Types (exact)
+// Product Types requested (exact)
 const DEFAULT_PRODUCT_TYPES = [
   "Chips & Snacks",
   "Powders",
@@ -329,7 +294,7 @@ const DEFAULT_PRODUCT_TYPES = [
   "Sweetner"
 ];
 
-// "Industry standard" export market buckets
+// Market buckets
 const DEFAULT_MARKETS = [
   "USA",
   "Canada",
@@ -444,7 +409,7 @@ async function collectUploads(catalogInputId, cardInputId){
   return { catalogFiles, cardFile };
 }
 
-/* ---------- Backend calls (form payload avoids CORS preflight) ---------- */
+/* ---------- Backend calls ---------- */
 async function postPayload(obj){
   setStatus("Saving…");
   const body = new URLSearchParams();
@@ -477,6 +442,48 @@ async function getJson(params){
 
   if(json.result !== "success") throw new Error(json.message || "Request failed");
   return json;
+}
+
+/* ---------- Duplicate detection (email/phone) ---------- */
+function normEmail(s){ return String(s||"").trim().toLowerCase(); }
+function normDigits(s){ return digitsOnly(String(s||"")); }
+
+async function checkDuplicatesBeforeSave({ leadId="", email="", phone="", phone2="" }){
+  const e = normEmail(email);
+  const p1 = normDigits(phone);
+  const p2 = normDigits(phone2);
+
+  if(!e && !p1 && !p2) return true;
+
+  let data;
+  try{
+    data = await getJson({
+      action: "checkDuplicate",
+      leadId: leadId || "",
+      email: e || "",
+      phone: p1 || "",
+      phone2: p2 || ""
+    });
+  }catch(err){
+    // If duplicate check fails, don't block saving.
+    console.warn("Duplicate check failed:", err);
+    return true;
+  }
+
+  const matches = data.matches || [];
+  if(!matches.length) return true;
+
+  const lines = matches.slice(0,5).map(m=>{
+    return `• ${m.leadId} — ${m.type || ""} — ${m.company || m.contact || ""} — ${m.timestamp || ""}`;
+  });
+
+  const msg =
+    `Potential duplicate lead found (${matches.length}).\n\n` +
+    lines.join("\n") +
+    (matches.length>5 ? `\n• +${matches.length-5} more…` : "") +
+    `\n\nDo you want to SAVE anyway?`;
+
+  return window.confirm(msg);
 }
 
 /* ---------- QR Scan (LOCAL, PERMANENT) ---------- */
@@ -656,9 +663,17 @@ async function saveSupplier(closeAfter){
   queueFollowUp("supplier");
   const enteredBy = (localStorage.getItem(LS_USER)||"Unknown").trim() || "Unknown";
 
-  // auto-save typed values (Markets/ProductType) before save
   await maybeSaveListItem("market", supMarkets);
   await maybeSaveListItem("productType", supProductType);
+
+  // Normalize phones now
+  const phone = normalizePhone(supCountry.value, $("supPhone").value);
+  const phone2 = normalizePhone(supCountry.value, $("supPhone2").value);
+  const email = $("supEmail").value.trim();
+
+  // Duplicate check (block save unless user confirms)
+  const ok = await checkDuplicatesBeforeSave({ email, phone, phone2 });
+  if(!ok) return;
 
   const uploads = await collectUploads("supCatalogFiles","supCardFile");
 
@@ -668,9 +683,9 @@ async function saveSupplier(closeAfter){
     company,
     contact:$("supContact").value.trim(),
     title:$("supTitle").value.trim(),
-    email:$("supEmail").value.trim(),
-    phone: normalizePhone(supCountry.value, $("supPhone").value),
-    phone2: normalizePhone(supCountry.value, $("supPhone2").value),
+    email,
+    phone,
+    phone2,
     website:$("supWebsite").value.trim(),
     social:$("supSocial").value.trim(),
     country:supCountry.value,
@@ -692,7 +707,8 @@ async function saveSupplier(closeAfter){
   $("supResult").innerHTML =
     `Lead ID: <b>${esc(res.leadId)}</b><br>` +
     `Drive folder: <a target="_blank" rel="noopener" href="${esc(res.folderUrl)}">Open folder</a><br>` +
-    `Items sheet: <a target="_blank" rel="noopener" href="${esc(res.itemsSheetUrl)}">Open items</a>`;
+    `Items sheet: <a target="_blank" rel="noopener" href="${esc(res.itemsSheetUrl)}">Open items</a>` +
+    (res.calendarEventUrl ? `<br>Calendar: <a target="_blank" rel="noopener" href="${esc(res.calendarEventUrl)}">Open event</a>` : "");
 
   sessionCount++; updateSummary();
   addSessionRow("Supplier", `${company}${payload.contact? " / "+payload.contact:""}`, payload.country);
@@ -709,9 +725,15 @@ async function saveBuyer(closeAfter){
   queueFollowUp("buyer");
   const enteredBy = (localStorage.getItem(LS_USER)||"Unknown").trim() || "Unknown";
 
-  // auto-save typed values (Markets/ProductType) before save
   await maybeSaveListItem("market", buyMarkets);
   await maybeSaveListItem("productType", buyProductType);
+
+  const phone = normalizePhone(buyCountry.value, $("buyPhone").value);
+  const phone2 = normalizePhone(buyCountry.value, $("buyPhone2").value);
+  const email = $("buyEmail").value.trim();
+
+  const ok = await checkDuplicatesBeforeSave({ email, phone, phone2 });
+  if(!ok) return;
 
   const uploads = await collectUploads("buyCatalogFiles","buyCardFile");
 
@@ -721,9 +743,9 @@ async function saveBuyer(closeAfter){
     company:$("buyCompany").value.trim(),
     contact,
     title:$("buyTitle").value.trim(),
-    email:$("buyEmail").value.trim(),
-    phone: normalizePhone(buyCountry.value, $("buyPhone").value),
-    phone2: normalizePhone(buyCountry.value, $("buyPhone2").value),
+    email,
+    phone,
+    phone2,
     website:$("buyWebsite").value.trim(),
     social:$("buySocial").value.trim(),
     country:buyCountry.value,
@@ -743,7 +765,8 @@ async function saveBuyer(closeAfter){
   $("buyResult").innerHTML =
     `Lead ID: <b>${esc(res.leadId)}</b><br>` +
     `Drive folder: <a target="_blank" rel="noopener" href="${esc(res.folderUrl)}">Open folder</a><br>` +
-    `Items sheet: <a target="_blank" rel="noopener" href="${esc(res.itemsSheetUrl)}">Open items</a>`;
+    `Items sheet: <a target="_blank" rel="noopener" href="${esc(res.itemsSheetUrl)}">Open items</a>` +
+    (res.calendarEventUrl ? `<br>Calendar: <a target="_blank" rel="noopener" href="${esc(res.calendarEventUrl)}">Open event</a>` : "");
 
   sessionCount++; updateSummary();
   addSessionRow("Buyer", `${contact}${payload.company? " / "+payload.company:""}`, payload.country);
@@ -752,24 +775,7 @@ async function saveBuyer(closeAfter){
   if(closeAfter) showTab("Dashboard");
 }
 
-/* ---------- Dashboard / Leads ---------- */
-function renderKpis(k){
-  const el = $("kpis");
-  el.innerHTML = "";
-  const items = [
-    ["Total leads", k.total||0],
-    ["Suppliers", k.suppliers||0],
-    ["Buyers", k.buyers||0],
-    ["Today", k.today||0]
-  ];
-  items.forEach(([label,val])=>{
-    const d=document.createElement("div");
-    d.className="kpi";
-    d.innerHTML = `<div class="kpi__v">${esc(val)}</div><div class="kpi__l">${esc(label)}</div>`;
-    el.appendChild(d);
-  });
-}
-
+/* ---------- Icons + links ---------- */
 function rowLink(url, label){
   if(!url) return "";
   return `<a target="_blank" rel="noopener" href="${esc(url)}">${esc(label)}</a>`;
@@ -778,7 +784,13 @@ function rowLink(url, label){
 function safeTel(phone){
   const d = digitsOnly(phone);
   if(!d) return "";
-  return String(phone||"").trim().startsWith("+") ? String(phone||"").trim() : ("+"+d);
+  return String(phone||"").trim().startsWith("+") ? String(phone||"").trim() : "+"+d;
+}
+
+function safeWa(phone){
+  // wa.me wants digits only (no +)
+  const d = digitsOnly(phone);
+  return d ? `https://wa.me/${d}` : "";
 }
 
 function svgPhone(){
@@ -797,6 +809,33 @@ function svgEdit(){
     <path d="M4 20h4l10.5-10.5-4-4L4 16v4z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
     <path d="M13.5 6.5l4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
   </svg>`;
+}
+function svgWhatsApp(){
+  // simple WA glyph (keeps your theme – uses currentColor)
+  return `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M20 12a8 8 0 0 1-12.9 6.2L4 20l1.9-3.1A8 8 0 1 1 20 12z"
+      stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+    <path d="M9.2 9.2c.2-.5.4-.6.7-.6h.6c.2 0 .4 0 .6.4l.8 1.9c.1.3.1.5-.1.7l-.4.5c-.1.1-.2.3 0 .5.2.5.8 1.4 1.6 2.1.8.7 1.6 1 2.1 1.2.2.1.4 0 .5-.1l.7-.8c.2-.2.4-.3.7-.2l2 .8c.3.1.4.3.4.5 0 .2 0 1.2-.6 1.8-.5.6-1.2.6-1.6.5-.3 0-1.4-.3-2.7-1.1-1.1-.6-2.3-1.7-3.2-2.9-.9-1.2-1.3-2.3-1.4-2.7-.1-.4-.1-1.1.4-1.5z"
+      stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+}
+
+/* ---------- Dashboard / Leads ---------- */
+function renderKpis(k){
+  const el = $("kpis");
+  el.innerHTML = "";
+  const items = [
+    ["Total leads", k.total||0],
+    ["Suppliers", k.suppliers||0],
+    ["Buyers", k.buyers||0],
+    ["Today", k.today||0]
+  ];
+  items.forEach(([label,val])=>{
+    const d=document.createElement("div");
+    d.className="kpi";
+    d.innerHTML = `<div class="kpi__v">${esc(val)}</div><div class="kpi__l">${esc(label)}</div>`;
+    el.appendChild(d);
+  });
 }
 
 async function refreshDashboard(){
@@ -819,7 +858,7 @@ async function refreshDashboard(){
     (data.rows||[]).forEach(r=>{
       const tr=document.createElement("tr");
       tr.innerHTML = `
-        <td>${esc(fmtISTPretty(r.timestampIST || r.timestamp || ""))}</td>
+        <td>${esc(r.timestampIST||"")}</td>
         <td>${esc(r.type||"")}</td>
         <td>${esc(r.company||"")}</td>
         <td>${esc(r.contact||"")}</td>
@@ -854,9 +893,12 @@ async function refreshLeads(){
     tbody.innerHTML = "";
 
     (data.rows||[]).forEach(r=>{
+      const wa1 = safeWa(r.phone);
+      const wa2 = safeWa(r.phone2);
+
       const tr=document.createElement("tr");
       tr.innerHTML = `
-        <td>${esc(fmtISTPretty(r.timestampIST || r.timestamp || ""))}</td>
+        <td>${esc(r.timestampIST||"")}</td>
         <td>${esc(r.type||"")}</td>
         <td>${esc(r.company||"")}</td>
         <td>${esc(r.contact||"")}</td>
@@ -868,7 +910,9 @@ async function refreshLeads(){
         <td>
           <div class="cellicons">
             ${r.phone ? `<a class="iconlink" href="tel:${esc(safeTel(r.phone))}" title="Call">${svgPhone()}<span>${esc(r.phone)}</span></a>` : `<span class="smallmuted">—</span>`}
+            ${wa1 ? `<a class="iconlink" href="${esc(wa1)}" target="_blank" rel="noopener" title="WhatsApp">${svgWhatsApp()}<span>WhatsApp</span></a>` : ``}
             ${r.phone2 ? `<a class="iconlink" href="tel:${esc(safeTel(r.phone2))}" title="Call (2)">${svgPhone()}<span>${esc(r.phone2)}</span></a>` : ``}
+            ${wa2 ? `<a class="iconlink" href="${esc(wa2)}" target="_blank" rel="noopener" title="WhatsApp (2)">${svgWhatsApp()}<span>WA (2)</span></a>` : ``}
           </div>
         </td>
         <td>${esc(r.country||"")}</td>
@@ -940,7 +984,6 @@ async function saveEdit(){
   const leadId = $("editLeadId").value.trim();
   if(!leadId){ alert("Missing lead id"); return; }
 
-  // auto-save typed values in edit as well
   await maybeSaveListItem("market", editMarket);
   await maybeSaveListItem("productType", editPT);
 
@@ -953,6 +996,13 @@ async function saveEdit(){
     newFollowUp = { scheduledAtIST: f.label, scheduledAtISO: f.iso, notes };
   }
 
+  const email = $("editEmail").value.trim();
+  const phone = normalizePhone(editCountry.value, $("editPhone").value);
+  const phone2 = normalizePhone(editCountry.value, $("editPhone2").value);
+
+  const ok = await checkDuplicatesBeforeSave({ leadId, email, phone, phone2 });
+  if(!ok) return;
+
   $("editStatus").textContent = "Saving…";
 
   const payload = {
@@ -962,9 +1012,9 @@ async function saveEdit(){
     company: $("editCompany").value.trim(),
     contact: $("editContact").value.trim(),
     title: $("editTitle").value.trim(),
-    email: $("editEmail").value.trim(),
-    phone: normalizePhone(editCountry.value, $("editPhone").value),
-    phone2: normalizePhone(editCountry.value, $("editPhone2").value),
+    email,
+    phone,
+    phone2,
     country: editCountry.value,
     markets: editMarket.value,
     privateLabel: $("editPL").value.trim(),
@@ -977,8 +1027,8 @@ async function saveEdit(){
   };
 
   try{
-    await postPayload(payload);
-    $("editStatus").textContent = "Saved ✓";
+    const res = await postPayload(payload);
+    $("editStatus").textContent = "Saved ✓" + (res?.calendarEventUrl ? " (Calendar updated)" : "");
 
     await refreshDashboard();
     await refreshLeads();
@@ -1017,7 +1067,6 @@ function parseIso(iso){
   return (dt && !isNaN(dt.getTime())) ? dt : null;
 }
 
-// Parses IST label like "12/28/25 04:15 PM"
 function parseISTLabel(label){
   const s = String(label||"").trim();
   const m = s.match(/^(\d{2})\/(\d{2})\/(\d{2})\s+(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
@@ -1175,6 +1224,7 @@ function renderSideListForRange(range){
     const lead = (window.__leadsCache||[]).find(x=>x.leadId===f.leadId);
     const phone = (lead?.phone || "").trim();
     const email = (lead?.email || "").trim();
+    const wa = safeWa(phone);
 
     el.innerHTML = `
       <div class="calitem__top">
@@ -1186,7 +1236,9 @@ function renderSideListForRange(range){
       ${f.notes ? `<div class="calitem__note">${esc(f.notes)}</div>` : ``}
       <div class="calitem__actions">
         ${phone ? `<a class="iconbtn" href="tel:${esc(safeTel(phone))}">${svgPhone()} Call</a>` : ``}
+        ${wa ? `<a class="iconbtn" target="_blank" rel="noopener" href="${esc(wa)}">${svgWhatsApp()} WhatsApp</a>` : ``}
         ${email ? `<a class="iconbtn" href="mailto:${esc(email)}">${svgMail()} Email</a>` : ``}
+        ${f.calendarEventUrl ? `<a class="iconbtn" target="_blank" rel="noopener" href="${esc(f.calendarEventUrl)}">🗓️ Event</a>` : ``}
         ${f.leadId ? `<a class="iconbtn" href="#" data-open="${esc(f.leadId)}">${svgEdit()} Open Lead</a>` : ``}
       </div>
     `;
@@ -1282,21 +1334,19 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   editMarket = createCombo("editMarketCombo", [], "Search markets…");
   editPT = createCombo("editPTCombo", [], "Search product type…");
 
-  // Auto-fill country code into phone fields when country selected/changed
-  function wireCountryPhoneAutoFill(countryCombo, phoneId1, phoneId2){
-    if(!countryCombo || !countryCombo._inputEl) return;
-
-    const apply = ()=> {
-      applyCountryCodeToInput(countryCombo.value, $(phoneId1));
-      applyCountryCodeToInput(countryCombo.value, $(phoneId2));
-    };
-
-    countryCombo._inputEl.addEventListener("blur", apply);
-    countryCombo._inputEl.addEventListener("change", apply);
-  }
-  wireCountryPhoneAutoFill(supCountry, "supPhone", "supPhone2");
-  wireCountryPhoneAutoFill(buyCountry, "buyPhone", "buyPhone2");
-  wireCountryPhoneAutoFill(editCountry, "editPhone", "editPhone2");
+  // Auto-prefill country code into phone fields when country is picked
+  supCountry._inputEl.addEventListener("blur", ()=> {
+    applyCountryCodeToInput(supCountry.value, $("supPhone"));
+    applyCountryCodeToInput(supCountry.value, $("supPhone2"));
+  });
+  buyCountry._inputEl.addEventListener("blur", ()=> {
+    applyCountryCodeToInput(buyCountry.value, $("buyPhone"));
+    applyCountryCodeToInput(buyCountry.value, $("buyPhone2"));
+  });
+  editCountry._inputEl.addEventListener("blur", ()=> {
+    applyCountryCodeToInput(editCountry.value, $("editPhone"));
+    applyCountryCodeToInput(editCountry.value, $("editPhone2"));
+  });
 
   // Auto-save new Markets/ProductTypes typed anywhere (blur)
   [
