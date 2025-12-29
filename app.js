@@ -225,7 +225,7 @@ function updateSticky(){
   }
 
   setStickyActions({show:false});
-}}
+}
 
 function ensureUser() {
   const u = (localStorage.getItem(LS_USER) || "").trim();
