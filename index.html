@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>BOI CRM</title>
-  <link rel="stylesheet" href="styles.css?v=20251229g" />
+  <link rel="stylesheet" href="styles.css?v=20251229h" />
 </head>
 <body>
   <header class="topbar">
@@ -166,18 +166,6 @@
             <!-- FOLLOW-UP -->
             <div class="follow">
               <div class="follow__hdr">Schedule follow-up (IST)</div>
-              <div class="follow__chips">
-                <button id="buyFUToday" type="button" class="chipbtn">Today 10:00</button>
-                <button id="buyFUNextWeek" type="button" class="chipbtn">+7d 10:00</button>
-                <button id="buyFU2Weeks" type="button" class="chipbtn">+14d 10:00</button>
-                <button id="buyFUClear" type="button" class="chipbtn chipbtn--ghost">Clear</button>
-              </div>
-              <div class="follow__chips">
-                <button id="supFUToday" type="button" class="chipbtn">Today 10:00</button>
-                <button id="supFUNextWeek" type="button" class="chipbtn">+7d 10:00</button>
-                <button id="supFU2Weeks" type="button" class="chipbtn">+14d 10:00</button>
-                <button id="supFUClear" type="button" class="chipbtn chipbtn--ghost">Clear</button>
-              </div>
               <div class="row2">
                 <div class="field">
                   <label>Date</label>
@@ -200,7 +188,7 @@
 
             <div class="btnrow">
               <button id="saveSupplierNew" type="button" class="btn btn--primary">Save & New</button>
-              <button id="clearSupplier" type="button" class="btn btn--ghost">Clear</button>
+              <button id="clearSupplier" type="button" class="btn btn--ghost">Clear filters</button>
               <button id="saveSupplierClose" type="button" class="btn btn--primary">Save & Close</button>
             </div>
 
@@ -309,18 +297,6 @@
             <!-- FOLLOW-UP -->
             <div class="follow">
               <div class="follow__hdr">Schedule follow-up (IST)</div>
-              <div class="follow__chips">
-                <button id="buyFUToday" type="button" class="chipbtn">Today 10:00</button>
-                <button id="buyFUNextWeek" type="button" class="chipbtn">+7d 10:00</button>
-                <button id="buyFU2Weeks" type="button" class="chipbtn">+14d 10:00</button>
-                <button id="buyFUClear" type="button" class="chipbtn chipbtn--ghost">Clear</button>
-              </div>
-              <div class="follow__chips">
-                <button id="supFUToday" type="button" class="chipbtn">Today 10:00</button>
-                <button id="supFUNextWeek" type="button" class="chipbtn">+7d 10:00</button>
-                <button id="supFU2Weeks" type="button" class="chipbtn">+14d 10:00</button>
-                <button id="supFUClear" type="button" class="chipbtn chipbtn--ghost">Clear</button>
-              </div>
               <div class="row2">
                 <div class="field">
                   <label>Date</label>
@@ -343,7 +319,7 @@
 
             <div class="btnrow">
               <button id="saveBuyerNew" type="button" class="btn btn--primary">Save & New</button>
-              <button id="clearBuyer" type="button" class="btn btn--ghost">Clear</button>
+              <button id="clearBuyer" type="button" class="btn btn--ghost">Clear filters</button>
               <button id="saveBuyerClose" type="button" class="btn btn--primary">Save & Close</button>
             </div>
 
@@ -399,7 +375,6 @@
           </div>
 
           <button id="btnDashRefresh" class="btn btn--ghost" type="button">Refresh</button>
-          <button id="btnDashClearFilters" class="btn btn--ghost" type="button">Clear filters</button>
         </div>
 
         <div class="tablewrap">
@@ -419,15 +394,9 @@
     <!-- LEADS -->
     <section id="viewLeads" class="view" style="display:none;">
       <div class="card">
-        <div class="card__hdr card__hdr--split">
-          <div>
-            <div class="card__title">Leads</div>
-            <div class="card__sub">Call / Email / Edit saved leads</div>
-          </div>
-          <div class="seg seg--sm" aria-label="Leads view">
-            <button id="leadsViewCards" class="seg__btn isActive" type="button">Cards</button>
-            <button id="leadsViewList" class="seg__btn" type="button">List</button>
-          </div>
+        <div class="card__hdr">
+          <div class="card__title">Leads</div>
+          <div class="card__sub">Call / Email / Edit saved leads</div>
         </div>
 
         <div class="filters">
@@ -449,7 +418,6 @@
           </div>
 
           <button id="btnLeadsRefresh" class="btn btn--ghost" type="button">Refresh</button>
-          <button id="btnLeadsClearFilters" class="btn btn--ghost" type="button">Clear filters</button>
         </div>
 
         <div class="tablewrap">
@@ -464,8 +432,6 @@
             <tbody></tbody>
           </table>
         </div>
-
-        <div id="leadsCards" class="leadcards" style="display:none;"></div>
       </div>
     </section>
 
@@ -532,16 +498,9 @@
         <button id="btnCloseSettings" class="btn btn--ghost" type="button">Close</button>
       </div>
       <div class="form">
-        <div class="row2">
-          <div class="field">
-            <label>Apps Script Web App URL (ends with /exec)</label>
-            <input id="scriptUrlInput" type="url" />
-          </div>
-          <div class="field">
-            <label>Trade Show Mode</label>
-            <label class="switch"><input id="tradeModeToggle" type="checkbox" /><span class="switch__ui"></span></label>
-            <div class="hint">Keyboard-first: Enter = next field, Ctrl+Enter = Save & New, Esc = Close overlay.</div>
-          </div>
+        <div class="field">
+          <label>Apps Script Web App URL (ends with /exec)</label>
+          <input id="scriptUrlInput" type="url" />
         </div>
         <button id="btnSaveSettings" class="btn btn--primary" type="button">Save</button>
         <div class="hint">Tip: after updating Apps Script, deploy a new version and keep this URL updated.</div>
@@ -672,12 +631,6 @@
 
         <div class="follow">
           <div class="follow__hdr">Add a new follow-up (optional • IST)</div>
-              <div class="follow__chips">
-                <button id="editFUToday" type="button" class="chipbtn">Today 10:00</button>
-                <button id="editFUNextWeek" type="button" class="chipbtn">+7d 10:00</button>
-                <button id="editFU2Weeks" type="button" class="chipbtn">+14d 10:00</button>
-                <button id="editFUClear" type="button" class="chipbtn chipbtn--ghost">Clear</button>
-              </div>
           <div class="row2">
             <div class="field">
               <label>Date</label>
@@ -708,14 +661,6 @@
   <script src="./vendor/html5-qrcode.min.js"></script>
 
   <!-- main app -->
-  <script src="app.js?v=20251229g"></script>
-
-<!-- sticky action bar (mobile/tablet) -->
-<div id="stickyBar" class="sticky" aria-hidden="true">
-  <button id="stickySecondary" class="sticky__btn sticky__btn--ghost" type="button">Close</button>
-  <button id="stickyPrimary" class="sticky__btn" type="button">Save</button>
-</div>
-
-
+  <script src="app.js?v=20251229h"></script>
 </body>
 </html>
