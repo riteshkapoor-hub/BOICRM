@@ -332,6 +332,8 @@ button, .btn, input, select, textarea { min-height:44px; }
 .sticky-actions.hidden{ display:none !important; }
 .sticky-actions .btn{ flex:1; border-radius:14px; }
 
+body.has-sticky{ padding-bottom: 86px; }
+
 /* Make room for bottom bars on mobile */
 @media (max-width: 720px){
   body{ padding-bottom: 86px; }
