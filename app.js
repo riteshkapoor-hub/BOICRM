@@ -1,123 +1,4 @@
-/* ---------- STICKY MOBILE ACTIONS ---------- */
-function isSmallScreen(){ return window.matchMedia && window.matchMedia("(max-width: 820px)").matches; }
-function isCoarsePointer(){ return window.matchMedia && window.matchMedia("(pointer: coarse)").matches; }
-function isElementMostlyVisible(el){
-  if(!el) return false;
-  const r = el.getBoundingClientRect();
-  const vh = window.innerHeight || document.documentElement.clientHeight;
-  const visible = Math.max(0, Math.min(r.bottom, vh) - Math.max(r.top, 0));
-  return (visible / Math.max(1, r.height)) > 0.6;
-}
-function setStickyActions({ show, primaryText, secondaryText, onPrimary, onSecondary }){
-  const bar = $("stickyActions");
-  const primary = $("stickyPrimary");
-  const secondary = $("stickySecondary");
-  if(!bar || !primary || !secondary){
-    document.body.classList.remove("has-sticky");
-    return;
-  }
-  if(!show){
-    bar.setAttribute("aria-hidden","true");
-    document.body.classList.remove("has-sticky");
-    primary.onclick=null; secondary.onclick=null;
-    return;
-  }
-  bar.setAttribute("aria-hidden","false");
-  primary.textContent = primaryText || "Save";
-  secondary.textContent = secondaryText || "Close";
-  primary.onclick = onPrimary || null;
-  secondary.onclick = onSecondary || null;
-  document.body.classList.add("has-sticky");
-}
-function updateSticky(){
-  const showSticky = isSmallScreen() || isCoarsePointer();
-  const active = document.querySelector(".tab.isActive")?.id || "";
-  const editOpen = !($("editOverlay")?.classList.contains("isHidden"));
-  if(editOpen){
-    const saveBtn = $("btnSaveEdit");
-    setStickyActions({
-      show: showSticky || !isElementMostlyVisible(saveBtn),
-      primaryText: "Save",
-      secondaryText: "Close",
-      onPrimary: ()=> saveBtn?.click(),
-      onSecondary: ()=> closeOverlay("editOverlay")
-    });
-    return;
-  }
-  if(active === "tabCapture"){
-    // choose supplier/buyer based on lead type switch
-    const isBuyer = $("leadTypeBuyer")?.classList.contains("isActive");
-    const btnRow = isBuyer ? $("saveBuyerClose") : $("saveSupplierClose");
-    const btnNew = isBuyer ? $("saveBuyerNew") : $("saveSupplierNew");
-    setStickyActions({
-      show: showSticky || !isElementMostlyVisible(btnRow),
-      primaryText: "Save & Close",
-      secondaryText: "Save & New",
-      onPrimary: ()=> btnRow?.click(),
-      onSecondary: ()=> btnNew?.click()
-    });
-    return;
-  }
-  setStickyActions({ show:false });
-}
-
-function setComboValue(comboId, value){
-  const host = $(comboId);
-  if(!host) return;
-  const input = host.querySelector("input");
-  const hidden = host.querySelector("input[type=hidden]");
-  if(input) input.value = value || "";
-  if(hidden) hidden.value = value || "";
-  host.dispatchEvent(new Event("change", {bubbles:true}));
-}
-
-function getComboValue(comboId){
-  const host = $(comboId);
-  if(!host) return "";
-  const hidden = host.querySelector("input[type=hidden]");
-  const input = host.querySelector("input");
-  return (hidden?.value || input?.value || "").trim();
-}
-
-function renderFilterChips(scope){
-  const isDash = scope==="dash";
-  const box = $(isDash ? "dashActiveChips" : "leadsActiveChips");
-  if(!box) return;
-  const ids = isDash ? {'country': 'dashCountryCombo', 'market': 'dashMarketCombo', 'pt': 'dashPTCombo', 'q': 'dashQ'} : {'country': 'leadsCountryCombo', 'market': 'leadsMarketCombo', 'pt': 'leadsPTCombo', 'q': 'leadsQ'};
-  const items = [
-    ["Country", ids["country"]],
-    ["Markets", ids["market"]],
-    ["Product", ids["pt"]],
-  ];
-  const qId = ids["q"];
-  const chips = [];
-  items.forEach(([label, id])=>{
-    const v = getComboValue(id);
-    if(v && v.toLowerCase()!=="all") chips.push({label, id, v});
-  });
-  const q = ($(qId)?.value || "").trim();
-  if(q) chips.push({label:"Search", id:qId, v:q, isSearch:true});
-  box.innerHTML = chips.map(c=>`
-    <span class="chipx">
-      ${esc(c.label)}: ${esc(c.v)}
-      <button type="button" data-scope="${scope}" data-id="${c.id}">✕</button>
-    </span>
-  `).join("");
-}
-
-function clearFilters(scope){
-  const ids = (scope==="dash") ? {'country': 'dashCountryCombo', 'market': 'dashMarketCombo', 'pt': 'dashPTCombo', 'q': 'dashQ'} : {'country': 'leadsCountryCombo', 'market': 'leadsMarketCombo', 'pt': 'leadsPTCombo', 'q': 'leadsQ'};
-  setComboValue(ids["country"], "");
-  setComboValue(ids["market"], "");
-  setComboValue(ids["pt"], "");
-  const q = $(ids["q"]); if(q) q.value = "";
-  if(scope==="dash") refreshDashboard();
-  else refreshLeads();
-  renderFilterChips(scope);
-}
-
-function debounce(fn, wait=250){let t=null;return (...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),wait);};}
-
+let mode = localStorage.getItem('boi_lead_type') || 'supplier';
 // BOI CRM — app.js (FULL)
 // Adds:
 // - WhatsApp action next to phone (Leads + Calendar)
@@ -145,6 +26,51 @@ function getScriptUrl() {
   return (localStorage.getItem(LS_SCRIPT_URL) || DEFAULT_SCRIPT_URL).trim();
 }
 
+
+function renderDashCards(rows){
+  const mount = $("dashCards");
+  if(!mount) return;
+  const items = rows || [];
+  if(!items.length){
+    mount.innerHTML = `<div class="smallmuted">No leads found.</div>`;
+    return;
+  }
+  mount.innerHTML = items.map(r=>{
+    const badges = [
+      ...splitBadges(r.country ? `Country: ${r.country}` : ""),
+      ...splitBadges(r.markets).map(x=>`Market: ${x}`),
+      ...splitBadges(r.productType).map(x=>`Type: ${x}`)
+    ].slice(0,6);
+
+    const actions = [];
+    if(r.email) actions.push(`<a class="iconbtn" href="mailto:${esc(r.email)}">${svgMail()}<span>Email</span></a>`);
+    if(r.phone) actions.push(`<a class="iconbtn" href="tel:${esc(safeTel(r.phone))}">${svgPhone()}<span>Call</span></a>`);
+    if(r.folderUrl) actions.push(`<a class="iconbtn" href="${esc(r.folderUrl)}" target="_blank" rel="noopener">${svgLink()}<span>Drive</span></a>`);
+
+    return `
+      <div class="leadcard">
+        <div class="leadcard__top">
+          <div>
+            <div class="leadcard__title">${esc(r.company||"(No Company)")}</div>
+            <div class="leadcard__meta">
+              ${esc(r.contact||"")} ${r.contact && r.type ? "•" : ""} ${esc(r.type||"")}
+              ${r.timestampIST ? ` • ${esc(r.timestampIST)}` : ""}
+            </div>
+          </div>
+          <div class="smallmuted">${esc(r.country||"")}</div>
+        </div>
+
+        ${badges.length ? `<div class="badges">${badges.map(b=>`<span class="badge">${esc(b)}</span>`).join("")}</div>` : ""}
+
+        <div class="leadcard__actions">
+          ${actions.join("")}
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+
 function setStatus(msg) { $("status").textContent = msg || ""; }
 function updateSummary() { $("summary").textContent = `${sessionCount} leads this session`; }
 function setUserPill() {
@@ -154,6 +80,64 @@ function setUserPill() {
 
 function openOverlay(id) { $(id).classList.add("open"); $(id).setAttribute("aria-hidden","false"); }
 function closeOverlay(id) { $(id).classList.remove("open"); $(id).setAttribute("aria-hidden","true"); }
+
+
+/* ---------- STICKY MOBILE ACTIONS ---------- */
+function isSmallScreen(){ return window.matchMedia && window.matchMedia("(max-width: 720px)").matches; }
+
+function setStickyActions({ show, primaryText, secondaryText, onPrimary, onSecondary }){
+  const bar = $("stickyActions");
+  const primary = $("stickyPrimary");
+  const secondary = $("stickySecondary");
+  if(!bar || !primary || !secondary) return;
+
+  if(!show){
+    bar.classList.add("hidden");
+    bar.setAttribute("aria-hidden","true");
+    primary.onclick = null;
+    secondary.onclick = null;
+    return;
+  }
+  bar.classList.remove("hidden");
+  bar.setAttribute("aria-hidden","false");
+  primary.textContent = primaryText || "Save";
+  secondary.textContent = secondaryText || "Cancel";
+  primary.onclick = onPrimary || null;
+  secondary.onclick = onSecondary || null;
+}
+
+function updateSticky(){
+  // Edit overlay takes priority
+  const editOpen = $("editOverlay")?.classList.contains("open");
+  if(editOpen && isSmallScreen()){
+    setStickyActions({
+      show:true,
+      primaryText:"Save Changes",
+      secondaryText:"Close",
+      onPrimary: ()=> $("btnSaveEdit")?.click(),
+      onSecondary: ()=> { closeOverlay("editOverlay"); updateSticky(); }
+    });
+    return;
+  }
+
+  const captureVisible = $("viewCapture") && $("viewCapture").style.display !== "none";
+  if(captureVisible && isSmallScreen()){
+    const isSupplier = (mode === "supplier");
+    const primaryBtn = isSupplier ? $("saveSupplierNew") : $("saveBuyerNew");
+    const secondaryBtn = isSupplier ? $("saveSupplierClose") : $("saveBuyerClose");
+    setStickyActions({
+      show:true,
+      primaryText:"Save & New",
+      secondaryText:"Save & Close",
+      onPrimary: ()=> primaryBtn?.click(),
+      onSecondary: ()=> secondaryBtn?.click()
+    });
+    return;
+  }
+
+  // Otherwise hide
+  setStickyActions({ show:false });
+}
 
 function ensureUser() {
   const u = (localStorage.getItem(LS_USER) || "").trim();
@@ -170,7 +154,118 @@ function showTab(which){
   if(which==="Dashboard") refreshDashboard();
   if(which==="Leads") refreshLeads();
   if(which==="Calendar") refreshCalendar();
+  if(which==="Leads") applyLeadsView();
+  if(which==="Dashboard") applyDashView();
+  updateSticky();
 }
+
+// --- View preferences (List vs Cards) ---
+const LS_VIEW_LEADS = "boi_view_leads";
+const LS_VIEW_DASH  = "boi_view_dash";
+
+function getViewPref(key, fallback="list"){
+  try{ return localStorage.getItem(key) || fallback; }catch{ return fallback; }
+}
+function setViewPref(key, val){
+  try{ localStorage.setItem(key, val); }catch{}
+}
+
+function setSegActive(listBtn, cardsBtn, mode){
+  if(!listBtn || !cardsBtn) return;
+  listBtn.classList.toggle("is-active", mode==="list");
+  cardsBtn.classList.toggle("is-active", mode==="cards");
+}
+
+function applyLeadsView(){
+  const mode = getViewPref(LS_VIEW_LEADS,"list");
+  setSegActive($("leadsViewList"), $("leadsViewCards"), mode);
+  const tableWrap = $("leadsTable")?.closest(".tablewrap");
+  const cards = $("leadsCards");
+  if(tableWrap) tableWrap.style.display = (mode==="list") ? "" : "none";
+  if(cards) cards.style.display = (mode==="cards") ? "" : "none";
+}
+function applyDashView(){
+  const mode = getViewPref(LS_VIEW_DASH,"list");
+  setSegActive($("dashViewList"), $("dashViewCards"), mode);
+  const tableWrap = $("dashTable")?.closest(".tablewrap");
+  const cards = $("dashCards");
+  if(tableWrap) tableWrap.style.display = (mode==="list") ? "" : "none";
+  if(cards) cards.style.display = (mode==="cards") ? "" : "none";
+}
+
+function splitBadges(s){
+  return String(s||"")
+    .split(/[,;\n]+/)
+    .map(x=>x.trim())
+    .filter(Boolean)
+    .slice(0,6);
+}
+
+function renderLeadCards(rows, mountId){
+  const mount = $(mountId);
+  if(!mount) return;
+  const items = rows || [];
+  if(!items.length){
+    mount.innerHTML = `<div class="smallmuted">No leads found.</div>`;
+    return;
+  }
+  mount.innerHTML = items.map(r=>{
+    const wa1 = safeWa(r.phone);
+    const wa2 = safeWa(r.phone2);
+    const badges = [
+      ...splitBadges(r.country ? `Country: ${r.country}` : ""),
+      ...splitBadges(r.markets).map(x=>`Market: ${x}`),
+      ...splitBadges(r.productType).map(x=>`Type: ${x}`)
+    ].slice(0,6);
+
+    const actions = [];
+    if(r.email) actions.push(`<a class="iconbtn" href="mailto:${esc(r.email)}" title="Email">${svgMail()}<span>Email</span></a>`);
+    if(r.phone) actions.push(`<a class="iconbtn" href="tel:${esc(safeTel(r.phone))}" title="Call">${svgPhone()}<span>Call</span></a>`);
+    if(wa1) actions.push(`<a class="iconbtn" href="${esc(wa1)}" target="_blank" rel="noopener" title="WhatsApp">${svgWhatsApp()}<span>WhatsApp</span></a>`);
+    if(r.phone2) actions.push(`<a class="iconbtn" href="tel:${esc(safeTel(r.phone2))}" title="Call 2">${svgPhone()}<span>Call 2</span></a>`);
+    if(wa2) actions.push(`<a class="iconbtn" href="${esc(wa2)}" target="_blank" rel="noopener" title="WhatsApp 2">${svgWhatsApp()}<span>WA 2</span></a>`);
+
+    const editBtn = (r.leadId) ? `<a class="iconbtn iconbtn--primary" href="#" data-edit="${esc(r.leadId)}">${svgEdit()}<span>Edit</span></a>` : "";
+
+    return `
+      <div class="leadcard">
+        <div class="leadcard__top">
+          <div>
+            <div class="leadcard__title">${esc(r.company||"(No Company)")}</div>
+            <div class="leadcard__meta">
+              ${esc(r.contact||"")} ${r.contact && r.type ? "•" : ""} ${esc(r.type||"")}
+              ${r.timestampIST ? ` • ${esc(r.timestampIST)}` : ""}
+            </div>
+            <div class="leadcard__meta">
+              ${r.enteredBy ? `Entered by ${esc(r.enteredBy)}` : ""}
+            </div>
+          </div>
+          <div class="smallmuted">${esc(r.country||"")}</div>
+        </div>
+
+        ${badges.length ? `<div class="badges">${badges.map(b=>`<span class="badge">${esc(b)}</span>`).join("")}</div>` : ""}
+
+        <div class="leadcard__actions">
+          ${actions.join("")}
+          ${editBtn}
+          ${r.folderUrl ? `<a class="iconbtn" href="${esc(r.folderUrl)}" target="_blank" rel="noopener">${svgLink()}<span>Drive</span></a>` : ""}
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  // wire Edit buttons
+  mount.querySelectorAll("[data-edit]").forEach(a=>{
+    a.addEventListener("click", (e)=>{
+      e.preventDefault();
+      const id = a.getAttribute("data-edit");
+      const row = (window.__leadsCache||[]).find(x=>String(x.leadId)===String(id));
+      if(id) openEdit(id, row || {});
+    });
+  });
+}
+
+
 
 function setMode(newMode){
   mode = newMode;
@@ -179,7 +274,9 @@ function setMode(newMode){
   $("supplierForm").style.display = mode==="supplier" ? "" : "none";
   $("buyerForm").style.display = mode==="buyer" ? "" : "none";
   $("formTitle").textContent = mode==="supplier" ? "Supplier details" : "Buyer details";
+  updateSticky();
 }
+
 
 function esc(s){
   return String(s||"")
@@ -970,9 +1067,6 @@ async function refreshDashboard(){
     });
 
     window.__leadsCache = data.rows || [];
-    try{ renderLeadsCards(window.__leadsCache); }catch(e){}
-    try{ setLeadsView(getLeadsView()); }catch(e){}
-
     renderKpis(data.kpis || {});
 
     const tbody = $("dashTable").querySelector("tbody");
@@ -1054,59 +1148,14 @@ async function refreshLeads(){
         eb.addEventListener("click", ()=> openEdit(r.leadId, r));
       }
     });
+
+    // Cards view
+    renderLeadCards(data.rows||[], "leadsCards");
+    applyLeadsView();
   } catch(e){
     console.error(e);
     setStatus("Leads load failed.");
   }
-}
-
-/* ---------- Leads cards ---------- */
-const LS_LEADS_VIEW = "boi_leads_view";
-function getLeadsView(){ return (localStorage.getItem(LS_LEADS_VIEW) || "cards").toLowerCase(); }
-function setLeadsView(v){
-  localStorage.setItem(LS_LEADS_VIEW, v);
-  $("leadsViewCards")?.classList.toggle("isActive", v==="cards");
-  $("leadsViewList")?.classList.toggle("isActive", v==="list");
-  const tableWrap = $("leadsTable")?.closest(".tablewrap");
-  const cards = $("leadsCards");
-  if(tableWrap) tableWrap.style.display = (v==="list") ? "" : "none";
-  if(cards) cards.style.display = (v==="cards") ? "" : "none";
-}
-function leadChip(text){ return text ? `<span class="chip">${esc(text)}</span>` : ""; }
-function renderLeadsCards(rows){
-  const host = $("leadsCards");
-  if(!host) return;
-  host.innerHTML = "";
-  (rows||[]).forEach(r=>{
-    const card=document.createElement("div");
-    card.className="leadcard";
-    const title=(r.company||r.contact||"").trim();
-    const phone=(r.phone||"").trim();
-    const email=(r.email||"").trim();
-    const wa=safeWa(phone);
-    card.innerHTML = `
-      <div class="leadcard__top">
-        <div>
-          <div class="leadcard__title">${esc(title||"—")}</div>
-          <div class="leadcard__sub">${esc(r.type||"")} • ${esc(r.timestampIST||"")}</div>
-        </div>
-        <button class="btn btn--ghost" type="button" data-edit="${esc(r.leadId||"")}">${svgEdit()} Edit</button>
-      </div>
-      <div class="leadcard__meta">${leadChip(r.country)}${leadChip(r.markets)}${leadChip(r.productType)}</div>
-      <div class="leadcard__actions">
-        ${phone?`<a class="iconbtn" href="tel:${esc(safeTel(phone))}">${svgPhone()} Call</a>`:""}
-        ${wa?`<a class="iconbtn" target="_blank" rel="noopener" href="${esc(wa)}">${svgWhatsApp()} WhatsApp</a>`:""}
-        ${email?`<a class="iconbtn" href="mailto:${esc(email)}">${svgMail()} Email</a>`:""}
-        ${r.folderUrl?`<a class="iconbtn" target="_blank" rel="noopener" href="${esc(r.folderUrl)}">Folder</a>`:""}
-      </div>
-    `;
-    card.addEventListener("click",(ev)=>{
-      if(ev.target && (ev.target.closest("a")||ev.target.closest("button"))) return;
-      openEditFromRow(r);
-    });
-    card.querySelector("[data-edit]")?.addEventListener("click",(ev)=>{ ev.stopPropagation(); openEditFromRow(r); });
-    host.appendChild(card);
-  });
 }
 
 /* ---------- Edit Lead ---------- */
@@ -1144,6 +1193,7 @@ function openEdit(leadId, row){
 
   $("editSub").textContent = `${row?.leadId||leadId||""} • ${row?.company||row?.contact||""}`;
   openOverlay("editOverlay");
+  updateSticky();
 }
 
 function clearEditFollowup(){
@@ -1631,120 +1681,15 @@ function renderSideListForRange(range){
 }
 
 /* ---------- BOOT (FULL) ---------- */
-function setFU(kind, days){
-  const dateId = (kind==="supplier") ? "supFUDate" : (kind==="buyer" ? "buyFUDate" : "editFUDate");
-  const timeId = (kind==="supplier") ? "supFUTime" : (kind==="buyer" ? "buyFUTime" : "editFUTime");
-  const d = new Date();
-  d.setDate(d.getDate()+days);
-  const y=d.getFullYear();
-  const m=String(d.getMonth()+1).padStart(2,"0");
-  const da=String(d.getDate()).padStart(2,"0");
-  const dateVal = `${y}-${m}-${da}`;
-  const timeVal = "10:00";
-  const de=$(dateId); const te=$(timeId);
-  if(de) de.value=dateVal;
-  if(te) te.value=timeVal;
-}
-
-function ensureQuickFU(kind){
-  const anchorId = (kind==="supplier") ? "supFUDate" : (kind==="buyer" ? "buyFUDate" : "editFUDate");
-  const anchor = $(anchorId);
-  if(!anchor) return;
-  const boxParent = anchor.closest(".block") || anchor.closest(".modal") || anchor.parentElement;
-  if(!boxParent) return;
-
-  // Remove duplicates if any
-  boxParent.querySelectorAll(".fuQuick").forEach((el,i)=>{ if(i>0) el.remove(); });
-
-  let q = boxParent.querySelector(".fuQuick");
-  if(!q){
-    q = document.createElement("div");
-    q.className = "fuQuick";
-    q.style.display="flex";
-    q.style.gap="10px";
-    q.style.flexWrap="wrap";
-    q.style.margin="10px 0 6px 0";
-    q.innerHTML = `
-      <button type="button" class="btn btn--ghost" data-fu="${kind}:0">Today 10:00</button>
-      <button type="button" class="btn btn--ghost" data-fu="${kind}:7">+7d 10:00</button>
-      <button type="button" class="btn btn--ghost" data-fu="${kind}:14">+14d 10:00</button>
-      <button type="button" class="btn btn--ghost" data-fu="${kind}:clear">Clear</button>
-    `;
-    // Insert at top of follow-up block (before first row2)
-    const firstRow = boxParent.querySelector(".row2") || anchor.parentElement;
-    firstRow?.parentElement?.insertBefore(q, firstRow);
-  }
-}
-
-function bindQuickFU(){
-  // Ensure once
-  ensureQuickFU("supplier");
-  ensureQuickFU("buyer");
-  ensureQuickFU("edit");
-
-  if(document.body.__qfuBound) return;
-  document.body.__qfuBound = true;
-
-  document.addEventListener("click",(ev)=>{
-    const b = ev.target.closest("[data-fu]");
-    if(!b) return;
-    const val = b.getAttribute("data-fu");
-    const [kind, arg] = val.split(":");
-    if(arg==="clear"){
-      const dateId = (kind==="supplier") ? "supFUDate" : (kind==="buyer" ? "buyFUDate" : "editFUDate");
-      const timeId = (kind==="supplier") ? "supFUTime" : (kind==="buyer" ? "buyFUTime" : "editFUTime");
-      const notesId = (kind==="supplier") ? "supFUNotes" : (kind==="buyer" ? "buyFUNotes" : "editFUNotes");
-      $(dateId) && ($(dateId).value="");
-      $(timeId) && ($(timeId).value="");
-      $(notesId) && ($(notesId).value="");
-      return;
-    }
-    const days = parseInt(arg,10);
-    if(!Number.isFinite(days)) return;
-    setFU(kind, days);
-  }, {passive:true});
-}
-
-function comboHasValue(comboId){
-  const host = $(comboId);
-  if(!host) return false;
-  const hidden = host.querySelector("input[type=hidden]");
-  const input = host.querySelector("input");
-  const v = (hidden?.value || input?.value || "").trim();
-  return !!v && v.toLowerCase() !== "all";
-}
-function syncProductBlocks(){
-  const supBlock = $("supProductsBlock");
-  if(supBlock) supBlock.classList.toggle("isHidden", !comboHasValue("supProductTypeCombo"));
-  const buyBlock = $("buyNeedsBlock");
-  if(buyBlock) buyBlock.classList.toggle("isHidden", !comboHasValue("buyProductTypeCombo"));
-}
-
-function validateRequiredLeadFields(prefix){
-  // prefix: 'sup' or 'buy' or 'edit'
-  const get = (id)=> ($(id)?.value || "").trim();
-  const company = get(prefix==="buy" ? "buyCompany" : "supCompany");
-  const contact = get(prefix==="buy" ? "buyContact" : "supContact");
-  const email = get(prefix==="buy" ? "buyEmail" : "supEmail");
-  const phone = get(prefix==="buy" ? "buyPhone" : "supPhone");
-  const missing = [];
-  if(!company) missing.push("Company");
-  if(!contact) missing.push("Contact");
-  if(!phone) missing.push("Phone");
-  if(!email) missing.push("Email");
-  if(missing.length){
-    alert("Please fill required: " + missing.join(", "));
-    return false;
-  }
-  return true;
-}
-
 document.addEventListener("DOMContentLoaded", async ()=>{
   // tabs
+  window.addEventListener("resize", ()=> updateSticky());
   $("tabCapture").addEventListener("click", ()=>showTab("Capture"));
   $("tabDashboard").addEventListener("click", ()=>showTab("Dashboard"));
   $("tabLeads").addEventListener("click", ()=>showTab("Leads"));
   $("tabCalendar").addEventListener("click", ()=>showTab("Calendar"));
+
+  updateSticky();
 
   // lead type
   $("btnSupplier").addEventListener("click", ()=>setMode("supplier"));
@@ -1757,7 +1702,7 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   });
 
   // edit overlay
-  $("btnCloseEdit").addEventListener("click", ()=>closeOverlay("editOverlay"));
+  $("btnCloseEdit").addEventListener("click", ()=>{ closeOverlay("editOverlay"); updateSticky(); });
   $("btnSaveEdit").addEventListener("click", saveEdit);
   $("btnClearEditFU").addEventListener("click", clearEditFollowup);
 
@@ -1850,15 +1795,7 @@ document.addEventListener("DOMContentLoaded", async ()=>{
 
   // refresh buttons
   $("btnDashRefresh").addEventListener("click", refreshDashboard);
-  $("btnDashClearFilters")?.addEventListener("click", ()=> clearFilters("dash"));
-
   $("btnLeadsRefresh").addEventListener("click", refreshLeads);
-  $("btnLeadsClearFilters")?.addEventListener("click", ()=> clearFilters("leads"));
-  $("leadsViewCards")?.addEventListener("click", ()=>{ setLeadsView("cards"); });
-  $("leadsViewList")?.addEventListener("click", ()=>{ setLeadsView("list"); });
-  if(!localStorage.getItem(LS_LEADS_VIEW)) localStorage.setItem(LS_LEADS_VIEW,"cards");
-  setLeadsView(getLeadsView());
-
 
   // calendar controls
   $("calViewDay").addEventListener("click", ()=>setCalView("day"));
@@ -1893,34 +1830,139 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   // IMPORTANT: load calendar data once on boot so Month/Week/Day all have data
   try{ await refreshCalendar(); }catch{}
 
-  document.addEventListener("click",(ev)=>{
-    const btn = ev.target.closest(".chipx button");
-    if(!btn) return;
-    const scope = btn.getAttribute("data-scope");
-    const id = btn.getAttribute("data-id");
-    if(!scope || !id) return;
-    if(id==="dashQ"||id==="leadsQ") { const el=$(id); if(el) el.value=""; }
-    else setComboValue(id, "");
-    if(scope==="dash") refreshDashboard(); else refreshLeads();
-    renderFilterChips(scope);
-  }); // chipsClickDelegated
-
-  const dashAuto = debounce(()=>{ refreshDashboard(); renderFilterChips("dash"); }, 200);
-  const leadsAuto = debounce(()=>{ refreshLeads(); renderFilterChips("leads"); }, 200);
-  $("dashCountryCombo")?.addEventListener("change", dashAuto);
-  $("dashMarketCombo")?.addEventListener("change", dashAuto);
-  $("dashPTCombo")?.addEventListener("change", dashAuto);
-  $("leadsCountryCombo")?.addEventListener("change", leadsAuto);
-  $("leadsMarketCombo")?.addEventListener("change", leadsAuto);
-  $("leadsPTCombo")?.addEventListener("change", leadsAuto);
-  $("dashQ")?.addEventListener("input", dashAuto);
-  $("leadsQ")?.addEventListener("input", leadsAuto);
-  renderFilterChips("dash");
-  renderFilterChips("leads");
-  $("supProductTypeCombo")?.addEventListener("change", syncProductBlocks);
-  $("buyProductTypeCombo")?.addEventListener("change", syncProductBlocks);
-
-
   setStatus("Ready");
   updateSummary();
+
+  // View toggles (List vs Cards)
+  const leadsListBtn = $("leadsViewList");
+  const leadsCardsBtn = $("leadsViewCards");
+  if(leadsListBtn && leadsCardsBtn){
+    leadsListBtn.addEventListener("click", ()=>{
+      setViewPref(LS_VIEW_LEADS,"list");
+      applyLeadsView();
+    });
+    leadsCardsBtn.addEventListener("click", ()=>{
+      setViewPref(LS_VIEW_LEADS,"cards");
+      applyLeadsView();
+    });
+  }
+
+  const dashListBtn = $("dashViewList");
+  const dashCardsBtn = $("dashViewCards");
+  if(dashListBtn && dashCardsBtn){
+    dashListBtn.addEventListener("click", ()=>{
+      setViewPref(LS_VIEW_DASH,"list");
+      applyDashView();
+    });
+    dashCardsBtn.addEventListener("click", ()=>{
+      setViewPref(LS_VIEW_DASH,"cards");
+      applyDashView();
+    });
+  }
+
+  // Apply views on load + when rotating device
+  window.addEventListener("resize", ()=>{
+    applyLeadsView();
+    applyDashView();
+  });
+
+
 });
+
+function $(id){ return document.getElementById(id); }
+
+function applyLeadTypeUI(){
+  const sup = $("supplierForm");
+  const buy = $("buyerForm");
+  if(sup) sup.style.display = (mode==="supplier") ? "" : "none";
+  if(buy) buy.style.display = (mode==="buyer") ? "" : "none";
+  // Toggle buttons if present
+  document.querySelectorAll("[data-leadtype]").forEach(btn=>{
+    btn.classList.toggle("isActive", btn.getAttribute("data-leadtype")===mode);
+  });
+}
+
+function setLeadType(next){
+  mode = next;
+  localStorage.setItem("boi_lead_type", mode);
+  applyLeadTypeUI();
+  // auto-hide sell/buy until product type selected
+  try{ updateAutoHide(); }catch(e){}
+  // keep sticky in sync
+  try{ updateSticky(); }catch(e){}
+}
+
+
+function pad2(n){ return String(n).padStart(2,"0"); }
+function ymd(d){ return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; }
+
+function setFollowUp(scope, kind){
+  const dateId = scope==="sup" ? "supFUDate" : scope==="buy" ? "buyFUDate" : "editFUDate";
+  const timeId = scope==="sup" ? "supFUTime" : scope==="buy" ? "buyFUTime" : "editFUTime";
+  const noteId = scope==="sup" ? "supFU नोट" : null; // not used
+  const dateEl = $(dateId);
+  const timeEl = $(timeId);
+  if(!dateEl || !timeEl) return;
+  if(kind==="clear"){
+    dateEl.value=""; timeEl.value="";
+    return;
+  }
+  const d = new Date();
+  if(kind==="7d") d.setDate(d.getDate()+7);
+  if(kind==="14d") d.setDate(d.getDate()+14);
+  dateEl.value = ymd(d);
+  timeEl.value = "10:00";
+}
+
+function wireQuickFollow(){
+  document.querySelectorAll(".quickfollow").forEach(row=>{
+    row.addEventListener("click",(ev)=>{
+      const b = ev.target.closest("button[data-qf]");
+      if(!b) return;
+      const scope = row.getAttribute("data-scope");
+      const kind = b.getAttribute("data-qf");
+      setFollowUp(scope, kind);
+    });
+  });
+}
+
+function wireLeadsView(){
+  const btnCards = $("leadsViewCards");
+  const btnList = $("leadsViewList");
+  const cards = $("leadsCards");
+  const table = $("leadsTable")?.closest(".tablewrap");
+  const saved = (localStorage.getItem("boi_leads_view")||"cards");
+  function apply(v){
+    localStorage.setItem("boi_leads_view", v);
+    if(btnCards) btnCards.classList.toggle("isActive", v==="cards");
+    if(btnList) btnList.classList.toggle("isActive", v==="list");
+    if(cards) cards.classList.toggle("isOn", v==="cards");
+    if(cards) cards.style.display = v==="cards" ? "" : "none";
+    if(table) table.style.display = v==="list" ? "" : "none";
+  }
+  btnCards?.addEventListener("click",()=>apply("cards"));
+  btnList?.addEventListener("click",()=>apply("list"));
+  apply(saved);
+}
+
+document.addEventListener("DOMContentLoaded", ()=>{
+  $("supProductType")?.addEventListener("change", updateAutoHide);
+  $("buyProductType")?.addEventListener("change", updateAutoHide);
+
+  // Lead type buttons
+  document.querySelectorAll("[data-leadtype]").forEach(btn=>{
+    btn.addEventListener("click", ()=> setLeadType(btn.getAttribute("data-leadtype")));
+  });
+  applyLeadTypeUI();
+  wireQuickFollow();
+  wireLeadsView();
+});
+
+function updateAutoHide(){
+  const supPT = $("supProductType")?.value || "";
+  const buyPT = $("buyProductType")?.value || "";
+  const supBlock = $("supProductsBlock");
+  const buyBlock = $("buyNeedsBlock");
+  if(supBlock) supBlock.style.display = supPT ? "" : "none";
+  if(buyBlock) buyBlock.style.display = buyPT ? "" : "none";
+}
