@@ -445,9 +445,9 @@
 
         <div class="calbar">
           <div class="seg seg--sm">
-            <button id="calViewDay" class="seg__btn isActive" type="button">Day</button>
+            <button id="calViewDay" class="seg__btn" type="button">Day</button>
             <button id="calViewWeek" class="seg__btn" type="button">Week</button>
-            <button id="calViewMonth" class="seg__btn" type="button">Month</button>
+            <button id="calViewMonth" class="seg__btn isActive" type="button">Month</button>
           </div>
 
           <div class="calnav">
@@ -657,9 +657,10 @@
     </div>
   </div>
 
-  <script src="https://unpkg.com/html5-qrcode@2.3.10/minified/html5-qrcode.min.js"></script>
+  <!-- IMPORTANT: load QR lib only once (local vendor copy) -->
   <script src="./vendor/html5-qrcode.min.js"></script>
+
+  <!-- main app -->
   <script src="app.js"></script>
 </body>
 </html>
-
