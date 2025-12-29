@@ -4,8 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>BOI CRM</title>
-  <link rel="icon" href="boi-logo.png" />
-  <link rel="stylesheet" href="styles.css?v=20251229e" />
+  <link rel="stylesheet" href="styles.css?v=20251229f" />
 </head>
 <body>
   <header class="topbar">
@@ -56,296 +55,303 @@
 
           <!-- SUPPLIER FORM -->
           <form id="supplierForm" class="form">
-            <div class="row2">
-              <div class="field">
-                <label>Company name <span class="req">*</span></label>
-                <input id="supCompany" type="text" placeholder="Company" autocomplete="organization" />
-              </div>
-              <div class="field">
-                <label>Contact person</label>
-                <input id="supContact" type="text" placeholder="Name" autocomplete="name" />
-              </div>
-            </div>
+<div class="row2">
+  <div class="field">
+    <label>Company name <span class="req">*</span></label>
+    <input id="supCompany" type="text" placeholder="Company" autocomplete="organization" />
+  </div>
+  <div class="field">
+    <label>Contact person <span class="req">*</span></label>
+    <input id="supContact" type="text" placeholder="Name" autocomplete="name" />
+  </div>
+</div>
 
-            <div class="row2">
-              <div class="field">
+<div class="row2">
+  <div class="field">
+    <label>Title</label>
+    <input id="supTitle" type="text" placeholder="Title" />
+  </div>
+  <div class="field">
+    <label>Email <span class="req">*</span></label>
+    <input id="supEmail" type="email" placeholder="name@company.com" autocomplete="email" />
+  </div>
+</div>
 
-            <details class="acc">
-              <summary class="acc__sum">More details (optional)</summary>
-              <div class="acc__body">
+<div class="row2">
+  <div class="field">
+    <label>Country (type to search)</label>
+    <div id="supCountryCombo"></div>
+  </div>
+  <div class="field">
+    <label>Markets (type to search)</label>
+    <div id="supMarketsCombo"></div>
+  </div>
+</div>
 
-            <details class="acc">
-              <summary class="acc__sum">More details (optional)</summary>
-              <div class="acc__body">
-                <label>Title</label>
-                <input id="supTitle" type="text" placeholder="Title" />
-              </div>
-              <div class="field">
-                <label>Email</label>
-                <input id="supEmail" type="email" placeholder="name@company.com" autocomplete="email" />
-              </div>
-            </div>
+<div class="row2">
+  <div class="field">
+    <label>Phone 1 <span class="req">*</span></label>
+    <input id="supPhone" type="tel" placeholder="+91 …" autocomplete="tel" />
+  </div>
+  <div class="field">
+    <label>Phone 2 (optional)</label>
+    <input id="supPhone2" type="tel" placeholder="+91 …" autocomplete="tel" />
+  </div>
+</div>
 
-            <div class="row2">
-              <div class="field">
-                <label>Country (type to search)</label>
-                <div id="supCountryCombo"></div>
-              </div>
-              <div class="field">
-                <label>Markets (type to search)</label>
-                <div id="supMarketsCombo"></div>
-              </div>
-            </div>
+<div class="row2">
+  <div class="field">
+    <label>Attachment: Catalog (optional)</label>
+    <input id="supCatalogFiles" type="file" multiple />
+  </div>
+  <div class="field">
+    <label>Attachment: Card image (optional)</label>
+    <input id="supCardFile" type="file" />
+  </div>
+</div>
 
-            <div class="row2">
-              <div class="field">
-                <label>Phone 1</label>
-                <input id="supPhone" type="tel" placeholder="+91 …" autocomplete="tel" />
-              </div>
-              <div class="field">
-                <label>Phone 2 (optional)</label>
-                <input id="supPhone2" type="tel" placeholder="+91 …" autocomplete="tel" />
-              </div>
-            </div>
+<details class="acc">
+  <summary class="acc__sum">More details (optional)</summary>
+  <div class="acc__body">
+    <div class="row2">
+      <div class="field">
+        <label>Website</label>
+        <input id="supWebsite" type="url" placeholder="https://…" />
+      </div>
+      <div class="field">
+        <label>Social</label>
+        <input id="supSocial" type="text" placeholder="@company" />
+      </div>
+    </div>
 
-            <div class="row2">
-              <div class="field">
-                <label>Website</label>
-                <input id="supWebsite" type="url" placeholder="https://…" />
-              </div>
-              <div class="field">
-                <label>Social</label>
-                <input id="supSocial" type="text" placeholder="@company" />
-              </div>
-            </div>
+    <div class="row2">
+      <div class="field">
+        <label>Product Type (type to search)</label>
+        <div id="supProductTypeCombo"></div>
+      </div>
+      <div class="field">
+        <label>Private label?</label>
+        <select id="supPL">
+          <option value=""></option>
+          <option>Private label</option>
+          <option>Own brand</option>
+          <option>Both</option>
+        </select>
+      </div>
+    </div>
 
-            <div class="row2">
-              <div class="field">
-                <label>Product Type (type to search)</label>
-                <div id="supProductTypeCombo"></div>
-              </div>
-              <div class="field">
-                <label>Private label?</label>
-                <select id="supPL">
-                  <option value=""></option>
-                  <option>Private label</option>
-                  <option>Own brand</option>
-                  <option>Both</option>
-                </select>
-              </div>
-            </div>
+    <div class="row2">
+      <div class="field">
+        <label>Ex-Factory</label>
+        <input id="supExFactory" type="text" placeholder="" />
+      </div>
+      <div class="field">
+        <label>FOB</label>
+        <input id="supFOB" type="text" placeholder="" />
+      </div>
+    </div>
 
-            <div class="row2">
-              <div class="field">
-                <label>Price — Ex-Factory</label>
-                <input id="supExFactory" type="text" placeholder="USD / unit" />
-              </div>
-              <div class="field">
-                <label>Price — FOB</label>
-                <input id="supFOB" type="text" placeholder="USD / unit" />
-              </div>
-            </div>
+    <div class="field">
+      <label>QR raw (auto-filled if scanned)</label>
+      <input id="supQR" type="text" />
+    </div>
+  </div>
+</details>
 
-              </div>
-            </details>
+<div class="field">
+  <label>Notes</label>
+  <textarea id="supNotes" rows="3"></textarea>
+</div>
 
-            <div class="field">
-              <label>What do they sell? (one per line) <span class="req">*</span></label>
-              <textarea id="supProducts" rows="4" placeholder="Item 1&#10;Item 2&#10;Item 3"></textarea>
-            </div>
+<div id="supProductsWrap" class="field isHidden">
+  <label>What do they sell? (one per line)</label>
+  <textarea id="supProducts" rows="3" placeholder="Item 1&#10;Item 2"></textarea>
+  <div class="hint">Shown after Product Type is selected.</div>
+</div>
 
-            <div class="row2">
-              <div class="field">
+<!-- FOLLOW-UP -->
+<div class="follow">
+  <div class="follow__hdr">
+    Schedule follow-up (IST)
+    <div class="follow__chips">
+      <button id="supFUToday" type="button" class="chipbtn">Today 10:00</button>
+      <button id="supFUNextWeek" type="button" class="chipbtn">+1 week 10:00</button>
+      <button id="supFU2Weeks" type="button" class="chipbtn">+2 weeks 10:00</button>
+      <button id="supFUClear" type="button" class="chipbtn chipbtn--ghost">Clear</button>
+    </div>
+  </div>
+  <div class="row2">
+    <div class="field">
+      <label>Date</label>
+      <input id="supFUDate" type="date" />
+    </div>
+    <div class="field">
+      <label>Time</label>
+      <input id="supFUTime" type="time" />
+    </div>
+  </div>
+  <div class="field">
+    <label>Follow-up note</label>
+    <input id="supFUNotes" type="text" placeholder="Call / WhatsApp / send catalog / pricing…" />
+  </div>
+  <div class="row2">
+    <button id="supFUQueueBtn" type="button" class="btn btn--ghost">Add Follow-up</button>
+    <div id="supFULast" class="hint"></div>
+  </div>
+</div>
 
-            <details class="acc">
-              <summary class="acc__sum">Attachments (optional)</summary>
-              <div class="acc__body">
-                <label>Attach catalog / docs (optional • multiple)</label>
-                <input id="supCatalogFiles" type="file" multiple />
-              </div>
-              <div class="field">
-                <label>Attach card image (optional)</label>
-                <input id="supCardFile" type="file" />
-              </div>
-            </div>
+<div class="btnrow">
+  <button id="saveSupplierNew" type="button" class="btn btn--primary">Save & New</button>
+  <button id="clearSupplier" type="button" class="btn btn--ghost">Clear</button>
+  <button id="saveSupplierClose" type="button" class="btn btn--primary">Save & Close</button>
+</div>
 
-            <div class="field">
-              <label>QR raw (auto-filled if scanned)</label>
-              <input id="supQR" type="text" />
-            </div>
-
-              </div>
-            </details>
-
-            <div class="field">
-              <label>Notes</label>
-              <textarea id="supNotes" rows="3"></textarea>
-            </div>
-
-            <!-- FOLLOW-UP -->
-            <div class="follow">
-              <div class="follow__hdr">Schedule follow-up (IST)</div>
-              <div class="row2">
-                <div class="field">
-                  <label>Date</label>
-                  <input id="supFUDate" type="date" />
-                </div>
-                <div class="field">
-                  <label>Time</label>
-                  <input id="supFUTime" type="time" />
-                </div>
-              </div>
-              <div class="field">
-                <label>Follow-up note</label>
-                <input id="supFUNotes" type="text" placeholder="Call / WhatsApp / send catalog / pricing…" />
-              </div>
-              <div class="row2">
-                <button id="supFUQueueBtn" type="button" class="btn btn--ghost">Add Follow-up</button>
-                <div id="supFULast" class="hint"></div>
-              </div>
-            </div>
-
-            <div class="btnrow">
-              <button id="saveSupplierNew" type="button" class="btn btn--primary">Save & New</button>
-              <button id="clearSupplier" type="button" class="btn btn--ghost">Clear</button>
-              <button id="saveSupplierClose" type="button" class="btn btn--primary">Save & Close</button>
-            </div>
-
-            <div id="supResult" class="result"></div>
+<div id="supResult" class="result"></div>
           </form>
 
           <!-- BUYER FORM -->
           <form id="buyerForm" class="form" style="display:none;">
-            <div class="row2">
-              <div class="field">
-                <label>Contact person <span class="req">*</span></label>
-                <input id="buyContact" type="text" placeholder="Name" autocomplete="name" />
-              </div>
-              <div class="field">
-                <label>Company</label>
-                <input id="buyCompany" type="text" placeholder="Company" autocomplete="organization" />
-              </div>
-            </div>
+<div class="row2">
+  <div class="field">
+    <label>Company <span class="req">*</span></label>
+    <input id="buyCompany" type="text" placeholder="Company" autocomplete="organization" />
+  </div>
+  <div class="field">
+    <label>Contact person <span class="req">*</span></label>
+    <input id="buyContact" type="text" placeholder="Name" autocomplete="name" />
+  </div>
+</div>
 
-            <div class="row2">
-              <div class="field">
-                <label>Title</label>
-                <input id="buyTitle" type="text" placeholder="Title" />
-              </div>
-              <div class="field">
-                <label>Email</label>
-                <input id="buyEmail" type="email" placeholder="name@company.com" autocomplete="email" />
-              </div>
-            </div>
+<div class="row2">
+  <div class="field">
+    <label>Title</label>
+    <input id="buyTitle" type="text" placeholder="Title" />
+  </div>
+  <div class="field">
+    <label>Email <span class="req">*</span></label>
+    <input id="buyEmail" type="email" placeholder="name@company.com" autocomplete="email" />
+  </div>
+</div>
 
-            <div class="row2">
-              <div class="field">
-                <label>Country (type to search)</label>
-                <div id="buyCountryCombo"></div>
-              </div>
-              <div class="field">
-                <label>Markets (type to search)</label>
-                <div id="buyMarketsCombo"></div>
-              </div>
-            </div>
+<div class="row2">
+  <div class="field">
+    <label>Country (type to search)</label>
+    <div id="buyCountryCombo"></div>
+  </div>
+  <div class="field">
+    <label>Markets (type to search)</label>
+    <div id="buyMarketsCombo"></div>
+  </div>
+</div>
 
-            <div class="row2">
-              <div class="field">
-                <label>Phone 1</label>
-                <input id="buyPhone" type="tel" placeholder="+91 …" autocomplete="tel" />
-              </div>
-              <div class="field">
-                <label>Phone 2 (optional)</label>
-                <input id="buyPhone2" type="tel" placeholder="+91 …" autocomplete="tel" />
-              </div>
-            </div>
+<div class="row2">
+  <div class="field">
+    <label>Phone 1 <span class="req">*</span></label>
+    <input id="buyPhone" type="tel" placeholder="+91 …" autocomplete="tel" />
+  </div>
+  <div class="field">
+    <label>Phone 2 (optional)</label>
+    <input id="buyPhone2" type="tel" placeholder="+91 …" autocomplete="tel" />
+  </div>
+</div>
 
-            <div class="row2">
-              <div class="field">
-                <label>Website</label>
-                <input id="buyWebsite" type="url" placeholder="https://…" />
-              </div>
-              <div class="field">
-                <label>Social</label>
-                <input id="buySocial" type="text" placeholder="@company" />
-              </div>
-            </div>
+<div class="row2">
+  <div class="field">
+    <label>Attachment: Docs (optional)</label>
+    <input id="buyCatalogFiles" type="file" multiple />
+  </div>
+  <div class="field">
+    <label>Attachment: Card image (optional)</label>
+    <input id="buyCardFile" type="file" />
+  </div>
+</div>
 
-            <div class="row2">
-              <div class="field">
-                <label>Product Type (type to search)</label>
-                <div id="buyProductTypeCombo"></div>
-              </div>
-              <div class="field">
-                <label>Private label?</label>
-                <select id="buyPL">
-                  <option value=""></option>
-                  <option>Private label</option>
-                  <option>Own brand</option>
-                  <option>Both</option>
-                </select>
-              </div>
-            </div>
+<details class="acc">
+  <summary class="acc__sum">More details (optional)</summary>
+  <div class="acc__body">
+    <div class="row2">
+      <div class="field">
+        <label>Website</label>
+        <input id="buyWebsite" type="url" placeholder="https://…" />
+      </div>
+      <div class="field">
+        <label>Social</label>
+        <input id="buySocial" type="text" placeholder="@company" />
+      </div>
+    </div>
 
-              </div>
-            </details>
+    <div class="row2">
+      <div class="field">
+        <label>Product Type (type to search)</label>
+        <div id="buyProductTypeCombo"></div>
+      </div>
+      <div class="field">
+        <label>Private label?</label>
+        <select id="buyPL">
+          <option value=""></option>
+          <option>Private label</option>
+          <option>Own brand</option>
+          <option>Both</option>
+        </select>
+      </div>
+    </div>
 
-            <div class="field">
-              <label>What do they want to buy? (one per line) <span class="req">*</span></label>
-              <textarea id="buyNeeds" rows="4" placeholder="Item 1&#10;Item 2&#10;Item 3"></textarea>
-            </div>
+    <div class="field">
+      <label>QR raw (auto-filled if scanned)</label>
+      <input id="buyQR" type="text" />
+    </div>
+  </div>
+</details>
 
-            <div class="row2">
-              <div class="field">
-                <label>Attach docs (optional • multiple)</label>
-                <input id="buyCatalogFiles" type="file" multiple />
-              </div>
-              <div class="field">
-                <label>Attach card image (optional)</label>
-                <input id="buyCardFile" type="file" />
-              </div>
-            </div>
+<div class="field">
+  <label>Notes</label>
+  <textarea id="buyNotes" rows="3"></textarea>
+</div>
 
-            <div class="field">
-              <label>QR raw (auto-filled if scanned)</label>
-              <input id="buyQR" type="text" />
-            </div>
+<div id="buyNeedsWrap" class="field isHidden">
+  <label>What do they want to buy? (one per line)</label>
+  <textarea id="buyNeeds" rows="3" placeholder="Item 1&#10;Item 2"></textarea>
+  <div class="hint">Shown after Product Type is selected.</div>
+</div>
 
-            <div class="field">
-              <label>Notes</label>
-              <textarea id="buyNotes" rows="3"></textarea>
-            </div>
+<!-- FOLLOW-UP -->
+<div class="follow">
+  <div class="follow__hdr">
+    Schedule follow-up (IST)
+    <div class="follow__chips">
+      <button id="buyFUToday" type="button" class="chipbtn">Today 10:00</button>
+      <button id="buyFUNextWeek" type="button" class="chipbtn">+1 week 10:00</button>
+      <button id="buyFU2Weeks" type="button" class="chipbtn">+2 weeks 10:00</button>
+      <button id="buyFUClear" type="button" class="chipbtn chipbtn--ghost">Clear</button>
+    </div>
+  </div>
+  <div class="row2">
+    <div class="field">
+      <label>Date</label>
+      <input id="buyFUDate" type="date" />
+    </div>
+    <div class="field">
+      <label>Time</label>
+      <input id="buyFUTime" type="time" />
+    </div>
+  </div>
+  <div class="field">
+    <label>Follow-up note</label>
+    <input id="buyFUNotes" type="text" placeholder="Call / WhatsApp / send catalog / pricing…" />
+  </div>
+  <div class="row2">
+    <button id="buyFUQueueBtn" type="button" class="btn btn--ghost">Add Follow-up</button>
+    <div id="buyFULast" class="hint"></div>
+  </div>
+</div>
 
-            <!-- FOLLOW-UP -->
-            <div class="follow">
-              <div class="follow__hdr">Schedule follow-up (IST)</div>
-              <div class="row2">
-                <div class="field">
-                  <label>Date</label>
-                  <input id="buyFUDate" type="date" />
-                </div>
-                <div class="field">
-                  <label>Time</label>
-                  <input id="buyFUTime" type="time" />
-                </div>
-              </div>
-              <div class="field">
-                <label>Follow-up note</label>
-                <input id="buyFUNotes" type="text" placeholder="Call / WhatsApp / send catalog / pricing…" />
-              </div>
-              <div class="row2">
-                <button id="buyFUQueueBtn" type="button" class="btn btn--ghost">Add Follow-up</button>
-                <div id="buyFULast" class="hint"></div>
-              </div>
-            </div>
+<div class="btnrow">
+  <button id="saveBuyerNew" type="button" class="btn btn--primary">Save & New</button>
+  <button id="clearBuyer" type="button" class="btn btn--ghost">Clear</button>
+  <button id="saveBuyerClose" type="button" class="btn btn--primary">Save & Close</button>
+</div>
 
-            <div class="btnrow">
-              <button id="saveBuyerNew" type="button" class="btn btn--primary">Save & New</button>
-              <button id="clearBuyer" type="button" class="btn btn--ghost">Clear</button>
-              <button id="saveBuyerClose" type="button" class="btn btn--primary">Save & Close</button>
-            </div>
-
-            <div id="buyResult" class="result"></div>
+<div id="buyResult" class="result"></div>
           </form>
 
           <div class="footerline">
@@ -420,12 +426,6 @@
           <div class="card__title">Leads</div>
           <div class="card__sub">Call / Email / Edit saved leads</div>
         </div>
-        <div class="leadshead">
-          <div class="seg seg--sm" id="leadsViewSeg">
-            <button id="leadsViewList" class="seg__btn isActive" type="button">List</button>
-            <button id="leadsViewCards" class="seg__btn" type="button">Cards</button>
-          </div>
-        </div>
 
         <div class="filters">
           <div class="field">
@@ -460,8 +460,6 @@
             <tbody></tbody>
           </table>
         </div>
-
-        <div id="leadsCards" class="leadcards" style="display:none;"></div>
       </div>
     </section>
 
@@ -502,6 +500,14 @@
       </div>
     </section>
   </main>
+
+  <div id="stickyBar" class="stickybar" aria-hidden="true">
+    <div class="stickybar__inner">
+      <button id="stickySecondary" class="btn btn--ghost" type="button">Close</button>
+      <button id="stickyPrimary" class="btn btn--primary" type="button">Save</button>
+    </div>
+  </div>
+
 
   <!-- QR overlay -->
   <div id="qrOverlay" class="overlay" aria-hidden="true">
@@ -687,19 +693,10 @@
     </div>
   </div>
 
-
-  <!-- Sticky action bar (mobile/tablet) -->
-  <div id="stickyBar" class="stickybar" aria-hidden="true">
-    <div class="stickybar__inner">
-      <button id="stickySecondary" class="btn btn--ghost" type="button">Close</button>
-      <button id="stickyPrimary" class="btn btn--primary" type="button">Save</button>
-    </div>
-  </div>
-
   <!-- IMPORTANT: load QR lib only once (local vendor copy) -->
   <script src="./vendor/html5-qrcode.min.js"></script>
 
   <!-- main app -->
-  <script src="app.js?v=20251229e"></script>
+  <script src="app.js?v=20251229f"></script>
 </body>
 </html>
