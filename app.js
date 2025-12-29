@@ -1044,6 +1044,9 @@ let calView = "day";
 let calCursor = new Date();
 let followUpsCache = [];
 
+const IST_TZ = "Asia/Kolkata";
+const WEEKDAY_MAP = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
+
 function setCalView(v){
   calView = v;
   ["Day","Week","Month"].forEach(x=>{
@@ -1052,14 +1055,91 @@ function setCalView(v){
   renderCalendar();
 }
 
-function startOfDay(d){ const x=new Date(d); x.setHours(0,0,0,0); return x; }
-function addDays(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
-function startOfWeek(d){ const x=startOfDay(d); x.setDate(x.getDate()-x.getDay()); return x; }
-function endOfWeek(d){ return addDays(startOfWeek(d),6); }
+function addDaysAbs(d,n){ return new Date(d.getTime() + n*86400000); }
 
-function fmtMonthTitle(d){
-  try{ return new Intl.DateTimeFormat("en-US", { month:"long", year:"numeric" }).format(d); }
+function istKey(dt){
+  // en-CA returns YYYY-MM-DD
+  try{
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: IST_TZ, year:"numeric", month:"2-digit", day:"2-digit"
+    }).format(dt);
+  }catch{
+    // fallback (not ideal, but ok)
+    return dt.toISOString().slice(0,10);
+  }
+}
+
+function istWeekdayIndex(dt){
+  // Get weekday in IST, not local timezone
+  try{
+    const wd = new Intl.DateTimeFormat("en-US", { timeZone: IST_TZ, weekday:"short" }).format(dt);
+    return WEEKDAY_MAP[wd] ?? 0;
+  }catch{
+    return dt.getDay();
+  }
+}
+
+function istMidnightFromKey(key){
+  // Key is YYYY-MM-DD, force IST midnight for correct absolute boundaries
+  return new Date(`${key}T00:00:00+05:30`);
+}
+
+function fmtISTDateShort(dt){
+  try{
+    return new Intl.DateTimeFormat("en-US", { timeZone: IST_TZ, month:"2-digit", day:"2-digit", year:"numeric" }).format(dt);
+  }catch{
+    return dt.toLocaleDateString();
+  }
+}
+
+function fmtISTTime(dt){
+  try{
+    return new Intl.DateTimeFormat("en-US", { timeZone: IST_TZ, hour:"numeric", minute:"2-digit", hour12:true }).format(dt);
+  }catch{
+    return dt.toLocaleTimeString();
+  }
+}
+
+function fmtMonthTitleIST(d){
+  try{ return new Intl.DateTimeFormat("en-US", { timeZone: IST_TZ, month:"long", year:"numeric" }).format(d); }
   catch{ return d.toDateString(); }
+}
+
+function dayRangeFromCursor(){
+  const key = istKey(calCursor);
+  const start = istMidnightFromKey(key);
+  const end = addDaysAbs(start, 1);
+  return { start, end, label: fmtISTDateShort(start) };
+}
+
+function weekRangeFromCursor(){
+  const key = istKey(calCursor);
+  const base = istMidnightFromKey(key);
+  const wd = istWeekdayIndex(base); // 0=Sun..6=Sat (in IST)
+  const start = addDaysAbs(base, -wd);
+  const end = addDaysAbs(start, 7);
+  const endLabel = fmtISTDateShort(addDaysAbs(end, -1));
+  return { start, end, label: `${fmtISTDateShort(start)} – ${endLabel}` };
+}
+
+function monthRange(d){
+  // Build using IST keys, but still render grid like you already do.
+  const first = new Date(d.getFullYear(), d.getMonth(), 1);
+  const firstKey = istKey(first);
+  const firstIST = istMidnightFromKey(firstKey);
+
+  // Find first visible Sunday for month grid (in IST)
+  const wd = istWeekdayIndex(firstIST);
+  const start = addDaysAbs(firstIST, -wd);
+
+  const last = new Date(d.getFullYear(), d.getMonth()+1, 0);
+  const lastKey = istKey(last);
+  const lastIST = istMidnightFromKey(lastKey);
+
+  const wdLast = istWeekdayIndex(lastIST);
+  const end = addDaysAbs(lastIST, (6 - wdLast) + 1); // exclusive end
+
+  return { start, end, label: fmtMonthTitleIST(d) };
 }
 
 function parseIso(iso){
@@ -1067,6 +1147,7 @@ function parseIso(iso){
   return (dt && !isNaN(dt.getTime())) ? dt : null;
 }
 
+// Parses IST label like "12/28/25 04:15 PM"
 function parseISTLabel(label){
   const s = String(label||"").trim();
   const m = s.match(/^(\d{2})\/(\d{2})\/(\d{2})\s+(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
@@ -1089,6 +1170,7 @@ function parseISTLabel(label){
 
 async function refreshCalendar(){
   try{
+    // ensure leads cache is available for call/email in calendar
     if(!window.__leadsCache || !window.__leadsCache.length){
       try{
         const dataLeads = await getJson({ action:"listLeads", limit:"2000" });
@@ -1112,27 +1194,121 @@ async function refreshCalendar(){
 
 function renderCalendar(){
   if(calView==="month"){
-    $("calTitle").textContent = fmtMonthTitle(calCursor);
+    $("calTitle").textContent = fmtMonthTitleIST(calCursor);
     renderMonthGrid();
     renderSideListForRange(monthRange(calCursor));
-  } else if(calView==="week"){
-    const s = startOfWeek(calCursor), e = endOfWeek(calCursor);
-    $("calTitle").textContent = `${s.toLocaleDateString()} – ${e.toLocaleDateString()}`;
-    $("calGrid").innerHTML = "";
-    renderSideListForRange({ start:s, end:addDays(e,1), label:"This week" });
-  } else {
-    $("calTitle").textContent = calCursor.toLocaleDateString();
-    $("calGrid").innerHTML = "";
-    renderSideListForRange({ start:startOfDay(calCursor), end:addDays(startOfDay(calCursor),1), label:"Today" });
+    return;
   }
+
+  if(calView==="week"){
+    const range = weekRangeFromCursor();
+    $("calTitle").textContent = range.label;
+    renderWeekGrid(range);
+    renderSideListForRange({ start: range.start, end: range.end, label: "This week" });
+    return;
+  }
+
+  // day
+  const range = dayRangeFromCursor();
+  $("calTitle").textContent = range.label;
+  renderDayGrid(range);
+  renderSideListForRange({ start: range.start, end: range.end, label: "Today" });
 }
 
-function monthRange(d){
-  const first = new Date(d.getFullYear(), d.getMonth(), 1);
-  const start = startOfWeek(first);
-  const last = new Date(d.getFullYear(), d.getMonth()+1, 0);
-  const end = addDays(endOfWeek(last),1);
-  return { start, end, label: fmtMonthTitle(d) };
+function renderWeekGrid(range){
+  const grid = $("calGrid");
+  grid.innerHTML = "";
+
+  const headRow = document.createElement("div");
+  headRow.className = "calrow calhead";
+  ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].forEach(n=>{
+    const c=document.createElement("div");
+    c.className="calcell";
+    c.style.minHeight="auto";
+    c.innerHTML = `<div class="calday"><span class="calnum">${n}</span></div>`;
+    headRow.appendChild(c);
+  });
+  grid.appendChild(headRow);
+
+  const row = document.createElement("div");
+  row.className = "calrow";
+
+  for(let i=0;i<7;i++){
+    const dt = addDaysAbs(range.start, i);
+    const cell = document.createElement("div");
+    cell.className = "calcell";
+
+    const key = istKey(dt);
+    const items = followUpsCache.filter(x => istKey(x._dt) === key);
+
+    const todayKey = istKey(new Date());
+    if(key === todayKey) cell.classList.add("isToday");
+
+    cell.innerHTML = `
+      <div class="calday">
+        <span class="calnum">${new Intl.DateTimeFormat("en-US",{timeZone:IST_TZ,day:"numeric"}).format(dt)}</span>
+        <span>${items.length ? items.length+" FU" : ""}</span>
+      </div>
+    `;
+
+    if(items.length){
+      const b = document.createElement("div");
+      b.className = "caltag";
+      b.textContent = "View";
+      b.addEventListener("click", ()=> {
+        calCursor = dt;
+        setCalView("day");
+      });
+      cell.appendChild(b);
+    }
+
+    row.appendChild(cell);
+  }
+
+  grid.appendChild(row);
+}
+
+function renderDayGrid(range){
+  const grid = $("calGrid");
+  grid.innerHTML = "";
+
+  const dayKey = istKey(range.start);
+  const items = followUpsCache.filter(f => istKey(f._dt) === dayKey);
+
+  if(!items.length){
+    const empty = document.createElement("div");
+    empty.className = "hint";
+    empty.style.padding = "14px";
+    empty.textContent = "No follow-ups scheduled for this day.";
+    grid.appendChild(empty);
+    return;
+  }
+
+  const wrap = document.createElement("div");
+  wrap.style.display = "flex";
+  wrap.style.flexDirection = "column";
+  wrap.style.gap = "10px";
+  wrap.style.padding = "8px";
+
+  items.forEach(f=>{
+    const card = document.createElement("div");
+    card.className = "calitem";
+    const who = (f.company || f.contact || "").trim();
+    const meta = [f.type, f.country, f.productType].filter(Boolean).join(" • ");
+
+    card.innerHTML = `
+      <div class="calitem__top">
+        <div>
+          <div class="calitem__when">${fmtISTTime(f._dt)} • ${esc(fmtISTDateShort(f._dt))}</div>
+          <div class="calitem__meta">${esc(who)}${meta? " — "+esc(meta):""}</div>
+        </div>
+      </div>
+      ${f.notes ? `<div class="calitem__note">${esc(f.notes)}</div>` : ``}
+    `;
+    wrap.appendChild(card);
+  });
+
+  grid.appendChild(wrap);
 }
 
 function renderMonthGrid(){
@@ -1141,7 +1317,7 @@ function renderMonthGrid(){
   const end = range.end;
 
   const days = [];
-  for(let dt=new Date(start); dt<end; dt=addDays(dt,1)) days.push(new Date(dt));
+  for(let dt=new Date(start); dt<end; dt=addDaysAbs(dt,1)) days.push(new Date(dt));
 
   const grid = $("calGrid");
   grid.innerHTML = "";
@@ -1165,18 +1341,16 @@ function renderMonthGrid(){
       const cell=document.createElement("div");
       cell.className="calcell";
 
-      const today = startOfDay(new Date());
-      if(startOfDay(dt).getTime()===today.getTime()) cell.classList.add("isToday");
+      const key = istKey(dt);
+      const todayKey = istKey(new Date());
+      if(key===todayKey) cell.classList.add("isToday");
+
+      // dim other month cells (based on local month - ok visually)
       if(dt.getMonth()!==calCursor.getMonth()) cell.classList.add("isOtherMonth");
 
-      const key = dt.toISOString().slice(0,10);
-      const items = followUpsCache.filter(x=> {
-        const k = (x.scheduledAtISO || "").slice(0,10);
-        if(k) return k===key;
-        return startOfDay(x._dt).toISOString().slice(0,10)===key;
-      });
+      const items = followUpsCache.filter(x=> istKey(x._dt) === key);
 
-      cell.innerHTML = `<div class="calday"><span class="calnum">${dt.getDate()}</span><span>${items.length? items.length+" FU":""}</span></div>`;
+      cell.innerHTML = `<div class="calday"><span class="calnum">${new Intl.DateTimeFormat("en-US",{timeZone:IST_TZ,day:"numeric"}).format(dt)}</span><span>${items.length? items.length+" FU":""}</span></div>`;
 
       if(items.length){
         const b = document.createElement("div");
@@ -1224,21 +1398,19 @@ function renderSideListForRange(range){
     const lead = (window.__leadsCache||[]).find(x=>x.leadId===f.leadId);
     const phone = (lead?.phone || "").trim();
     const email = (lead?.email || "").trim();
-    const wa = safeWa(phone);
 
     el.innerHTML = `
       <div class="calitem__top">
         <div>
-          <div class="calitem__when">${esc(f.scheduledAtIST || f._dt.toLocaleString())}</div>
+          <div class="calitem__when">${esc(f.scheduledAtIST || fmtISTTime(f._dt))}</div>
           <div class="calitem__meta">${esc(who)}${meta? " — "+esc(meta):""}</div>
         </div>
       </div>
       ${f.notes ? `<div class="calitem__note">${esc(f.notes)}</div>` : ``}
       <div class="calitem__actions">
         ${phone ? `<a class="iconbtn" href="tel:${esc(safeTel(phone))}">${svgPhone()} Call</a>` : ``}
-        ${wa ? `<a class="iconbtn" target="_blank" rel="noopener" href="${esc(wa)}">${svgWhatsApp()} WhatsApp</a>` : ``}
+        ${phone ? `<a class="iconbtn" target="_blank" rel="noopener" href="https://wa.me/${esc(digitsOnly(phone))}">WhatsApp</a>` : ``}
         ${email ? `<a class="iconbtn" href="mailto:${esc(email)}">${svgMail()} Email</a>` : ``}
-        ${f.calendarEventUrl ? `<a class="iconbtn" target="_blank" rel="noopener" href="${esc(f.calendarEventUrl)}">🗓️ Event</a>` : ``}
         ${f.leadId ? `<a class="iconbtn" href="#" data-open="${esc(f.leadId)}">${svgEdit()} Open Lead</a>` : ``}
       </div>
     `;
@@ -1404,3 +1576,4 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   setStatus("Ready");
   updateSummary();
 });
+
