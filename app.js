@@ -1,9 +1,13 @@
-// BOI CRM — app.js (FINAL UPDATED - SAFE PATCH)
-// Fixes included (only):
-// - QR library fallback loader (no more "QR library not loaded.")
+// BOI CRM — app.js (FINAL UPDATED - FULL)
+// Includes:
+// - QR Scanner: LOCAL, permanent (uses /vendor/html5-qrcode.min.js; no CDN dependency)
 // - Markets/ProductType dropdowns never blank (fallback defaults if Lists is empty)
-// - Auto-save NEW Market/ProductType typed by user into Lists sheet (no duplicates on backend)
-// NOTE: Calendar + Edit behavior unchanged.
+// - Auto-save NEW Market/ProductType typed by user into Lists sheet (no duplicates UI-side; backend should dedupe too)
+// - Phone normalization: stores +countrycode automatically based on selected country
+// - Auto-prefill country code into phone inputs when country selected
+// - Pretty IST Date/Time display in Dashboard + Leads (avoids long GMT strings on mobile)
+//
+// NOTE: Calendar + Edit behavior otherwise unchanged.
 
 const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzrHBqp6ZcS3lvRir9EchBhsldBS1jRghuQCWhj7XOY4nyuy8NRQP6mz3J1WGNYm-cD/exec";
 const LS_SCRIPT_URL = "boi_crm_script_url";
@@ -77,6 +81,33 @@ function istTimeLabel(){
   }
 }
 
+// Pretty IST Date/Time for tables (fixes long GMT strings on mobile)
+function fmtISTPretty(v){
+  const raw = String(v || "").trim();
+  if(!raw) return "";
+
+  const dt = new Date(raw);
+  if(!isNaN(dt.getTime())){
+    try{
+      const s = new Intl.DateTimeFormat("en-US", {
+        timeZone: "Asia/Kolkata",
+        month: "short",
+        day: "2-digit",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true
+      }).format(dt);
+
+      // "Dec 29, 2025, 11:36 AM" -> "Dec 29, 2025 • 11:36 AM"
+      return s.replace(", 20", ", 20").replace(", ", ", ").replace(/,\s(\d{4}),\s/, ", $1 • ");
+    }catch{
+      return dt.toLocaleString();
+    }
+  }
+  return raw;
+}
+
 function addSessionRow(type, main, country){
   const tbody = $("tbl").querySelector("tbody");
   const tr = document.createElement("tr");
@@ -108,7 +139,7 @@ function createCombo(containerId, options, placeholder){
     return Array.from(new Set(arr.map(String).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
   }
 
-  // Keep a case-insensitive set for quick lookup
+  // Case-insensitive set for quick lookup
   let optionsSet = new Set();
   function setOptionsInternal(arr){
     options = normalize(arr);
@@ -137,6 +168,7 @@ function createCombo(containerId, options, placeholder){
       it.addEventListener("click", ()=> set(opt));
       list.appendChild(it);
     });
+
     if(!filtered.length){
       const it = document.createElement("div");
       it.className="combo__item";
@@ -241,7 +273,7 @@ const DIAL_CODES = {
   "Turkey": "90"
 };
 
-function digitsOnly2(s){ return String(s||"").replace(/[^\d]/g,""); }
+function digitsOnly(s){ return String(s||"").replace(/[^\d]/g,""); }
 
 function dialCodeForCountry(country){
   const c = String(country||"").trim();
@@ -249,35 +281,27 @@ function dialCodeForCountry(country){
 }
 
 // Normalize to E.164-ish: +<code><digits>
-// - If user already typed +..., keep + and digits
-// - If user typed digits without +, prepend selected country code (if known)
 function normalizePhone(country, raw){
   const s = String(raw||"").trim();
   if(!s) return "";
 
-  // If user already used +, keep it (strip spaces/dashes)
   if(s.startsWith("+")){
-    const d = digitsOnly2(s);
+    const d = digitsOnly(s);
     return d ? ("+" + d) : "";
   }
 
-  const d = digitsOnly2(s);
+  const d = digitsOnly(s);
   if(!d) return "";
 
-  // If user typed country code but forgot + (example: 9198xxxx), we still add +
   const cc = dialCodeForCountry(country);
-
   if(cc){
-    // If they already started with cc, just add +
     if(d.startsWith(cc)) return "+" + d;
     return "+" + cc + d;
   }
 
-  // Unknown country => best effort: add +
   return "+" + d;
 }
 
-// Auto-prefill +<code> into input if empty, or normalize if user typed digits
 function applyCountryCodeToInput(country, inputEl){
   if(!inputEl) return;
   const cc = dialCodeForCountry(country);
@@ -285,13 +309,11 @@ function applyCountryCodeToInput(country, inputEl){
 
   const v = String(inputEl.value||"").trim();
 
-  // If empty, prefill with +code and a space (nice UX)
   if(!v){
     inputEl.value = "+" + cc + " ";
     return;
   }
 
-  // If has digits but no +, normalize it
   if(v && !v.startsWith("+")){
     inputEl.value = normalizePhone(country, v);
   }
@@ -307,7 +329,7 @@ const DEFAULT_PRODUCT_TYPES = [
   "Sweetner"
 ];
 
-// "Industry standard" export market buckets (simple + usable)
+// "Industry standard" export market buckets
 const DEFAULT_MARKETS = [
   "USA",
   "Canada",
@@ -359,7 +381,6 @@ async function loadLists(){
   const data = await getJson({ action:"lists" });
   const got = data.lists || { productTypes:[], markets:[] };
 
-  // Never allow blanks
   LISTS = {
     productTypes: (got.productTypes && got.productTypes.length) ? got.productTypes : DEFAULT_PRODUCT_TYPES.slice(),
     markets: (got.markets && got.markets.length) ? got.markets : DEFAULT_MARKETS.slice()
@@ -371,13 +392,10 @@ async function maybeSaveListItem(listType, combo){
   const v = String(combo.value||"").trim();
   if(!v) return;
 
-  // if option already exists, no need to save
   if(combo.hasOption && combo.hasOption(v)) return;
 
-  // add locally so UI immediately shows it
   if(combo.addOption) combo.addOption(v);
 
-  // save to backend Lists sheet
   try{
     await postPayload({ action:"addListItem", listType, value:v });
     await loadLists();
@@ -494,7 +512,6 @@ function applyScan(raw){
 }
 
 function isSecureContextForCamera(){
-  // Camera requires HTTPS (GitHub Pages is HTTPS) or localhost
   return window.isSecureContext || location.hostname === "localhost";
 }
 
@@ -758,11 +775,10 @@ function rowLink(url, label){
   return `<a target="_blank" rel="noopener" href="${esc(url)}">${esc(label)}</a>`;
 }
 
-function digitsOnly(s){ return String(s||"").replace(/[^\d]/g,""); }
 function safeTel(phone){
   const d = digitsOnly(phone);
   if(!d) return "";
-  return phone.trim().startsWith("+") ? phone.trim() : "+"+d;
+  return String(phone||"").trim().startsWith("+") ? String(phone||"").trim() : ("+"+d);
 }
 
 function svgPhone(){
@@ -803,7 +819,7 @@ async function refreshDashboard(){
     (data.rows||[]).forEach(r=>{
       const tr=document.createElement("tr");
       tr.innerHTML = `
-        <td>${esc(r.timestampIST||"")}</td>
+        <td>${esc(fmtISTPretty(r.timestampIST || r.timestamp || ""))}</td>
         <td>${esc(r.type||"")}</td>
         <td>${esc(r.company||"")}</td>
         <td>${esc(r.contact||"")}</td>
@@ -840,7 +856,7 @@ async function refreshLeads(){
     (data.rows||[]).forEach(r=>{
       const tr=document.createElement("tr");
       tr.innerHTML = `
-        <td>${esc(r.timestampIST||"")}</td>
+        <td>${esc(fmtISTPretty(r.timestampIST || r.timestamp || ""))}</td>
         <td>${esc(r.type||"")}</td>
         <td>${esc(r.company||"")}</td>
         <td>${esc(r.contact||"")}</td>
@@ -1024,7 +1040,6 @@ function parseISTLabel(label){
 
 async function refreshCalendar(){
   try{
-    // ensure leads cache is available for call/email in calendar
     if(!window.__leadsCache || !window.__leadsCache.length){
       try{
         const dataLeads = await getJson({ action:"listLeads", limit:"2000" });
@@ -1109,7 +1124,6 @@ function renderMonthGrid(){
       const items = followUpsCache.filter(x=> {
         const k = (x.scheduledAtISO || "").slice(0,10);
         if(k) return k===key;
-        // fallback: compare by date
         return startOfDay(x._dt).toISOString().slice(0,10)===key;
       });
 
@@ -1267,22 +1281,22 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   editCountry = createCombo("editCountryCombo", COUNTRIES, "Search country…");
   editMarket = createCombo("editMarketCombo", [], "Search markets…");
   editPT = createCombo("editPTCombo", [], "Search product type…");
-  // Auto-fill country code into phone fields when country is selected/changed
-  supCountry._inputEl.addEventListener("blur", ()=> {
-    applyCountryCodeToInput(supCountry.value, $("supPhone"));
-    applyCountryCodeToInput(supCountry.value, $("supPhone2"));
-  });
 
-  buyCountry._inputEl.addEventListener("blur", ()=> {
-    applyCountryCodeToInput(buyCountry.value, $("buyPhone"));
-    applyCountryCodeToInput(buyCountry.value, $("buyPhone2"));
-  });
+  // Auto-fill country code into phone fields when country selected/changed
+  function wireCountryPhoneAutoFill(countryCombo, phoneId1, phoneId2){
+    if(!countryCombo || !countryCombo._inputEl) return;
 
-  editCountry._inputEl.addEventListener("blur", ()=> {
-    applyCountryCodeToInput(editCountry.value, $("editPhone"));
-    applyCountryCodeToInput(editCountry.value, $("editPhone2"));
-  });
+    const apply = ()=> {
+      applyCountryCodeToInput(countryCombo.value, $(phoneId1));
+      applyCountryCodeToInput(countryCombo.value, $(phoneId2));
+    };
 
+    countryCombo._inputEl.addEventListener("blur", apply);
+    countryCombo._inputEl.addEventListener("change", apply);
+  }
+  wireCountryPhoneAutoFill(supCountry, "supPhone", "supPhone2");
+  wireCountryPhoneAutoFill(buyCountry, "buyPhone", "buyPhone2");
+  wireCountryPhoneAutoFill(editCountry, "editPhone", "editPhone2");
 
   // Auto-save new Markets/ProductTypes typed anywhere (blur)
   [
@@ -1340,5 +1354,3 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   setStatus("Ready");
   updateSummary();
 });
-
-
