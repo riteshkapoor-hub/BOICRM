@@ -6,11 +6,11 @@
 // Keeps:
 // - Your existing theme, Calendar UI, Edit UI behaviors
 
-const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzrHBqp6ZcS3lvRir9EchBhsldBS1jRghuQCWhj7XOY4nyuy8NRQP6mz3J1WGNYm-cD/exec";
+const DEFAULT_SCRIPT_URL = "";
 const LS_SCRIPT_URL = "boi_crm_script_url";
 const LS_USER = "boi_crm_user";
 
-let window.boiLeadType = "supplier";
+let mode = "supplier";
 let html5Qr = null;
 let qrRunning = false;
 let sessionCount = 0;
@@ -25,51 +25,6 @@ function getScriptUrl() {
   return (localStorage.getItem(LS_SCRIPT_URL) || DEFAULT_SCRIPT_URL).trim();
 }
 
-
-function renderDashCards(rows){
-  const mount = $("dashCards");
-  if(!mount) return;
-  const items = rows || [];
-  if(!items.length){
-    mount.innerHTML = `<div class="smallmuted">No leads found.</div>`;
-    return;
-  }
-  mount.innerHTML = items.map(r=>{
-    const badges = [
-      ...splitBadges(r.country ? `Country: ${r.country}` : ""),
-      ...splitBadges(r.markets).map(x=>`Market: ${x}`),
-      ...splitBadges(r.productType).map(x=>`Type: ${x}`)
-    ].slice(0,6);
-
-    const actions = [];
-    if(r.email) actions.push(`<a class="iconbtn" href="mailto:${esc(r.email)}">${svgMail()}<span>Email</span></a>`);
-    if(r.phone) actions.push(`<a class="iconbtn" href="tel:${esc(safeTel(r.phone))}">${svgPhone()}<span>Call</span></a>`);
-    if(r.folderUrl) actions.push(`<a class="iconbtn" href="${esc(r.folderUrl)}" target="_blank" rel="noopener">${svgLink()}<span>Drive</span></a>`);
-
-    return `
-      <div class="leadcard">
-        <div class="leadcard__top">
-          <div>
-            <div class="leadcard__title">${esc(r.company||"(No Company)")}</div>
-            <div class="leadcard__meta">
-              ${esc(r.contact||"")} ${r.contact && r.type ? "•" : ""} ${esc(r.type||"")}
-              ${r.timestampIST ? ` • ${esc(r.timestampIST)}` : ""}
-            </div>
-          </div>
-          <div class="smallmuted">${esc(r.country||"")}</div>
-        </div>
-
-        ${badges.length ? `<div class="badges">${badges.map(b=>`<span class="badge">${esc(b)}</span>`).join("")}</div>` : ""}
-
-        <div class="leadcard__actions">
-          ${actions.join("")}
-        </div>
-      </div>
-    `;
-  }).join("");
-}
-
-
 function setStatus(msg) { $("status").textContent = msg || ""; }
 function updateSummary() { $("summary").textContent = `${sessionCount} leads this session`; }
 function setUserPill() {
@@ -79,64 +34,6 @@ function setUserPill() {
 
 function openOverlay(id) { $(id).classList.add("open"); $(id).setAttribute("aria-hidden","false"); }
 function closeOverlay(id) { $(id).classList.remove("open"); $(id).setAttribute("aria-hidden","true"); }
-
-
-/* ---------- STICKY MOBILE ACTIONS ---------- */
-function isSmallScreen(){ return window.matchMedia && window.matchMedia("(max-width: 720px)").matches; }
-
-function setStickyActions({ show, primaryText, secondaryText, onPrimary, onSecondary }){
-  const bar = $("stickyActions");
-  const primary = $("stickyPrimary");
-  const secondary = $("stickySecondary");
-  if(!bar || !primary || !secondary) return;
-
-  if(!show){
-    bar.classList.add("hidden");
-    bar.setAttribute("aria-hidden","true");
-    primary.onclick = null;
-    secondary.onclick = null;
-    return;
-  }
-  bar.classList.remove("hidden");
-  bar.setAttribute("aria-hidden","false");
-  primary.textContent = primaryText || "Save";
-  secondary.textContent = secondaryText || "Cancel";
-  primary.onclick = onPrimary || null;
-  secondary.onclick = onSecondary || null;
-}
-
-function updateSticky(){
-  // Edit overlay takes priority
-  const editOpen = $("editOverlay")?.classList.contains("open");
-  if(editOpen && isSmallScreen()){
-    setStickyActions({
-      show:true,
-      primaryText:"Save Changes",
-      secondaryText:"Close",
-      onPrimary: ()=> $("btnSaveEdit")?.click(),
-      onSecondary: ()=> { closeOverlay("editOverlay"); updateSticky(); }
-    });
-    return;
-  }
-
-  const captureVisible = $("viewCapture") && $("viewCapture").style.display !== "none";
-  if(captureVisible && isSmallScreen()){
-    const isSupplier = (window.boiLeadType === "supplier");
-    const primaryBtn = isSupplier ? $("saveSupplierNew") : $("saveBuyerNew");
-    const secondaryBtn = isSupplier ? $("saveSupplierClose") : $("saveBuyerClose");
-    setStickyActions({
-      show:true,
-      primaryText:"Save & New",
-      secondaryText:"Save & Close",
-      onPrimary: ()=> primaryBtn?.click(),
-      onSecondary: ()=> secondaryBtn?.click()
-    });
-    return;
-  }
-
-  // Otherwise hide
-  setStickyActions({ show:false });
-}
 
 function ensureUser() {
   const u = (localStorage.getItem(LS_USER) || "").trim();
@@ -153,129 +50,16 @@ function showTab(which){
   if(which==="Dashboard") refreshDashboard();
   if(which==="Leads") refreshLeads();
   if(which==="Calendar") refreshCalendar();
-  if(which==="Leads") applyLeadsView();
-  if(which==="Dashboard") applyDashView();
-  updateSticky();
 }
-
-// --- View preferences (List vs Cards) ---
-const LS_VIEW_LEADS = "boi_view_leads";
-const LS_VIEW_DASH  = "boi_view_dash";
-
-function getViewPref(key, fallback="list"){
-  try{ return localStorage.getItem(key) || fallback; }catch{ return fallback; }
-}
-function setViewPref(key, val){
-  try{ localStorage.setItem(key, val); }catch{}
-}
-
-function setSegActive(listBtn, cardsBtn, window.boiLeadType){
-  if(!listBtn || !cardsBtn) return;
-  listBtn.classList.toggle("is-active", window.boiLeadType==="list");
-  cardsBtn.classList.toggle("is-active", window.boiLeadType==="cards");
-}
-
-function applyLeadsView(){
-  const window.boiLeadType = getViewPref(LS_VIEW_LEADS,"list");
-  setSegActive($("leadsViewList"), $("leadsViewCards"), window.boiLeadType);
-  const tableWrap = $("leadsTable")?.closest(".tablewrap");
-  const cards = $("leadsCards");
-  if(tableWrap) tableWrap.style.display = (window.boiLeadType==="list") ? "" : "none";
-  if(cards) cards.style.display = (window.boiLeadType==="cards") ? "" : "none";
-}
-function applyDashView(){
-  const window.boiLeadType = getViewPref(LS_VIEW_DASH,"list");
-  setSegActive($("dashViewList"), $("dashViewCards"), window.boiLeadType);
-  const tableWrap = $("dashTable")?.closest(".tablewrap");
-  const cards = $("dashCards");
-  if(tableWrap) tableWrap.style.display = (window.boiLeadType==="list") ? "" : "none";
-  if(cards) cards.style.display = (window.boiLeadType==="cards") ? "" : "none";
-}
-
-function splitBadges(s){
-  return String(s||"")
-    .split(/[,;\n]+/)
-    .map(x=>x.trim())
-    .filter(Boolean)
-    .slice(0,6);
-}
-
-function renderLeadCards(rows, mountId){
-  const mount = $(mountId);
-  if(!mount) return;
-  const items = rows || [];
-  if(!items.length){
-    mount.innerHTML = `<div class="smallmuted">No leads found.</div>`;
-    return;
-  }
-  mount.innerHTML = items.map(r=>{
-    const wa1 = safeWa(r.phone);
-    const wa2 = safeWa(r.phone2);
-    const badges = [
-      ...splitBadges(r.country ? `Country: ${r.country}` : ""),
-      ...splitBadges(r.markets).map(x=>`Market: ${x}`),
-      ...splitBadges(r.productType).map(x=>`Type: ${x}`)
-    ].slice(0,6);
-
-    const actions = [];
-    if(r.email) actions.push(`<a class="iconbtn" href="mailto:${esc(r.email)}" title="Email">${svgMail()}<span>Email</span></a>`);
-    if(r.phone) actions.push(`<a class="iconbtn" href="tel:${esc(safeTel(r.phone))}" title="Call">${svgPhone()}<span>Call</span></a>`);
-    if(wa1) actions.push(`<a class="iconbtn" href="${esc(wa1)}" target="_blank" rel="noopener" title="WhatsApp">${svgWhatsApp()}<span>WhatsApp</span></a>`);
-    if(r.phone2) actions.push(`<a class="iconbtn" href="tel:${esc(safeTel(r.phone2))}" title="Call 2">${svgPhone()}<span>Call 2</span></a>`);
-    if(wa2) actions.push(`<a class="iconbtn" href="${esc(wa2)}" target="_blank" rel="noopener" title="WhatsApp 2">${svgWhatsApp()}<span>WA 2</span></a>`);
-
-    const editBtn = (r.leadId) ? `<a class="iconbtn iconbtn--primary" href="#" data-edit="${esc(r.leadId)}">${svgEdit()}<span>Edit</span></a>` : "";
-
-    return `
-      <div class="leadcard">
-        <div class="leadcard__top">
-          <div>
-            <div class="leadcard__title">${esc(r.company||"(No Company)")}</div>
-            <div class="leadcard__meta">
-              ${esc(r.contact||"")} ${r.contact && r.type ? "•" : ""} ${esc(r.type||"")}
-              ${r.timestampIST ? ` • ${esc(r.timestampIST)}` : ""}
-            </div>
-            <div class="leadcard__meta">
-              ${r.enteredBy ? `Entered by ${esc(r.enteredBy)}` : ""}
-            </div>
-          </div>
-          <div class="smallmuted">${esc(r.country||"")}</div>
-        </div>
-
-        ${badges.length ? `<div class="badges">${badges.map(b=>`<span class="badge">${esc(b)}</span>`).join("")}</div>` : ""}
-
-        <div class="leadcard__actions">
-          ${actions.join("")}
-          ${editBtn}
-          ${r.folderUrl ? `<a class="iconbtn" href="${esc(r.folderUrl)}" target="_blank" rel="noopener">${svgLink()}<span>Drive</span></a>` : ""}
-        </div>
-      </div>
-    `;
-  }).join("");
-
-  // wire Edit buttons
-  mount.querySelectorAll("[data-edit]").forEach(a=>{
-    a.addEventListener("click", (e)=>{
-      e.preventDefault();
-      const id = a.getAttribute("data-edit");
-      const row = (window.__leadsCache||[]).find(x=>String(x.leadId)===String(id));
-      if(id) openEdit(id, row || {});
-    });
-  });
-}
-
-
 
 function setMode(newMode){
-  window.boiLeadType = newMode;
-  $("btnSupplier").classList.toggle("isActive", window.boiLeadType==="supplier");
-  $("btnBuyer").classList.toggle("isActive", window.boiLeadType==="buyer");
-  $("supplierForm").style.display = window.boiLeadType==="supplier" ? "" : "none";
-  $("buyerForm").style.display = window.boiLeadType==="buyer" ? "" : "none";
-  $("formTitle").textContent = window.boiLeadType==="supplier" ? "Supplier details" : "Buyer details";
-  updateSticky();
+  mode = newMode;
+  $("btnSupplier").classList.toggle("isActive", mode==="supplier");
+  $("btnBuyer").classList.toggle("isActive", mode==="buyer");
+  $("supplierForm").style.display = mode==="supplier" ? "" : "none";
+  $("buyerForm").style.display = mode==="buyer" ? "" : "none";
+  $("formTitle").textContent = mode==="supplier" ? "Supplier details" : "Buyer details";
 }
-
 
 function esc(s){
   return String(s||"")
@@ -365,29 +149,7 @@ function createCombo(containerId, options, placeholder){
   input.addEventListener("focus", open);
   input.addEventListener("input", ()=>{ open(); render(input.value); });
   btn.addEventListener("click", ()=> root.classList.contains("open") ? close() : open());
-  /* ---- Lead type state (safe) ---- */
-window.boiLeadType = (window.boiLeadType || localStorage.getItem("boi_lead_type") || "supplier");
-
-function applyLeadTypeUI(){
-  const sup = document.getElementById("supplierForm");
-  const buy = document.getElementById("buyerForm");
-  const t = window.boiLeadType;
-  if(sup) sup.style.display = (t==="supplier") ? "" : "none";
-  if(buy) buy.style.display = (t==="buyer") ? "" : "none";
-  document.querySelectorAll("[data-leadtype]").forEach(btn=>{
-    btn.classList.toggle("isActive", btn.getAttribute("data-leadtype")===t);
-  });
-}
-
-function setLeadType(next){
-  window.boiLeadType = next || "supplier";
-  localStorage.setItem("boi_lead_type", window.boiLeadType);
-  applyLeadTypeUI();
-  try{ updateAutoHide(); }catch(e){}
-  try{ updateSticky(); }catch(e){}
-}
-
-document.addEventListener("click",(e)=>{ if(!root.contains(e.target)) close(); });
+  document.addEventListener("click",(e)=>{ if(!root.contains(e.target)) close(); });
 
   root.appendChild(input);
   root.appendChild(btn);
@@ -741,7 +503,7 @@ function parseVCard(text){
 
 function applyScan(raw){
   const p=parseVCard(raw);
-  if(window.boiLeadType==="supplier"){
+  if(mode==="supplier"){
     if(p.company && !$("supCompany").value) $("supCompany").value=p.company;
     if(p.fullName && !$("supContact").value) $("supContact").value=p.fullName;
     if(p.email && !$("supEmail").value) $("supEmail").value=p.email;
@@ -1169,10 +931,6 @@ async function refreshLeads(){
         eb.addEventListener("click", ()=> openEdit(r.leadId, r));
       }
     });
-
-    // Cards view
-    renderLeadCards(data.rows||[], "leadsCards");
-    applyLeadsView();
   } catch(e){
     console.error(e);
     setStatus("Leads load failed.");
@@ -1214,7 +972,6 @@ function openEdit(leadId, row){
 
   $("editSub").textContent = `${row?.leadId||leadId||""} • ${row?.company||row?.contact||""}`;
   openOverlay("editOverlay");
-  updateSticky();
 }
 
 function clearEditFollowup(){
@@ -1704,13 +1461,10 @@ function renderSideListForRange(range){
 /* ---------- BOOT (FULL) ---------- */
 document.addEventListener("DOMContentLoaded", async ()=>{
   // tabs
-  window.addEventListener("resize", ()=> updateSticky());
   $("tabCapture").addEventListener("click", ()=>showTab("Capture"));
   $("tabDashboard").addEventListener("click", ()=>showTab("Dashboard"));
   $("tabLeads").addEventListener("click", ()=>showTab("Leads"));
   $("tabCalendar").addEventListener("click", ()=>showTab("Calendar"));
-
-  updateSticky();
 
   // lead type
   $("btnSupplier").addEventListener("click", ()=>setMode("supplier"));
@@ -1723,7 +1477,7 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   });
 
   // edit overlay
-  $("btnCloseEdit").addEventListener("click", ()=>{ closeOverlay("editOverlay"); updateSticky(); });
+  $("btnCloseEdit").addEventListener("click", ()=>closeOverlay("editOverlay"));
   $("btnSaveEdit").addEventListener("click", saveEdit);
   $("btnClearEditFU").addEventListener("click", clearEditFollowup);
 
@@ -1853,120 +1607,4 @@ document.addEventListener("DOMContentLoaded", async ()=>{
 
   setStatus("Ready");
   updateSummary();
-
-  // View toggles (List vs Cards)
-  const leadsListBtn = $("leadsViewList");
-  const leadsCardsBtn = $("leadsViewCards");
-  if(leadsListBtn && leadsCardsBtn){
-    leadsListBtn.addEventListener("click", ()=>{
-      setViewPref(LS_VIEW_LEADS,"list");
-      applyLeadsView();
-    });
-    leadsCardsBtn.addEventListener("click", ()=>{
-      setViewPref(LS_VIEW_LEADS,"cards");
-      applyLeadsView();
-    });
-  }
-
-  const dashListBtn = $("dashViewList");
-  const dashCardsBtn = $("dashViewCards");
-  if(dashListBtn && dashCardsBtn){
-    dashListBtn.addEventListener("click", ()=>{
-      setViewPref(LS_VIEW_DASH,"list");
-      applyDashView();
-    });
-    dashCardsBtn.addEventListener("click", ()=>{
-      setViewPref(LS_VIEW_DASH,"cards");
-      applyDashView();
-    });
-  }
-
-  // Apply views on load + when rotating device
-  window.addEventListener("resize", ()=>{
-    applyLeadsView();
-    applyDashView();
-  });
-
-
 });
-
-function $(id){ return document.getElementById(id); }
-
-  // keep sticky in sync
-  try{ updateSticky(); }catch(e){}
-}
-
-
-function pad2(n){ return String(n).padStart(2,"0"); }
-function ymd(d){ return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; }
-
-function setFollowUp(scope, kind){
-  const dateId = scope==="sup" ? "supFUDate" : scope==="buy" ? "buyFUDate" : "editFUDate";
-  const timeId = scope==="sup" ? "supFUTime" : scope==="buy" ? "buyFUTime" : "editFUTime";
-  const noteId = scope==="sup" ? "supFU नोट" : null; // not used
-  const dateEl = $(dateId);
-  const timeEl = $(timeId);
-  if(!dateEl || !timeEl) return;
-  if(kind==="clear"){
-    dateEl.value=""; timeEl.value="";
-    return;
-  }
-  const d = new Date();
-  if(kind==="7d") d.setDate(d.getDate()+7);
-  if(kind==="14d") d.setDate(d.getDate()+14);
-  dateEl.value = ymd(d);
-  timeEl.value = "10:00";
-}
-
-function wireQuickFollow(){
-  document.querySelectorAll(".quickfollow").forEach(row=>{
-    row.addEventListener("click",(ev)=>{
-      const b = ev.target.closest("button[data-qf]");
-      if(!b) return;
-      const scope = row.getAttribute("data-scope");
-      const kind = b.getAttribute("data-qf");
-      setFollowUp(scope, kind);
-    });
-  });
-}
-
-function wireLeadsView(){
-  const btnCards = $("leadsViewCards");
-  const btnList = $("leadsViewList");
-  const cards = $("leadsCards");
-  const table = $("leadsTable")?.closest(".tablewrap");
-  const saved = (localStorage.getItem("boi_leads_view")||"cards");
-  function apply(v){
-    localStorage.setItem("boi_leads_view", v);
-    if(btnCards) btnCards.classList.toggle("isActive", v==="cards");
-    if(btnList) btnList.classList.toggle("isActive", v==="list");
-    if(cards) cards.classList.toggle("isOn", v==="cards");
-    if(cards) cards.style.display = v==="cards" ? "" : "none";
-    if(table) table.style.display = v==="list" ? "" : "none";
-  }
-  btnCards?.addEventListener("click",()=>apply("cards"));
-  btnList?.addEventListener("click",()=>apply("list"));
-  apply(saved);
-}
-
-document.addEventListener("DOMContentLoaded", ()=>{
-  $("supProductType")?.addEventListener("change", updateAutoHide);
-  $("buyProductType")?.addEventListener("change", updateAutoHide);
-
-  // Lead type buttons
-  document.querySelectorAll("[data-leadtype]").forEach(btn=>{
-    btn.addEventListener("click", ()=> setLeadType(btn.getAttribute("data-leadtype")));
-  });
-  applyLeadTypeUI();
-  wireQuickFollow();
-  wireLeadsView();
-});
-
-function updateAutoHide(){
-  const supPT = $("supProductType")?.value || "";
-  const buyPT = $("buyProductType")?.value || "";
-  const supBlock = $("supProductsBlock");
-  const buyBlock = $("buyNeedsBlock");
-  if(supBlock) supBlock.style.display = supPT ? "" : "none";
-  if(buyBlock) buyBlock.style.display = buyPT ? "" : "none";
-}
