@@ -290,3 +290,13 @@ input:focus,select:focus,textarea:focus{border-color:rgba(47,107,255,.55)}
 .iconlink:hover{background:rgba(255,255,255,.06)}
 .iconlink svg{width:14px;height:14px}
 .smallmuted{color:var(--muted);font-size:12px}
+.calmini{ margin-top:10px; display:flex; flex-direction:column; gap:6px; font-size:12px; opacity:.9; }
+.calmini__it{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.calmini__more{ opacity:.75; font-size:12px; }
+
+.caldaybox{ padding:14px; }
+.caldayitem{ padding:12px; border-radius:14px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); margin-bottom:10px; }
+.caldayitem__when{ font-weight:700; margin-bottom:4px; }
+.caldayitem__who{ opacity:.9; }
+.caldayitem__note{ opacity:.8; margin-top:6px; font-size:13px; }
+
