@@ -339,43 +339,58 @@ body.has-sticky{ padding-bottom: 96px; }
 }
 
 
-/* KPI color fix */
-.kpi, .kpi * { color: var(--text) !important; }
+/* Mobile layout polish v3 */
+/* Make filter blocks and action buttons feel more "enterprise" */
+.filters{
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:16px;
+  background:rgba(255,255,255,.02);
+  padding:14px 14px 12px 14px;
+}
+.filters .btn{ height:44px; border-radius:14px; }
+.filters .btnrow{ gap:10px; }
+.filters .btnrow .btn{ flex:1; }
 
-.card__hdr--split{display:flex;justify-content:space-between;gap:14px;align-items:flex-start}
-.seg{display:inline-flex;border:1px solid rgba(255,255,255,.10);border-radius:14px;overflow:hidden;background:rgba(255,255,255,.03)}
-.seg--sm .seg__btn{padding:8px 12px;font-weight:800}
-.seg__btn{appearance:none;border:0;background:transparent;color:var(--text);cursor:pointer}
-.seg__btn.isActive{background:rgba(11,77,191,.35)}
+/* KPI sizing/spacing */
+.kpis{ margin-top:10px; }
+.kpi{
+  min-height:72px;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+}
 
-.leadcards{display:grid;gap:14px;margin-top:14px}
-@media (min-width: 980px){ .leadcards{grid-template-columns:repeat(2,minmax(0,1fr));} }
-.leadcard{border:1px solid rgba(255,255,255,.10);background:rgba(0,0,0,.18);border-radius:18px;padding:14px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
-.leadcard__top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
-.leadcard__title{font-weight:950;font-size:16px}
-.leadcard__sub{opacity:.75;font-size:12px;margin-top:4px}
-.leadcard__meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-.chip{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.03);font-size:12px}
-.leadcard__actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
-.iconbtn{display:inline-flex;align-items:center;gap:8px;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.03);color:var(--text);font-weight:850;text-decoration:none;line-height:1}
-.iconbtn svg{width:16px;height:16px;opacity:.9}
-.iconbtn:hover{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.18)}
+/* Leads cards - mobile more compact */
+@media (max-width: 720px){
+  .leadcards{ padding:10px 12px 14px 12px; }
+  .leadcard{ padding:12px; }
+  .leadcard__actions{ gap:10px; }
+  .iconbtn{
+    flex:1 1 calc(50% - 10px);   /* 2 per row on mobile */
+    justify-content:center;
+  }
+  .leadshead{ padding:0 12px 10px 12px; }
+  .chips{ padding:6px 0 8px 0; }
+  .filters{ padding:12px; }
+  .kpis{ gap:10px; }
+  .kpi{ padding:12px; border-radius:16px; }
+}
 
-.follow__chips{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0 12px}
-.chipbtn{appearance:none;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--text);padding:8px 12px;border-radius:999px;cursor:pointer;font-weight:850}
-.chipbtn:hover{background:rgba(255,255,255,.07)}
-.chipbtn--ghost{background:transparent}
+/* Dashboard & Leads filters grid: 1-col on small screens */
+@media (max-width: 820px){
+  .grid4{ grid-template-columns: 1fr !important; }
+  .grid3{ grid-template-columns: 1fr !important; }
+  .row2{ grid-template-columns: 1fr !important; }
+}
 
-.sticky{position:fixed;left:0;right:0;bottom:0;display:none;gap:12px;justify-content:center;align-items:center;padding:12px 12px calc(12px + env(safe-area-inset-bottom));background:rgba(5,10,20,.92);backdrop-filter:blur(14px);border-top:1px solid rgba(255,255,255,.10);z-index:9999}
-.sticky__btn{flex:1;max-width:320px;padding:14px 16px;border-radius:14px;border:1px solid rgba(255,255,255,.12);background:rgba(11,77,191,.9);color:#fff;font-weight:950;cursor:pointer}
-.sticky__btn--ghost{background:rgba(255,255,255,.04);color:var(--text)}
-body.has-sticky .sticky{display:flex}
-@media (min-width: 1101px){ .sticky{display:none !important} body.has-sticky .sticky{display:none !important} }
-@media (max-width: 1100px){ body.has-sticky .btnrow{display:none !important} }
 
-.switch{display:inline-flex;align-items:center;gap:10px;cursor:pointer;user-select:none}
-.switch input{display:none}
-.switch__ui{width:44px;height:26px;border-radius:999px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.18);position:relative;transition:.2s}
-.switch__ui:after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:.2s}
-.switch input:checked + .switch__ui{background:rgba(11,77,191,.8)}
-.switch input:checked + .switch__ui:after{transform:translateX(18px)}
+/* Segmented control polish */
+.seg{ border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.03); }
+.seg__btn{ font-weight:900; }
+.seg__btn.isActive{
+  background:rgba(11,77,191,.22);
+  border-color:rgba(11,77,191,.50);
+}
+
+/* Chips baseline spacing */
+.chips{min-height:18px}
