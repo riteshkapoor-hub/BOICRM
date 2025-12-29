@@ -6,11 +6,6 @@
 // Keeps:
 // - Your existing theme, Calendar UI, Edit UI behaviors
 
-
-function $(id){ return document.getElementById(id); }
-function $$(sel, root=document){ return root.querySelector(sel); }
-function $$$$(sel, root=document){ return Array.from(root.querySelectorAll(sel)); }
-
 const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzrHBqp6ZcS3lvRir9EchBhsldBS1jRghuQCWhj7XOY4nyuy8NRQP6mz3J1WGNYm-cD/exec";
 const LS_SCRIPT_URL = "boi_crm_script_url";
 const LS_USER = "boi_crm_user";
@@ -24,6 +19,7 @@ let LISTS = { productTypes: [], markets: [] };
 let queuedSupplierFU = null;
 let queuedBuyerFU = null;
 
+const $ = (id) => document.getElementById(id);
 
 function getScriptUrl() {
   return (localStorage.getItem(LS_SCRIPT_URL) || DEFAULT_SCRIPT_URL).trim();
@@ -872,8 +868,9 @@ async function refreshDashboard(){
         <td>${esc(r.enteredBy||"")}</td>
         <td>${rowLink(r.folderUrl,"Folder")} ${r.itemsSheetUrl ? " | " + rowLink(r.itemsSheetUrl,"Items") : ""}</td>
       `;
-      tbody.appendChild(tr);
-    });
+      tr.addEventListener("click", (ev)=>{ if(ev.target && (ev.target.closest("a") || ev.target.closest("button"))) return; openEditFromRow(r); });
+    tbody.appendChild(tr);
+});
   } catch(e){
     console.error(e);
     setStatus("Dashboard load failed.");
@@ -928,9 +925,9 @@ async function refreshLeads(){
           ${r.leadId ? ` | <button class="btn btn--ghost" data-edit="${esc(r.leadId)}">${svgEdit()} Edit</button>` : ""}
         </td>
       `;
-      tbody.appendChild(tr);
-
-      const eb = tr.querySelector('[data-edit]');
+      tr.addEventListener("click", (ev)=>{ if(ev.target && (ev.target.closest("a") || ev.target.closest("button"))) return; openEditFromRow(r); });
+    tbody.appendChild(tr);
+const eb = tr.querySelector('[data-edit]');
       if(eb){
         eb.addEventListener("click", ()=> openEdit(r.leadId, r));
       }
