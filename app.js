@@ -158,12 +158,14 @@ function setStickyActions({ show, primaryText, secondaryText, onPrimary, onSecon
 
   if(!show){
     bar.classList.add("hidden");
+  document.body.classList.remove("has-sticky");
     bar.setAttribute("aria-hidden","true");
     primary.onclick = null;
     secondary.onclick = null;
     return;
   }
   bar.classList.remove("hidden");
+  document.body.classList.add("has-sticky");
   bar.setAttribute("aria-hidden","false");
   primary.textContent = primaryText || "Save";
   secondary.textContent = secondaryText || "Cancel";
@@ -2070,14 +2072,13 @@ function bindCardActions(){
         return;
       }
       const copy = e.target.closest("[data-copy]");
-if(copy){
-  e.preventDefault();
-  const id = copy.getAttribute("data-copy");
-  const row = (window.__leadsCache||[]).find(x => String(x.leadId||"")==String(id)) || {};
-  copyLeadToClipboard(row);
-  return;
-}
-        }
+      if(copy){
+        e.preventDefault();
+        const id = copy.getAttribute("data-copy");
+        const row = (window.__leadsCache||[]).find(x => String(x.leadId||"")==String(id)) || {};
+        copyLeadToClipboard(row);
+        return;
+      }
     });
   }
 }
