@@ -8,6 +8,8 @@
 
 const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzrHBqp6ZcS3lvRir9EchBhsldBS1jRghuQCWhj7XOY4nyuy8NRQP6mz3J1WGNYm-cD/exec";
 const LS_SCRIPT_URL = "boi_crm_script_url";
+const LS_TRADE_MODE = "boi_trade_mode";
+const LS_LEADS_VIEW = "boi_leads_view";
 const LS_USER = "boi_crm_user";
 
 let mode = "supplier";
@@ -657,12 +659,10 @@ function clearBuyer(){
 /* ---------- Save handlers ---------- */
 async function saveSupplier(closeAfter){
   const company = $("supCompany").value.trim();
-  const contact = $("supContact").value.trim();
-  const emailRaw = $("supEmail").value.trim();
-  const phoneRaw = $("supPhone").value.trim();
   const products = $("supProducts").value.trim();
-  if(!company || !contact || !emailRaw || !phoneRaw){ alert("Required: Company, Contact, Phone 1, and Email."); return; }
-queueFollowUp("supplier");
+  if(!company || !products){ alert("Fill Company and What do they sell."); return; }
+
+  queueFollowUp("supplier");
   const enteredBy = (localStorage.getItem(LS_USER)||"Unknown").trim() || "Unknown";
 
   await maybeSaveListItem("market", supMarkets);
@@ -720,13 +720,11 @@ queueFollowUp("supplier");
 }
 
 async function saveBuyer(closeAfter){
-  const company = $("buyCompany").value.trim();
   const contact = $("buyContact").value.trim();
-  const emailRaw = $("buyEmail").value.trim();
-  const phoneRaw = $("buyPhone").value.trim();
   const needs = $("buyNeeds").value.trim();
-  if(!company || !contact || !emailRaw || !phoneRaw){ alert("Required: Company, Contact, Phone 1, and Email."); return; }
-queueFollowUp("buyer");
+  if(!contact || !needs){ alert("Fill Contact and What do they want to buy."); return; }
+
+  queueFollowUp("buyer");
   const enteredBy = (localStorage.getItem(LS_USER)||"Unknown").trim() || "Unknown";
 
   await maybeSaveListItem("market", buyMarkets);
@@ -824,57 +822,35 @@ function svgWhatsApp(){
   </svg>`;
 }
 
-/* ---------- Quick follow-up helpers ---------- */
-function setQuickFU(dateElId, timeElId, notesElId, offsetDays){
-  const dEl = $(dateElId), tEl = $(timeElId);
-  if(!dEl || !tEl) return;
-  const base = new Date();
-  base.setHours(0,0,0,0);
-  const dt = addDays(base, offsetDays||0);
-  // format YYYY-MM-DD
-  const yyyy=dt.getFullYear();
-  const mm=String(dt.getMonth()+1).padStart(2,"0");
-  const dd=String(dt.getDate()).padStart(2,"0");
-  dEl.value = `${yyyy}-${mm}-${dd}`;
-  tEl.value = "10:00";
-  if(notesElId && $(notesElId) && !$(notesElId).value.trim()){
-    $(notesElId).value = "Call / WhatsApp follow-up";
-  }
-}
-function clearQuickFU(dateElId, timeElId, notesElId){
-  $(dateElId) && ($(dateElId).value="");
-  $(timeElId) && ($(timeElId).value="");
-  notesElId && $(notesElId) && ($(notesElId).value="");
-}
-
 /* ---------- Dashboard / Leads ---------- */
+let dashKpiType = "";
+let dashKpiToday = false;
+
 function renderKpis(k){
   const el = $("kpis");
   el.innerHTML = "";
   const items = [
-    ["Total leads", k.total||0, ""],
-    ["Suppliers", k.suppliers||0, "supplier"],
-    ["Buyers", k.buyers||0, "buyer"],
-    ["Today", k.today||0, "today"]
+    ["Total leads", k.total||0],
+    ["Suppliers", k.suppliers||0],
+    ["Buyers", k.buyers||0],
+    ["Today", k.today||0]
   ];
-  items.forEach(([label,val,key])=>{
+  items.forEach(([label,val])=>{
     const d=document.createElement("button");
     d.type="button";
     d.className="kpi";
-    d.setAttribute("data-kpi", key);
     d.innerHTML = `<div class="kpi__v">${esc(val)}</div><div class="kpi__l">${esc(label)}</div>`;
-    d.addEventListener("click", ()=> applyKpiFilter(key));
+    const key = label==="Suppliers" ? "supplier" : label==="Buyers" ? "buyer" : label==="Today" ? "today" : "all";
+    d.dataset.key = key;
+    d.classList.toggle("isActive", (key==="today" && dashKpiToday) || (key!=="all" && key!=="today" && dashKpiType===key));
+    d.addEventListener("click", ()=>{
+      if(key==="all"){ dashKpiType=""; dashKpiToday=false; }
+      else if(key==="today"){ dashKpiToday = !dashKpiToday; dashKpiType=""; }
+      else { dashKpiType = (dashKpiType===key? "": key); dashKpiToday=false; }
+      refreshDashboard();
+    });
     el.appendChild(d);
   });
-}
-
-let dashKpiType = "";   // "supplier" | "buyer" | ""
-let dashKpiToday = false;
-
-function applyKpiFilter(key){
-  dashKpiType = (key==="supplier"||key==="buyer") ? key : "";
-  dashKpiToday = (key==="today");
-  refreshDashboard();
 }
 
 async function refreshDashboard(){
@@ -888,25 +864,27 @@ async function refreshDashboard(){
       productType: dashPT.value
     });
 
-    window.__leadsCache = data.rows || [];
-    renderKpis(data.kpis || {});
+    const rowsRaw = data.rows || [];
 
-    let rows = data.rows || [];
-    if(dashKpiType){ rows = rows.filter(r => String(r.type||"").toLowerCase()===dashKpiType); }
+    // Apply KPI filters
+    let rows = rowsRaw.slice();
+    if(dashKpiType){ rows = rows.filter(r=> String(r.type||"").toLowerCase()===dashKpiType); }
     if(dashKpiToday){
-      const now = new Date();
-      const y=now.getFullYear(), mo=now.getMonth(), da=now.getDate();
+      const now=new Date();
+      const y=now.getFullYear(), m=now.getMonth(), d=now.getDate();
       rows = rows.filter(r=>{
         if(!r.followUpDateTimeIST) return false;
-        const dt = new Date(r.followUpDateTimeIST);
-        return dt.getFullYear()===y && dt.getMonth()===mo && dt.getDate()===da;
+        const dt=new Date(r.followUpDateTimeIST);
+        return dt.getFullYear()===y && dt.getMonth()===m && dt.getDate()===d;
       });
     }
+
+    renderKpis(data.kpis || {});
 
     const tbody = $("dashTable").querySelector("tbody");
     tbody.innerHTML = "";
 
-    rows.forEach(r=>{
+    (rows||[]).forEach(r=>{
       const tr=document.createElement("tr");
       tr.innerHTML = `
         <td>${esc(r.timestampIST||"")}</td>
@@ -940,6 +918,9 @@ async function refreshLeads(){
     });
 
     window.__leadsCache = data.rows || [];
+    try{ renderLeadsCards(window.__leadsCache); }catch(e){}
+    try{ setLeadsView(getLeadsView()); }catch(e){}
+
 
     const tbody = $("leadsTable").querySelector("tbody");
     tbody.innerHTML = "";
@@ -1660,3 +1641,119 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   setStatus("Ready");
   updateSummary();
 });
+
+/* ---------- Quick follow-up helpers ---------- */
+function setQuickFU(dateId, timeId, noteId, offsetDays){
+  const dEl=$(dateId), tEl=$(timeId);
+  if(!dEl || !tEl) return;
+  const base=new Date();
+  base.setHours(0,0,0,0);
+  base.setDate(base.getDate() + (offsetDays||0));
+  const yyyy=base.getFullYear();
+  const mm=String(base.getMonth()+1).padStart(2,"0");
+  const dd=String(base.getDate()).padStart(2,"0");
+  dEl.value=`${yyyy}-${mm}-${dd}`;
+  tEl.value="10:00";
+  if(noteId && $(noteId) && !$(noteId).value.trim()){
+    $(noteId).value="Call / WhatsApp follow-up";
+  }
+}
+function clearQuickFU(dateId, timeId){
+  $(dateId) && ($(dateId).value="");
+  $(timeId) && ($(timeId).value="");
+}
+
+
+/* ---------- Sticky action bar ---------- */
+function setSticky({show, primaryText, secondaryText, onPrimary, onSecondary}){
+  const bar=$("stickyBar");
+  if(!bar) return;
+  document.body.classList.toggle("has-sticky", !!show);
+  bar.setAttribute("aria-hidden", show ? "false" : "true");
+  const p=$("stickyPrimary"), s=$("stickySecondary");
+  if(primaryText) p.textContent=primaryText;
+  if(secondaryText) s.textContent=secondaryText;
+  p.onclick = onPrimary || null;
+  s.onclick = onSecondary || null;
+}
+
+
+function getLeadsView(){ return (localStorage.getItem(LS_LEADS_VIEW) || "cards").toLowerCase(); }
+function setLeadsView(v){
+  localStorage.setItem(LS_LEADS_VIEW, v);
+  $("leadsViewList")?.classList.toggle("isActive", v==="list");
+  $("leadsViewCards")?.classList.toggle("isActive", v==="cards");
+  const tableWrap = $("leadsTable")?.closest(".tablewrap");
+  const cards = $("leadsCards");
+  if(tableWrap) tableWrap.style.display = (v==="list") ? "" : "none";
+  if(cards) cards.style.display = (v==="cards") ? "" : "none";
+}
+function leadChip(t){ return t ? `<span class="chip">${esc(t)}</span>` : ""; }
+
+function renderLeadsCards(rows){
+  const host=$("leadsCards");
+  if(!host) return;
+  host.innerHTML="";
+  (rows||[]).forEach(r=>{
+    const card=document.createElement("div");
+    card.className="leadcard";
+    const title=(r.company||r.contact||"").trim() || "—";
+    const phone=(r.phone||"").trim();
+    const email=(r.email||"").trim();
+    const wa=safeWa(phone);
+    card.innerHTML = `
+      <div class="leadcard__top">
+        <div>
+          <div class="leadcard__title">${esc(title)}</div>
+          <div class="leadcard__sub">${esc(r.type||"")} • ${esc(r.timestampIST||"")}</div>
+        </div>
+        <button class="btn btn--ghost" type="button" data-edit="1">${svgEdit()} Edit</button>
+      </div>
+      <div class="leadcard__meta">
+        ${leadChip(r.country)}${leadChip(r.markets)}${leadChip(r.productType)}
+      </div>
+      <div class="leadcard__actions">
+        ${phone ? `<a class="iconbtn" href="tel:${esc(safeTel(phone))}">${svgPhone()} Call</a>`:""}
+        ${wa ? `<a class="iconbtn" target="_blank" rel="noopener" href="${esc(wa)}">${svgWhatsApp()} WhatsApp</a>`:""}
+        ${email ? `<a class="iconbtn" href="mailto:${esc(email)}">${svgMail()} Email</a>`:""}
+        ${r.folderUrl ? `<a class="iconbtn" target="_blank" rel="noopener" href="${esc(r.folderUrl)}">Folder</a>`:""}
+      </div>
+    `;
+    card.querySelector("[data-edit]")?.addEventListener("click", ()=> openEdit(r.leadId, r));
+    card.addEventListener("click",(ev)=>{
+      if(ev.target.closest("a")||ev.target.closest("button")) return;
+      openEdit(r.leadId, r);
+    });
+    host.appendChild(card);
+  });
+}
+
+
+function updateSticky(){
+  const touch = (()=>{ try{ return window.matchMedia("(pointer: coarse)").matches || window.matchMedia("(max-width: 1100px)").matches; }catch(e){ return window.innerWidth<=1100; }})();
+  const editOpen = $("editOverlay")?.classList.contains("open");
+  const captureVisible = $("viewCapture") && $("viewCapture").style.display !== "none";
+  // only Capture or Edit
+  if(!editOpen && !captureVisible){ setSticky({show:false}); return; }
+  if(!touch){ setSticky({show:false}); return; }
+
+  if(editOpen){
+    setSticky({
+      show:true,
+      primaryText:"Save Changes",
+      secondaryText:"Close",
+      onPrimary: ()=> $("btnSaveEdit")?.click(),
+      onSecondary: ()=> $("btnCloseEdit")?.click()
+    });
+    return;
+  }
+
+  const isSupplier = (mode==="supplier");
+  setSticky({
+    show:true,
+    primaryText:"Save & New",
+    secondaryText:"Save & Close",
+    onPrimary: ()=> (isSupplier ? $("saveSupplierNew") : $("saveBuyerNew"))?.click(),
+    onSecondary: ()=> (isSupplier ? $("saveSupplierClose") : $("saveBuyerClose"))?.click()
+  });
+}
