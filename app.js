@@ -1,4 +1,3 @@
-let mode = localStorage.getItem('boi_lead_type') || 'supplier';
 // BOI CRM — app.js (FULL)
 // Adds:
 // - WhatsApp action next to phone (Leads + Calendar)
@@ -11,7 +10,7 @@ const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzrHBqp6ZcS3
 const LS_SCRIPT_URL = "boi_crm_script_url";
 const LS_USER = "boi_crm_user";
 
-let mode = "supplier";
+let window.boiLeadType = "supplier";
 let html5Qr = null;
 let qrRunning = false;
 let sessionCount = 0;
@@ -122,7 +121,7 @@ function updateSticky(){
 
   const captureVisible = $("viewCapture") && $("viewCapture").style.display !== "none";
   if(captureVisible && isSmallScreen()){
-    const isSupplier = (mode === "supplier");
+    const isSupplier = (window.boiLeadType === "supplier");
     const primaryBtn = isSupplier ? $("saveSupplierNew") : $("saveBuyerNew");
     const secondaryBtn = isSupplier ? $("saveSupplierClose") : $("saveBuyerClose");
     setStickyActions({
@@ -170,27 +169,27 @@ function setViewPref(key, val){
   try{ localStorage.setItem(key, val); }catch{}
 }
 
-function setSegActive(listBtn, cardsBtn, mode){
+function setSegActive(listBtn, cardsBtn, window.boiLeadType){
   if(!listBtn || !cardsBtn) return;
-  listBtn.classList.toggle("is-active", mode==="list");
-  cardsBtn.classList.toggle("is-active", mode==="cards");
+  listBtn.classList.toggle("is-active", window.boiLeadType==="list");
+  cardsBtn.classList.toggle("is-active", window.boiLeadType==="cards");
 }
 
 function applyLeadsView(){
-  const mode = getViewPref(LS_VIEW_LEADS,"list");
-  setSegActive($("leadsViewList"), $("leadsViewCards"), mode);
+  const window.boiLeadType = getViewPref(LS_VIEW_LEADS,"list");
+  setSegActive($("leadsViewList"), $("leadsViewCards"), window.boiLeadType);
   const tableWrap = $("leadsTable")?.closest(".tablewrap");
   const cards = $("leadsCards");
-  if(tableWrap) tableWrap.style.display = (mode==="list") ? "" : "none";
-  if(cards) cards.style.display = (mode==="cards") ? "" : "none";
+  if(tableWrap) tableWrap.style.display = (window.boiLeadType==="list") ? "" : "none";
+  if(cards) cards.style.display = (window.boiLeadType==="cards") ? "" : "none";
 }
 function applyDashView(){
-  const mode = getViewPref(LS_VIEW_DASH,"list");
-  setSegActive($("dashViewList"), $("dashViewCards"), mode);
+  const window.boiLeadType = getViewPref(LS_VIEW_DASH,"list");
+  setSegActive($("dashViewList"), $("dashViewCards"), window.boiLeadType);
   const tableWrap = $("dashTable")?.closest(".tablewrap");
   const cards = $("dashCards");
-  if(tableWrap) tableWrap.style.display = (mode==="list") ? "" : "none";
-  if(cards) cards.style.display = (mode==="cards") ? "" : "none";
+  if(tableWrap) tableWrap.style.display = (window.boiLeadType==="list") ? "" : "none";
+  if(cards) cards.style.display = (window.boiLeadType==="cards") ? "" : "none";
 }
 
 function splitBadges(s){
@@ -268,12 +267,12 @@ function renderLeadCards(rows, mountId){
 
 
 function setMode(newMode){
-  mode = newMode;
-  $("btnSupplier").classList.toggle("isActive", mode==="supplier");
-  $("btnBuyer").classList.toggle("isActive", mode==="buyer");
-  $("supplierForm").style.display = mode==="supplier" ? "" : "none";
-  $("buyerForm").style.display = mode==="buyer" ? "" : "none";
-  $("formTitle").textContent = mode==="supplier" ? "Supplier details" : "Buyer details";
+  window.boiLeadType = newMode;
+  $("btnSupplier").classList.toggle("isActive", window.boiLeadType==="supplier");
+  $("btnBuyer").classList.toggle("isActive", window.boiLeadType==="buyer");
+  $("supplierForm").style.display = window.boiLeadType==="supplier" ? "" : "none";
+  $("buyerForm").style.display = window.boiLeadType==="buyer" ? "" : "none";
+  $("formTitle").textContent = window.boiLeadType==="supplier" ? "Supplier details" : "Buyer details";
   updateSticky();
 }
 
@@ -366,7 +365,29 @@ function createCombo(containerId, options, placeholder){
   input.addEventListener("focus", open);
   input.addEventListener("input", ()=>{ open(); render(input.value); });
   btn.addEventListener("click", ()=> root.classList.contains("open") ? close() : open());
-  document.addEventListener("click",(e)=>{ if(!root.contains(e.target)) close(); });
+  /* ---- Lead type state (safe) ---- */
+window.boiLeadType = (window.boiLeadType || localStorage.getItem("boi_lead_type") || "supplier");
+
+function applyLeadTypeUI(){
+  const sup = document.getElementById("supplierForm");
+  const buy = document.getElementById("buyerForm");
+  const t = window.boiLeadType;
+  if(sup) sup.style.display = (t==="supplier") ? "" : "none";
+  if(buy) buy.style.display = (t==="buyer") ? "" : "none";
+  document.querySelectorAll("[data-leadtype]").forEach(btn=>{
+    btn.classList.toggle("isActive", btn.getAttribute("data-leadtype")===t);
+  });
+}
+
+function setLeadType(next){
+  window.boiLeadType = next || "supplier";
+  localStorage.setItem("boi_lead_type", window.boiLeadType);
+  applyLeadTypeUI();
+  try{ updateAutoHide(); }catch(e){}
+  try{ updateSticky(); }catch(e){}
+}
+
+document.addEventListener("click",(e)=>{ if(!root.contains(e.target)) close(); });
 
   root.appendChild(input);
   root.appendChild(btn);
@@ -720,7 +741,7 @@ function parseVCard(text){
 
 function applyScan(raw){
   const p=parseVCard(raw);
-  if(mode==="supplier"){
+  if(window.boiLeadType==="supplier"){
     if(p.company && !$("supCompany").value) $("supCompany").value=p.company;
     if(p.fullName && !$("supContact").value) $("supContact").value=p.fullName;
     if(p.email && !$("supEmail").value) $("supEmail").value=p.email;
@@ -1871,23 +1892,6 @@ document.addEventListener("DOMContentLoaded", async ()=>{
 
 function $(id){ return document.getElementById(id); }
 
-function applyLeadTypeUI(){
-  const sup = $("supplierForm");
-  const buy = $("buyerForm");
-  if(sup) sup.style.display = (mode==="supplier") ? "" : "none";
-  if(buy) buy.style.display = (mode==="buyer") ? "" : "none";
-  // Toggle buttons if present
-  document.querySelectorAll("[data-leadtype]").forEach(btn=>{
-    btn.classList.toggle("isActive", btn.getAttribute("data-leadtype")===mode);
-  });
-}
-
-function setLeadType(next){
-  mode = next;
-  localStorage.setItem("boi_lead_type", mode);
-  applyLeadTypeUI();
-  // auto-hide sell/buy until product type selected
-  try{ updateAutoHide(); }catch(e){}
   // keep sticky in sync
   try{ updateSticky(); }catch(e){}
 }
