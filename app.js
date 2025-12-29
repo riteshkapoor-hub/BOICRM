@@ -35,62 +35,6 @@ function setUserPill() {
 function openOverlay(id) { $(id).classList.add("open"); $(id).setAttribute("aria-hidden","false"); }
 function closeOverlay(id) { $(id).classList.remove("open"); $(id).setAttribute("aria-hidden","true"); }
 
-/* ---------- Sticky action bar (mobile/tablet) ---------- */
-function isTouchLike(){
-  try{
-    return window.matchMedia("(pointer: coarse)").matches || window.matchMedia("(max-width: 1100px)").matches;
-  }catch(e){ return window.innerWidth <= 1100; }
-}
-function setSticky(opts){
-  const bar = $("stickyBar");
-  if(!bar) return;
-  const p = $("stickyPrimary");
-  const s = $("stickySecondary");
-  const show = !!opts.show;
-  if(show){
-    bar.classList.add("isOn");
-    bar.setAttribute("aria-hidden","false");
-    document.body.classList.add("has-sticky");
-    p.textContent = opts.primaryText || "Save";
-    s.textContent = opts.secondaryText || "Close";
-    p.onclick = opts.onPrimary || null;
-    s.onclick = opts.onSecondary || null;
-  }else{
-    bar.classList.remove("isOn");
-    bar.setAttribute("aria-hidden","true");
-    document.body.classList.remove("has-sticky");
-    p.onclick = null; s.onclick = null;
-  }
-}
-function updateSticky(){
-  const touch = isTouchLike();
-  const editOpen = $("editOverlay") && $("editOverlay").classList.contains("open");
-  const captureVisible = $("viewCapture") && $("viewCapture").style.display !== "none";
-
-  if(touch && editOpen){
-    setSticky({
-      show:true,
-      primaryText:"Save Changes",
-      secondaryText:"Close",
-      onPrimary: ()=> $("btnSaveEdit") && $("btnSaveEdit").click(),
-      onSecondary: ()=> $("btnCloseEdit") && $("btnCloseEdit").click()
-    });
-    return;
-  }
-  if(touch && captureVisible){
-    const isSupplier = mode === "supplier";
-    setSticky({
-      show:true,
-      primaryText:"Save & New",
-      secondaryText:"Save & Close",
-      onPrimary: ()=> (isSupplier ? $("saveSupplierNew") : $("saveBuyerNew")).click(),
-      onSecondary: ()=> (isSupplier ? $("saveSupplierClose") : $("saveBuyerClose")).click()
-    });
-    return;
-  }
-  setSticky({show:false});
-}
-
 function ensureUser() {
   const u = (localStorage.getItem(LS_USER) || "").trim();
   if (u) return;
@@ -106,7 +50,6 @@ function showTab(which){
   if(which==="Dashboard") refreshDashboard();
   if(which==="Leads") refreshLeads();
   if(which==="Calendar") refreshCalendar();
-  try{ updateSticky(); }catch(e){}
 }
 
 function setMode(newMode){
@@ -116,7 +59,6 @@ function setMode(newMode){
   $("supplierForm").style.display = mode==="supplier" ? "" : "none";
   $("buyerForm").style.display = mode==="buyer" ? "" : "none";
   $("formTitle").textContent = mode==="supplier" ? "Supplier details" : "Buyer details";
-  try{ updateSticky(); }catch(e){}
 }
 
 function esc(s){
@@ -718,12 +660,9 @@ async function saveSupplier(closeAfter){
   const contact = $("supContact").value.trim();
   const emailRaw = $("supEmail").value.trim();
   const phoneRaw = $("supPhone").value.trim();
-  if(!company || !contact || !emailRaw || !phoneRaw){
-    alert("Required: Company, Contact, Phone 1, and Email.");
-    return;
-  }
-  const products = $("supProducts").value.trim(); // optional
-  queueFollowUp("supplier");
+  const products = $("supProducts").value.trim();
+  if(!company || !contact || !emailRaw || !phoneRaw){ alert("Required: Company, Contact, Phone 1, and Email."); return; }
+queueFollowUp("supplier");
   const enteredBy = (localStorage.getItem(LS_USER)||"Unknown").trim() || "Unknown";
 
   await maybeSaveListItem("market", supMarkets);
@@ -781,16 +720,13 @@ async function saveSupplier(closeAfter){
 }
 
 async function saveBuyer(closeAfter){
-  const contact = $("buyContact").value.trim();
   const company = $("buyCompany").value.trim();
+  const contact = $("buyContact").value.trim();
   const emailRaw = $("buyEmail").value.trim();
   const phoneRaw = $("buyPhone").value.trim();
-  if(!company || !contact || !emailRaw || !phoneRaw){
-    alert("Required: Company, Contact, Phone 1, and Email.");
-    return;
-  }
-  const needs = $("buyNeeds").value.trim(); // optional
-  queueFollowUp("buyer");
+  const needs = $("buyNeeds").value.trim();
+  if(!company || !contact || !emailRaw || !phoneRaw){ alert("Required: Company, Contact, Phone 1, and Email."); return; }
+queueFollowUp("buyer");
   const enteredBy = (localStorage.getItem(LS_USER)||"Unknown").trim() || "Unknown";
 
   await maybeSaveListItem("market", buyMarkets);
@@ -888,25 +824,60 @@ function svgWhatsApp(){
   </svg>`;
 }
 
+/* ---------- Quick follow-up helpers ---------- */
+function setQuickFU(dateElId, timeElId, notesElId, offsetDays){
+  const dEl = $(dateElId), tEl = $(timeElId);
+  if(!dEl || !tEl) return;
+  const base = new Date();
+  base.setHours(0,0,0,0);
+  const dt = addDays(base, offsetDays||0);
+  // format YYYY-MM-DD
+  const yyyy=dt.getFullYear();
+  const mm=String(dt.getMonth()+1).padStart(2,"0");
+  const dd=String(dt.getDate()).padStart(2,"0");
+  dEl.value = `${yyyy}-${mm}-${dd}`;
+  tEl.value = "10:00";
+  if(notesElId && $(notesElId) && !$(notesElId).value.trim()){
+    $(notesElId).value = "Call / WhatsApp follow-up";
+  }
+}
+function clearQuickFU(dateElId, timeElId, notesElId){
+  $(dateElId) && ($(dateElId).value="");
+  $(timeElId) && ($(timeElId).value="");
+  notesElId && $(notesElId) && ($(notesElId).value="");
+}
+
 /* ---------- Dashboard / Leads ---------- */
 function renderKpis(k){
   const el = $("kpis");
   el.innerHTML = "";
   const items = [
-    ["Total leads", k.total||0],
-    ["Suppliers", k.suppliers||0],
-    ["Buyers", k.buyers||0],
-    ["Today", k.today||0]
+    ["Total leads", k.total||0, ""],
+    ["Suppliers", k.suppliers||0, "supplier"],
+    ["Buyers", k.buyers||0, "buyer"],
+    ["Today", k.today||0, "today"]
   ];
-  items.forEach(([label,val])=>{
-    const d=document.createElement("div");
+  items.forEach(([label,val,key])=>{
+    const d=document.createElement("button");
+    d.type="button";
     d.className="kpi";
+    d.setAttribute("data-kpi", key);
     d.innerHTML = `<div class="kpi__v">${esc(val)}</div><div class="kpi__l">${esc(label)}</div>`;
+    d.addEventListener("click", ()=> applyKpiFilter(key));
     el.appendChild(d);
   });
 }
 
-async function refreshDashboard(){
+async let dashKpiType = "";   // "supplier" | "buyer" | ""
+let dashKpiToday = false;
+
+function applyKpiFilter(key){
+  dashKpiType = (key==="supplier"||key==="buyer") ? key : "";
+  dashKpiToday = (key==="today");
+  refreshDashboard();
+}
+
+function refreshDashboard(){
   try{
     const data = await getJson({
       action:"listLeads",
@@ -920,10 +891,22 @@ async function refreshDashboard(){
     window.__leadsCache = data.rows || [];
     renderKpis(data.kpis || {});
 
+    let rows = data.rows || [];
+    if(dashKpiType){ rows = rows.filter(r => String(r.type||"").toLowerCase()===dashKpiType); }
+    if(dashKpiToday){
+      const now = new Date();
+      const y=now.getFullYear(), mo=now.getMonth(), da=now.getDate();
+      rows = rows.filter(r=>{
+        if(!r.followUpDateTimeIST) return false;
+        const dt = new Date(r.followUpDateTimeIST);
+        return dt.getFullYear()===y && dt.getMonth()===mo && dt.getDate()===da;
+      });
+    }
+
     const tbody = $("dashTable").querySelector("tbody");
     tbody.innerHTML = "";
 
-    (data.rows||[]).forEach(r=>{
+    rows.forEach(r=>{
       const tr=document.createElement("tr");
       tr.innerHTML = `
         <td>${esc(r.timestampIST||"")}</td>
@@ -957,9 +940,6 @@ async function refreshLeads(){
     });
 
     window.__leadsCache = data.rows || [];
-
-    renderLeadsCards(data.rows || []);
-    setLeadsView(getLeadsView());
 
     const tbody = $("leadsTable").querySelector("tbody");
     tbody.innerHTML = "";
@@ -1009,58 +989,6 @@ const eb = tr.querySelector('[data-edit]');
   }
 }
 
-/* ---------- Leads view toggle + cards ---------- */
-const LS_LEADS_VIEW = "boi_leads_view";
-function getLeadsView(){ return (localStorage.getItem(LS_LEADS_VIEW) || "list").toLowerCase(); }
-function setLeadsView(v){
-  localStorage.setItem(LS_LEADS_VIEW, v);
-  $("leadsViewList") && $("leadsViewList").classList.toggle("isActive", v==="list");
-  $("leadsViewCards") && $("leadsViewCards").classList.toggle("isActive", v==="cards");
-  const tableWrap = $("leadsTable") ? $("leadsTable").closest(".tablewrap") : null;
-  const cards = $("leadsCards");
-  if(tableWrap) tableWrap.style.display = (v==="list") ? "" : "none";
-  if(cards) cards.style.display = (v==="cards") ? "" : "none";
-}
-function leadChip(text){ return text ? `<span class="chip">${esc(text)}</span>` : ""; }
-function renderLeadsCards(rows){
-  const host = $("leadsCards");
-  if(!host) return;
-  host.innerHTML = "";
-  (rows||[]).forEach(r=>{
-    const card = document.createElement("div");
-    card.className = "leadcard";
-    const title = (r.company || r.contact || "").trim();
-    const phone = (r.phone||"").trim();
-    const email = (r.email||"").trim();
-    const wa = safeWa(phone);
-    card.innerHTML = `
-      <div class="leadcard__top">
-        <div>
-          <div class="leadcard__title">${esc(title || "—")}</div>
-          <div class="leadcard__sub">${esc(r.type||"")} • ${esc(r.timestampIST||"")}</div>
-        </div>
-        ${r.leadId ? `<button class="btn btn--ghost" data-edit="${esc(r.leadId)}" type="button">${svgEdit()} Edit</button>` : ""}
-      </div>
-      <div class="leadcard__meta">
-        ${leadChip(r.country)}${leadChip(r.markets)}${leadChip(r.productType)}
-      </div>
-      <div class="leadcard__actions">
-        ${phone ? `<a class="iconbtn" href="tel:${esc(safeTel(phone))}">${svgPhone()} Call</a>` : ``}
-        ${wa ? `<a class="iconbtn" target="_blank" rel="noopener" href="${esc(wa)}">${svgWhatsApp()} WhatsApp</a>` : ``}
-        ${email ? `<a class="iconbtn" href="mailto:${esc(email)}">${svgMail()} Email</a>` : ``}
-        ${r.folderUrl ? `<a class="iconbtn" target="_blank" rel="noopener" href="${esc(r.folderUrl)}">Folder</a>` : ``}
-      </div>
-    `;
-    card.addEventListener("click",(ev)=>{
-      if(ev.target && (ev.target.closest("a") || ev.target.closest("button"))) return;
-      openEditFromRow(r);
-    });
-    const eb = card.querySelector("[data-edit]");
-    if(eb) eb.addEventListener("click", ()=> openEdit(r.leadId, r));
-    host.appendChild(card);
-  });
-}
-
 /* ---------- Edit Lead ---------- */
 let currentEditRow = null;
 
@@ -1096,17 +1024,6 @@ function openEdit(leadId, row){
 
   $("editSub").textContent = `${row?.leadId||leadId||""} • ${row?.company||row?.contact||""}`;
   openOverlay("editOverlay");
-  setTimeout(()=>{
-    const modal = $("editOverlay") ? $("editOverlay").querySelector(".modal") : null;
-    const target = $("editFUNotes") || $("editNotes");
-    if(target) target.focus({preventScroll:true});
-    const anchor = $("editNotes") || $("editFUDate");
-    if(modal && anchor){
-      const top = anchor.getBoundingClientRect().top - modal.getBoundingClientRect().top;
-      modal.scrollTop = Math.max(0, top - 90);
-    }
-    try{ updateSticky(); }catch(e){}
-  }, 50);
 }
 
 function clearEditFollowup(){
@@ -1119,16 +1036,7 @@ async function saveEdit(){
   const leadId = $("editLeadId").value.trim();
   if(!leadId){ alert("Missing lead id"); return; }
 
-  const reqCompany = $("editCompany").value.trim();
-  const reqContact = $("editContact").value.trim();
-  const reqEmail = $("editEmail").value.trim();
-  const reqPhone = $("editPhone").value.trim();
-  if(!reqCompany || !reqContact || !reqEmail || !reqPhone){
-    alert("Required: Company, Contact, Phone, and Email.");
-    return;
-  }
-
-await maybeSaveListItem("market", editMarket);
+  await maybeSaveListItem("market", editMarket);
   await maybeSaveListItem("productType", editPT);
 
   let newFollowUp = null;
@@ -1716,13 +1624,6 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   $("btnDashRefresh").addEventListener("click", refreshDashboard);
   $("btnLeadsRefresh").addEventListener("click", refreshLeads);
 
-  $("leadsViewList") && $("leadsViewList").addEventListener("click", ()=> setLeadsView("list"));
-  $("leadsViewCards") && $("leadsViewCards").addEventListener("click", ()=> setLeadsView("cards"));
-  if(isTouchLike()){
-    if(!localStorage.getItem(LS_LEADS_VIEW)) localStorage.setItem(LS_LEADS_VIEW,"cards");
-  }
-  setLeadsView(getLeadsView());
-
   // calendar controls
   $("calViewDay").addEventListener("click", ()=>setCalView("day"));
   $("calViewWeek").addEventListener("click", ()=>setCalView("week"));
@@ -1755,10 +1656,6 @@ document.addEventListener("DOMContentLoaded", async ()=>{
 
   // IMPORTANT: load calendar data once on boot so Month/Week/Day all have data
   try{ await refreshCalendar(); }catch{}
-
-  window.addEventListener("resize", updateSticky);
-  window.addEventListener("scroll", updateSticky, {passive:true});
-  updateSticky();
 
   setStatus("Ready");
   updateSummary();
