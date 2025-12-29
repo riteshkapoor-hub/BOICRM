@@ -4,7 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>BOI CRM</title>
-  <link rel="stylesheet" href="styles.css?v=20251229d" />
+  <link rel="icon" href="boi-logo.png" />
+  <link rel="stylesheet" href="styles.css?v=20251229e" />
 </head>
 <body>
   <header class="topbar">
@@ -68,6 +69,14 @@
 
             <div class="row2">
               <div class="field">
+
+            <details class="acc">
+              <summary class="acc__sum">More details (optional)</summary>
+              <div class="acc__body">
+
+            <details class="acc">
+              <summary class="acc__sum">More details (optional)</summary>
+              <div class="acc__body">
                 <label>Title</label>
                 <input id="supTitle" type="text" placeholder="Title" />
               </div>
@@ -137,6 +146,9 @@
               </div>
             </div>
 
+              </div>
+            </details>
+
             <div class="field">
               <label>What do they sell? (one per line) <span class="req">*</span></label>
               <textarea id="supProducts" rows="4" placeholder="Item 1&#10;Item 2&#10;Item 3"></textarea>
@@ -144,6 +156,10 @@
 
             <div class="row2">
               <div class="field">
+
+            <details class="acc">
+              <summary class="acc__sum">Attachments (optional)</summary>
+              <div class="acc__body">
                 <label>Attach catalog / docs (optional • multiple)</label>
                 <input id="supCatalogFiles" type="file" multiple />
               </div>
@@ -157,6 +173,9 @@
               <label>QR raw (auto-filled if scanned)</label>
               <input id="supQR" type="text" />
             </div>
+
+              </div>
+            </details>
 
             <div class="field">
               <label>Notes</label>
@@ -267,6 +286,9 @@
                 </select>
               </div>
             </div>
+
+              </div>
+            </details>
 
             <div class="field">
               <label>What do they want to buy? (one per line) <span class="req">*</span></label>
@@ -398,6 +420,12 @@
           <div class="card__title">Leads</div>
           <div class="card__sub">Call / Email / Edit saved leads</div>
         </div>
+        <div class="leadshead">
+          <div class="seg seg--sm" id="leadsViewSeg">
+            <button id="leadsViewList" class="seg__btn isActive" type="button">List</button>
+            <button id="leadsViewCards" class="seg__btn" type="button">Cards</button>
+          </div>
+        </div>
 
         <div class="filters">
           <div class="field">
@@ -432,6 +460,8 @@
             <tbody></tbody>
           </table>
         </div>
+
+        <div id="leadsCards" class="leadcards" style="display:none;"></div>
       </div>
     </section>
 
@@ -657,10 +687,19 @@
     </div>
   </div>
 
+
+  <!-- Sticky action bar (mobile/tablet) -->
+  <div id="stickyBar" class="stickybar" aria-hidden="true">
+    <div class="stickybar__inner">
+      <button id="stickySecondary" class="btn btn--ghost" type="button">Close</button>
+      <button id="stickyPrimary" class="btn btn--primary" type="button">Save</button>
+    </div>
+  </div>
+
   <!-- IMPORTANT: load QR lib only once (local vendor copy) -->
   <script src="./vendor/html5-qrcode.min.js"></script>
 
   <!-- main app -->
-  <script src="app.js?v=20251229d"></script>
+  <script src="app.js?v=20251229e"></script>
 </body>
 </html>
