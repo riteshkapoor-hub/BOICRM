@@ -5,7 +5,7 @@
   --text:#e8eefc;
   --muted:#9fb0d8;
   --line:rgba(255,255,255,.08);
-  --accent:#0B4DBF;
+  --accent:#2f6bff;
   --good:#22c55e;
   --danger:#ff4d4d;
   --shadow:0 18px 60px rgba(0,0,0,.55);
@@ -339,105 +339,39 @@ body.has-sticky{ padding-bottom: 96px; }
 }
 
 
-/* Enterprise polish */
-:root{
-  --bg:#070A12;
-  --panel:#0B1222;
-  --panel2:#0C162B;
-  --shadow:0 14px 40px rgba(0,0,0,.45);
-  --r:14px;
+/* --- Overlay scroll fix --- */
+.modal{
+  max-height: calc(92vh - env(safe-area-inset-top));
+  overflow: auto;
+  overscroll-behavior: contain;
 }
-body{
-  background:
-    radial-gradient(900px 420px at 18% 0%, rgba(11,77,191,.16), transparent 58%),
-    radial-gradient(900px 420px at 78% 10%, rgba(34,197,94,.09), transparent 60%),
-    var(--bg);
+.modal__body{ overflow: visible; }
+.overlay{ align-items: flex-start; padding-top: 18px; }
+
+/* --- Fast entry visibility --- */
+.isHidden{ display:none !important; }
+.follow__hdr{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.follow__chips{ display:flex; gap:8px; flex-wrap:wrap; }
+.chipbtn{
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.04);
+  color:var(--text);
+  padding:6px 10px;
+  border-radius:999px;
+  font-weight:700;
+  font-size:12px;
 }
-.card{background:linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.015));}
-.btn{font-weight:600}
-.btn--primary{
-  background:linear-gradient(180deg, rgba(11,77,191,.92), rgba(8,56,150,.92));
-  border-color:rgba(11,77,191,.55);
-}
-.btn--scan{background:rgba(11,77,191,.22);border-color:rgba(11,77,191,.55)}
-input,select,textarea{background:rgba(7,10,18,.72)}
-.tablewrap{border:1px solid rgba(255,255,255,.06); border-radius:14px}
+.chipbtn--ghost{ background:transparent; }
 
 
-/* Sticky action bar */
-.stickybar{
-  position:fixed; left:0; right:0; bottom:0;
-  padding:10px 12px calc(10px + env(safe-area-inset-bottom));
-  background:rgba(7,10,18,.92);
-  border-top:1px solid rgba(255,255,255,.10);
-  backdrop-filter: blur(10px);
-  z-index: 1200;
-  display:none;
+/* --- Calendar list mode for day/week --- */
+.calgrid.isListMode{
+  display:block;
 }
-.stickybar.isOn{display:block}
-.stickybar__inner{
-  max-width: 1220px;
-  margin:0 auto;
-  display:flex;
-  gap:10px;
-  justify-content:space-between;
-}
-.stickybar__inner .btn{flex:1}
-body.has-sticky{ padding-bottom: 92px; }
-
-
-/* Fast-entry accordions */
-details.acc{
-  margin:12px 0;
+.calgrid.isListMode .caldaycard{
   border:1px solid rgba(255,255,255,.10);
   border-radius:14px;
-  background:rgba(255,255,255,.02);
-  overflow:hidden;
-}
-.acc__sum{
-  list-style:none;
-  cursor:pointer;
-  padding:12px 12px;
-  font-weight:800;
-  color:var(--text);
-  background:rgba(0,0,0,.14);
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-}
-details.acc > summary::-webkit-details-marker{display:none}
-.acc__sum:after{
-  content:"▾";
-  color:var(--muted);
-  font-weight:900;
-}
-details.acc[open] .acc__sum:after{content:"▴"}
-.acc__body{ padding:12px 12px 2px 12px; }
-
-
-/* Leads card view */
-.leadshead{padding:0 16px 12px 16px; display:flex; justify-content:flex-end;}
-.leadcards{padding:12px 16px 16px 16px; display:grid; grid-template-columns:1fr; gap:12px;}
-@media (min-width: 720px){ .leadcards{grid-template-columns:1fr 1fr;} }
-@media (min-width: 1100px){ .leadcards{grid-template-columns:1fr 1fr 1fr;} }
-.leadcard{
-  border:1px solid rgba(255,255,255,.10);
-  border-radius:16px;
+  padding:12px;
+  margin:12px 0;
   background:rgba(255,255,255,.03);
-  padding:12px 12px;
-}
-.leadcard__top{display:flex; justify-content:space-between; gap:10px; align-items:flex-start;}
-.leadcard__title{font-weight:900}
-.leadcard__sub{color:var(--muted); font-size:12px; margin-top:4px}
-.leadcard__meta{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; color:var(--muted); font-size:12px}
-.leadcard__actions{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px}
-.chip{
-  display:inline-flex; align-items:center;
-  padding:4px 8px;
-  border-radius:999px;
-  border:1px solid rgba(255,255,255,.10);
-  background:rgba(255,255,255,.03);
-  color:var(--text);
-  font-size:12px;
-  font-weight:700;
 }
