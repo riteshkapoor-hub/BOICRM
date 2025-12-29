@@ -1,47 +1,3 @@
-
-// Stepper buttons
-$("supStepQuickBtn")?.addEventListener("click", ()=> setCaptureStep("supplier","quick"));
-$("supStepDetailsBtn")?.addEventListener("click", ()=> setCaptureStep("supplier","details"));
-$("supStepMoreBtn")?.addEventListener("click", ()=> setCaptureStep("supplier","details"));
-
-$("buyStepQuickBtn")?.addEventListener("click", ()=> setCaptureStep("buyer","quick"));
-$("buyStepDetailsBtn")?.addEventListener("click", ()=> setCaptureStep("buyer","details"));
-$("buyStepMoreBtn")?.addEventListener("click", ()=> setCaptureStep("buyer","details"));
-
-// Follow-up quick chips
-document.querySelectorAll(".chips[data-fuchips]").forEach(chipWrap=>{
-  chipWrap.addEventListener("click", (e)=>{
-    const btn = e.target.closest("button[data-fu]");
-    if(!btn) return;
-    const kind = chipWrap.getAttribute("data-fuchips"); // supplier|buyer
-    applyFollowUpPreset(kind, btn.getAttribute("data-fu"));
-  });
-});
-
-// Draft banner actions
-$("btnRestoreDraft")?.addEventListener("click", ()=> restoreDraft());
-$("btnDismissDraft")?.addEventListener("click", ()=> dismissDraft());
-
-// Trade show mode toggle (settings)
-const t = $("tradeModeToggle");
-if(t){
-  t.checked = isTradeMode();
-  t.addEventListener("change", ()=> {
-    localStorage.setItem(LS_TRADE, t.checked ? "1" : "0");
-  });
-}
-
-// Initialize capture step based on saved step + trade mode
-const stepSup = isTradeMode() ? "quick" : getCaptureStep("supplier");
-const stepBuy = isTradeMode() ? "quick" : getCaptureStep("buyer");
-setCaptureStep("supplier", stepSup);
-setCaptureStep("buyer", stepBuy);
-
-// Setup draft autosave
-setupDraftAutosave();
-showDraftBannerIfAny();
-
-window.addEventListener("resize", ()=> { updateSticky(); });
 // BOI CRM — app.js (FULL)
 // Adds:
 // - WhatsApp action next to phone (Leads + Calendar)
@@ -49,6 +5,11 @@ window.addEventListener("resize", ()=> { updateSticky(); });
 // - Works with Google Calendar sync fields (calendarEventId/calendarEventUrl) returned by backend
 // Keeps:
 // - Your existing theme, Calendar UI, Edit UI behaviors
+
+
+function $(id){ return document.getElementById(id); }
+function $$(sel, root=document){ return root.querySelector(sel); }
+function $$$$(sel, root=document){ return Array.from(root.querySelectorAll(sel)); }
 
 const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzrHBqp6ZcS3lvRir9EchBhsldBS1jRghuQCWhj7XOY4nyuy8NRQP6mz3J1WGNYm-cD/exec";
 const LS_SCRIPT_URL = "boi_crm_script_url";
@@ -63,76 +24,9 @@ let LISTS = { productTypes: [], markets: [] };
 let queuedSupplierFU = null;
 let queuedBuyerFU = null;
 
-const $ = (id) => document.getElementById(id);
 
 function getScriptUrl() {
   return (localStorage.getItem(LS_SCRIPT_URL) || DEFAULT_SCRIPT_URL).trim();
-}
-
-
-function renderDashCards(rows){
-  const mount = $("dashCards");
-  if(!mount) return;
-  const items = rows || [];
-  if(!items.length){
-    mount.innerHTML = `<div class="smallmuted">No leads found.</div>`;
-    return;
-  }
-  mount.innerHTML = items.map(r=>{
-    const badges = [
-      ...splitBadges(r.country ? `Country: ${r.country}` : ""),
-      ...splitBadges(r.markets).map(x=>`Market: ${x}`),
-      ...splitBadges(r.productType).map(x=>`Type: ${x}`)
-    ].slice(0,6);
-
-    const actions = [];
-    if(r.email) actions.push(`<a class="iconbtn" href="mailto:${esc(r.email)}">${svgMail()}<span>Email</span></a>`);
-    if(r.phone) actions.push(`<a class="iconbtn" href="tel:${esc(safeTel(r.phone))}">${svgPhone()}<span>Call</span></a>`);
-    actions.push(`<button class="iconbtn" type="button" data-copy="${esc(r.leadId||"")}">${svgCopy()}<span>Copy</span></button>`);
-    if(r.leadId) actions.push(`<button class="iconbtn" type="button" data-edit="${esc(r.leadId||"")}">${svgEdit()}<span>Edit</span></button>`);
-    if(r.folderUrl) actions.push(`<a class="iconbtn" href="${esc(r.folderUrl)}" target="_blank" rel="noopener">${svgLink()}<span>Drive</span></a>`);
-
-    return `
-      <div class="leadcard">
-        <div class="leadcard__top">
-          <div>
-            <div class="leadcard__title">${esc(r.company||"(No Company)")}</div>
-            <div class="leadcard__meta">
-              ${esc(r.contact||"")} ${r.contact && r.type ? "•" : ""} ${esc(r.type||"")}
-              ${r.timestampIST ? ` • ${esc(r.timestampIST)}` : ""}
-            </div>
-          </div>
-          <div class="smallmuted">${esc(r.country||"")}</div>
-        </div>
-
-        ${badges.length ? `<div class="badges">${badges.map(b=>`<span class="badge">${esc(b)}</span>`).join("")}</div>` : ""}
-
-        <div class="leadcard__actions">
-          ${actions.join("")}
-        </div>
-      </div>
-    `;
-  }).join("");
-}
-
-
-
-function debounce(fn, wait){
-  let t=null;
-  return (...args)=>{
-    clearTimeout(t);
-    t=setTimeout(()=>fn(...args), wait);
-  };
-}
-
-
-function toast(msg){
-  const el = $("toast");
-  if(!el) return;
-  el.textContent = msg;
-  el.classList.remove("hidden");
-  clearTimeout(window.__toastT);
-  window.__toastT = setTimeout(()=> el.classList.add("hidden"), 1800);
 }
 
 function setStatus(msg) { $("status").textContent = msg || ""; }
@@ -144,90 +38,6 @@ function setUserPill() {
 
 function openOverlay(id) { $(id).classList.add("open"); $(id).setAttribute("aria-hidden","false"); }
 function closeOverlay(id) { $(id).classList.remove("open"); $(id).setAttribute("aria-hidden","true"); }
-
-
-/* ---------- STICKY MOBILE ACTIONS ---------- */
-function isSmallScreen(){ return window.matchMedia && window.matchMedia("(max-width: 1100px)").matches; }
-function isCoarsePointer(){ return window.matchMedia && window.matchMedia("(pointer: coarse)").matches; }
-
-function setStickyActions({ show, primaryText, secondaryText, onPrimary, onSecondary }){
-  const bar = $("stickyActions");
-  const primary = $("stickyPrimary");
-  const secondary = $("stickySecondary");
-  if(!bar || !primary || !secondary) return;
-
-  if(!show){
-    bar.classList.add("hidden");
-  document.body.classList.remove("has-sticky");
-    bar.setAttribute("aria-hidden","true");
-    primary.onclick = null;
-    secondary.onclick = null;
-    return;
-  }
-  bar.classList.remove("hidden");
-  document.body.classList.add("has-sticky");
-  bar.setAttribute("aria-hidden","false");
-  primary.textContent = primaryText || "Save";
-  secondary.textContent = secondaryText || "Cancel";
-  primary.onclick = onPrimary || null;
-  secondary.onclick = onSecondary || null;
-}
-
-
-function isElementMostlyVisible(el){
-  if(!el) return false;
-  const r = el.getBoundingClientRect();
-  const vh = window.innerHeight || document.documentElement.clientHeight;
-  const visible = Math.min(r.bottom, vh) - Math.max(r.top, 0);
-  return visible >= Math.min(0.5 * r.height, 80);
-}
-
-function updateSticky(){
-  const editOpen = $("editOverlay")?.classList.contains("open");
-  const showSticky = isSmallScreen() || isCoarsePointer();
-
-  if(editOpen && (showSticky || !$("btnSaveEdit") || !isElementMostlyVisible($("btnSaveEdit")))){
-    setStickyActions({
-      show:true,
-      primaryText:"Save Changes",
-      secondaryText:"Close",
-      onPrimary: ()=> $("btnSaveEdit")?.click(),
-      onSecondary: ()=> { closeOverlay("editOverlay"); updateSticky(); }
-    });
-    return;
-  }
-
-  const captureVisible = $("viewCapture") && $("viewCapture").style.display !== "none";
-  if(captureVisible){
-    const kind = mode; // "supplier" | "buyer"
-    const step = getCaptureStep(kind);
-    const btnRow = (kind==="supplier") ? $("saveSupplierNew")?.closest(".btnrow") : $("saveBuyerNew")?.closest(".btnrow");
-    const needSticky = showSticky || !isElementMostlyVisible(btnRow);
-
-    if(needSticky){
-      if(step==="quick"){
-        setStickyActions({
-          show:true,
-          primaryText:"Save & New",
-          secondaryText:"More Details",
-          onPrimary: ()=> (kind==="supplier" ? $("saveSupplierNew") : $("saveBuyerNew"))?.click(),
-          onSecondary: ()=> setCaptureStep(kind, "details")
-        });
-      } else {
-        setStickyActions({
-          show:true,
-          primaryText:"Save & New",
-          secondaryText:"Save & Close",
-          onPrimary: ()=> (kind==="supplier" ? $("saveSupplierNew") : $("saveBuyerNew"))?.click(),
-          onSecondary: ()=> (kind==="supplier" ? $("saveSupplierClose") : $("saveBuyerClose"))?.click()
-        });
-      }
-      return;
-    }
-  }
-
-  setStickyActions({show:false});
-}
 
 function ensureUser() {
   const u = (localStorage.getItem(LS_USER) || "").trim();
@@ -244,118 +54,7 @@ function showTab(which){
   if(which==="Dashboard") refreshDashboard();
   if(which==="Leads") refreshLeads();
   if(which==="Calendar") refreshCalendar();
-  if(which==="Leads") applyLeadsView();
-  if(which==="Dashboard") applyDashView();
-  updateSticky();
 }
-
-// --- View preferences (List vs Cards) ---
-const LS_VIEW_LEADS = "boi_view_leads";
-const LS_VIEW_DASH  = "boi_view_dash";
-
-function getViewPref(key, fallback="list"){
-  try{ return localStorage.getItem(key) || fallback; }catch{ return fallback; }
-}
-function setViewPref(key, val){
-  try{ localStorage.setItem(key, val); }catch{}
-}
-
-function setSegActive(listBtn, cardsBtn, mode){
-  if(!listBtn || !cardsBtn) return;
-  listBtn.classList.toggle("is-active", mode==="list");
-  cardsBtn.classList.toggle("is-active", mode==="cards");
-}
-
-function applyLeadsView(){
-  const mode = getViewPref(LS_VIEW_LEADS,"list");
-  setSegActive($("leadsViewList"), $("leadsViewCards"), mode);
-  const tableWrap = $("leadsTable")?.closest(".tablewrap");
-  const cards = $("leadsCards");
-  if(tableWrap) tableWrap.style.display = (mode==="list") ? "" : "none";
-  if(cards) cards.style.display = (mode==="cards") ? "" : "none";
-}
-function applyDashView(){
-  const mode = getViewPref(LS_VIEW_DASH,"list");
-  setSegActive($("dashViewList"), $("dashViewCards"), mode);
-  const tableWrap = $("dashTable")?.closest(".tablewrap");
-  const cards = $("dashCards");
-  if(tableWrap) tableWrap.style.display = (mode==="list") ? "" : "none";
-  if(cards) cards.style.display = (mode==="cards") ? "" : "none";
-}
-
-function splitBadges(s){
-  return String(s||"")
-    .split(/[,;\n]+/)
-    .map(x=>x.trim())
-    .filter(Boolean)
-    .slice(0,6);
-}
-
-function renderLeadCards(rows, mountId){
-  const mount = $(mountId);
-  if(!mount) return;
-  const items = rows || [];
-  if(!items.length){
-    mount.innerHTML = `<div class="smallmuted">No leads found.</div>`;
-    return;
-  }
-  mount.innerHTML = items.map(r=>{
-    const wa1 = safeWa(r.phone);
-    const wa2 = safeWa(r.phone2);
-    const badges = [
-      ...splitBadges(r.country ? `Country: ${r.country}` : ""),
-      ...splitBadges(r.markets).map(x=>`Market: ${x}`),
-      ...splitBadges(r.productType).map(x=>`Type: ${x}`)
-    ].slice(0,6);
-
-    const actions = [];
-    if(r.email) actions.push(`<a class="iconbtn" href="mailto:${esc(r.email)}" title="Email">${svgMail()}<span>Email</span></a>`);
-    if(r.phone) actions.push(`<a class="iconbtn" href="tel:${esc(safeTel(r.phone))}" title="Call">${svgPhone()}<span>Call</span></a>`);
-    if(wa1) actions.push(`<a class="iconbtn" href="${esc(wa1)}" target="_blank" rel="noopener" title="WhatsApp">${svgWhatsApp()}<span>WhatsApp</span></a>`);
-    if(r.phone2) actions.push(`<a class="iconbtn" href="tel:${esc(safeTel(r.phone2))}" title="Call 2">${svgPhone()}<span>Call 2</span></a>`);
-    if(wa2) actions.push(`<a class="iconbtn" href="${esc(wa2)}" target="_blank" rel="noopener" title="WhatsApp 2">${svgWhatsApp()}<span>WA 2</span></a>`);
-
-    const editBtn = (r.leadId) ? `<a class="iconbtn iconbtn--primary" href="#" data-edit="${esc(r.leadId)}">${svgEdit()}<span>Edit</span></a>` : "";
-
-    return `
-      <div class="leadcard">
-        <div class="leadcard__top">
-          <div>
-            <div class="leadcard__title">${esc(r.company||"(No Company)")}</div>
-            <div class="leadcard__meta">
-              ${esc(r.contact||"")} ${r.contact && r.type ? "•" : ""} ${esc(r.type||"")}
-              ${r.timestampIST ? ` • ${esc(r.timestampIST)}` : ""}
-            </div>
-            <div class="leadcard__meta">
-              ${r.enteredBy ? `Entered by ${esc(r.enteredBy)}` : ""}
-            </div>
-          </div>
-          <div class="smallmuted">${esc(r.country||"")}</div>
-        </div>
-
-        ${badges.length ? `<div class="badges">${badges.map(b=>`<span class="badge">${esc(b)}</span>`).join("")}</div>` : ""}
-
-        <div class="leadcard__actions">
-          ${actions.join("")}
-          ${editBtn}
-          ${r.folderUrl ? `<a class="iconbtn" href="${esc(r.folderUrl)}" target="_blank" rel="noopener">${svgLink()}<span>Drive</span></a>` : ""}
-        </div>
-      </div>
-    `;
-  }).join("");
-
-  // wire Edit buttons
-  mount.querySelectorAll("[data-edit]").forEach(a=>{
-    a.addEventListener("click", (e)=>{
-      e.preventDefault();
-      const id = a.getAttribute("data-edit");
-      const row = (window.__leadsCache||[]).find(x=>String(x.leadId)===String(id));
-      if(id) openEdit(id, row || {});
-    });
-  });
-}
-
-
 
 function setMode(newMode){
   mode = newMode;
@@ -364,15 +63,7 @@ function setMode(newMode){
   $("supplierForm").style.display = mode==="supplier" ? "" : "none";
   $("buyerForm").style.display = mode==="buyer" ? "" : "none";
   $("formTitle").textContent = mode==="supplier" ? "Supplier details" : "Buyer details";
-
-  // Default to Quick step in Trade Show Mode
-  const step = isTradeMode() ? "quick" : getCaptureStep(mode);
-  setCaptureStep(mode, step);
-
-  showDraftBannerIfAny();
-  updateSticky();
 }
-
 
 function esc(s){
   return String(s||"")
@@ -945,7 +636,7 @@ function clearSupplier(){
   $("supCatalogFiles").value="";
   $("supCardFile").value="";
   $("supResult").innerHTML="";
-  if(!isTradeMode()){ supCountry.setValue(""); supMarkets.setValue(""); supProductType.setValue(""); }
+  supCountry.setValue(""); supMarkets.setValue(""); supProductType.setValue("");
 
   $("supFUDate").value=""; $("supFUTime").value=""; $("supFUNotes").value="";
   $("supFULast").textContent="";
@@ -960,7 +651,7 @@ function clearBuyer(){
   $("buyCatalogFiles").value="";
   $("buyCardFile").value="";
   $("buyResult").innerHTML="";
-  if(!isTradeMode()){ buyCountry.setValue(""); buyMarkets.setValue(""); buyProductType.setValue(""); }
+  buyCountry.setValue(""); buyMarkets.setValue(""); buyProductType.setValue("");
 
   $("buyFUDate").value=""; $("buyFUTime").value=""; $("buyFUNotes").value="";
   $("buyFULast").textContent="";
@@ -970,9 +661,8 @@ function clearBuyer(){
 /* ---------- Save handlers ---------- */
 async function saveSupplier(closeAfter){
   const company = $("supCompany").value.trim();
-  const contact = $("supContact").value.trim();
   const products = $("supProducts").value.trim();
-  if(!company || !contact){ alert("Company and Contact are required."); return; }
+  if(!company || !products){ alert("Fill Company and What do they sell."); return; }
 
   queueFollowUp("supplier");
   const enteredBy = (localStorage.getItem(LS_USER)||"Unknown").trim() || "Unknown";
@@ -1027,16 +717,14 @@ async function saveSupplier(closeAfter){
   sessionCount++; updateSummary();
   addSessionRow("Supplier", `${company}${payload.contact? " / "+payload.contact:""}`, payload.country);
 
-  localStorage.removeItem(LS_DRAFT_SUP);
   clearSupplier();
   if(closeAfter) showTab("Dashboard");
 }
 
 async function saveBuyer(closeAfter){
   const contact = $("buyContact").value.trim();
-  const company = $("buyCompany").value.trim();
   const needs = $("buyNeeds").value.trim();
-  if(!company || !contact){ alert("Company and Contact are required."); return; }
+  if(!contact || !needs){ alert("Fill Contact and What do they want to buy."); return; }
 
   queueFollowUp("buyer");
   const enteredBy = (localStorage.getItem(LS_USER)||"Unknown").trim() || "Unknown";
@@ -1087,7 +775,6 @@ async function saveBuyer(closeAfter){
   sessionCount++; updateSummary();
   addSessionRow("Buyer", `${contact}${payload.company? " / "+payload.company:""}`, payload.country);
 
-  localStorage.removeItem(LS_DRAFT_BUY);
   clearBuyer();
   if(closeAfter) showTab("Dashboard");
 }
@@ -1137,41 +824,6 @@ function svgWhatsApp(){
   </svg>`;
 }
 
-
-function svgCopy(){
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-    <rect x="9" y="9" width="13" height="13" rx="2"></rect>
-    <rect x="2" y="2" width="13" height="13" rx="2"></rect>
-  </svg>`;
-}
-
-async function copyLeadToClipboard(r){
-  const parts = [
-    r.company || "",
-    r.contact ? `Contact: ${r.contact}` : "",
-    r.title ? `Title: ${r.title}` : "",
-    r.phone ? `Phone: ${r.phone}` : "",
-    r.phone2 ? `Phone2: ${r.phone2}` : "",
-    r.email ? `Email: ${r.email}` : "",
-    r.country ? `Country: ${r.country}` : "",
-    r.markets ? `Markets: ${r.markets}` : "",
-    r.productType ? `Product: ${r.productType}` : "",
-  ].filter(Boolean);
-  const text = parts.join("\n");
-  try{
-    await navigator.clipboard.writeText(text);
-    toast("Copied");
-  }catch(_){
-    // fallback
-    const ta=document.createElement("textarea");
-    ta.value=text;
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand("copy");
-    ta.remove();
-    toast("Copied");
-  }
-}
 /* ---------- Dashboard / Leads ---------- */
 function renderKpis(k){
   const el = $("kpis");
@@ -1214,33 +866,14 @@ async function refreshDashboard(){
         <td>${esc(r.type||"")}</td>
         <td>${esc(r.company||"")}</td>
         <td>${esc(r.contact||"")}</td>
-        <td>
-          <div class="cellicons">
-            ${r.email ? `<a class="iconmini" href="mailto:${esc(r.email)}" title="Email">${svgMail()}</a>` : ``}
-            ${r.phone ? `<a class="iconmini" href="tel:${esc(safeTel(r.phone))}" title="Call">${svgPhone()}</a>` : ``}
-            ${safeWa(r.phone) ? `<a class="iconmini" href="${esc(safeWa(r.phone))}" target="_blank" rel="noopener" title="WhatsApp">${svgWhatsApp()}</a>` : ``}
-            <button class="iconmini" type="button" data-copy="${esc(r.leadId||"")}" title="Copy">${svgCopy()}</button>
-            ${r.leadId ? `<button class="iconmini" type="button" data-edit="${esc(r.leadId)}" title="Edit">${svgEdit()}</button>` : ``}
-          </div>
-        </td>
         <td>${esc(r.country||"")}</td>
         <td>${esc(r.markets||"")}</td>
         <td>${esc(r.productType||"")}</td>
         <td>${esc(r.enteredBy||"")}</td>
         <td>${rowLink(r.folderUrl,"Folder")} ${r.itemsSheetUrl ? " | " + rowLink(r.itemsSheetUrl,"Items") : ""}</td>
       `;
-tbody.appendChild(tr);
-
-      const eb = tr.querySelector('[data-edit]');
-      if(eb){ eb.addEventListener("click", ()=> openEdit(r.leadId, r)); }
-      const cb = tr.querySelector('[data-copy]');
-      if(cb){ cb.addEventListener("click", ()=> copyLeadToClipboard(r)); }
-
+      tbody.appendChild(tr);
     });
-
-    // Cards view
-    renderDashCards(data.rows||[]);
-    applyDashView();
   } catch(e){
     console.error(e);
     setStatus("Dashboard load failed.");
@@ -1302,10 +935,6 @@ async function refreshLeads(){
         eb.addEventListener("click", ()=> openEdit(r.leadId, r));
       }
     });
-
-    // Cards view
-    renderLeadCards(data.rows||[], "leadsCards");
-    applyLeadsView();
   } catch(e){
     console.error(e);
     setStatus("Leads load failed.");
@@ -1347,7 +976,6 @@ function openEdit(leadId, row){
 
   $("editSub").textContent = `${row?.leadId||leadId||""} • ${row?.company||row?.contact||""}`;
   openOverlay("editOverlay");
-  updateSticky();
 }
 
 function clearEditFollowup(){
@@ -1837,13 +1465,10 @@ function renderSideListForRange(range){
 /* ---------- BOOT (FULL) ---------- */
 document.addEventListener("DOMContentLoaded", async ()=>{
   // tabs
-  window.addEventListener("resize", ()=> updateSticky());
   $("tabCapture").addEventListener("click", ()=>showTab("Capture"));
   $("tabDashboard").addEventListener("click", ()=>showTab("Dashboard"));
   $("tabLeads").addEventListener("click", ()=>showTab("Leads"));
   $("tabCalendar").addEventListener("click", ()=>showTab("Calendar"));
-
-  updateSticky();
 
   // lead type
   $("btnSupplier").addEventListener("click", ()=>setMode("supplier"));
@@ -1856,7 +1481,7 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   });
 
   // edit overlay
-  $("btnCloseEdit").addEventListener("click", ()=>{ closeOverlay("editOverlay"); updateSticky(); });
+  $("btnCloseEdit").addEventListener("click", ()=>closeOverlay("editOverlay"));
   $("btnSaveEdit").addEventListener("click", saveEdit);
   $("btnClearEditFU").addEventListener("click", clearEditFollowup);
 
@@ -1986,264 +1611,4 @@ document.addEventListener("DOMContentLoaded", async ()=>{
 
   setStatus("Ready");
   updateSummary();
-
-  // View toggles (List vs Cards)
-  const leadsListBtn = $("leadsViewList");
-  const leadsCardsBtn = $("leadsViewCards");
-  if(leadsListBtn && leadsCardsBtn){
-    leadsListBtn.addEventListener("click", ()=>{
-      setViewPref(LS_VIEW_LEADS,"list");
-      applyLeadsView();
-    });
-    leadsCardsBtn.addEventListener("click", ()=>{
-      setViewPref(LS_VIEW_LEADS,"cards");
-      applyLeadsView();
-    });
-  }
-
-  const dashListBtn = $("dashViewList");
-  const dashCardsBtn = $("dashViewCards");
-  if(dashListBtn && dashCardsBtn){
-    dashListBtn.addEventListener("click", ()=>{
-      setViewPref(LS_VIEW_DASH,"list");
-      applyDashView();
-    });
-    dashCardsBtn.addEventListener("click", ()=>{
-      setViewPref(LS_VIEW_DASH,"cards");
-      applyDashView();
-    });
-  }
-
-  // Apply views on load + when rotating device
-  window.addEventListener("resize", ()=>{
-    applyLeadsView();
-    applyDashView();
-  });
-
-
-})
-function setSegActive(a,b,mode){
-  if(!a||!b) return;
-  a.classList.toggle("seg--active", mode==="list" || mode==="quick");
-  b.classList.toggle("seg--active", mode==="cards" || mode==="details");
-}
-
-function setCaptureStep(kind, step){
-  const isSup = kind==="supplier";
-  const quick = $(isSup ? "supStepQuickPane" : "buyStepQuickPane");
-  const details = $(isSup ? "supStepDetailsPane" : "buyStepDetailsPane");
-  const bQuick = $(isSup ? "supStepQuickBtn" : "buyStepQuickBtn");
-  const bDetails = $(isSup ? "supStepDetailsBtn" : "buyStepDetailsBtn");
-  const bMore = $(isSup ? "supStepMoreBtn" : "buyStepMoreBtn");
-
-  if(!quick || !details) return;
-
-  const mode = (step==="details") ? "details" : "quick";
-  quick.classList.toggle("hidden", mode==="details");
-  details.classList.toggle("hidden", mode==="quick");
-  if(bQuick && bDetails){
-    bQuick.classList.toggle("seg--active", mode==="quick");
-    bDetails.classList.toggle("seg--active", mode==="details");
-  }
-  if(bMore) bMore.style.display = (mode==="quick") ? "" : "none";
-
-  localStorage.setItem(isSup ? LS_STEP_SUP : LS_STEP_BUY, mode);
-  updateSticky();
-}
-
-function getCaptureStep(kind){
-  const isSup = kind==="supplier";
-  const v = localStorage.getItem(isSup ? LS_STEP_SUP : LS_STEP_BUY);
-  return (v==="details") ? "details" : "quick";
-}
-
-
-function bindCardActions(){
-  const leadsMount = $("leadsCards");
-  if(leadsMount && !leadsMount.__bound){
-    leadsMount.__bound = true;
-    leadsMount.addEventListener("click", (e)=>{
-      const edit = e.target.closest("[data-edit]");
-      if(edit){
-        e.preventDefault();
-        const id = edit.getAttribute("data-edit");
-        const row = (window.__leadsCache||[]).find(x => String(x.leadId||"")==String(id)) || null;
-        openEdit(id, row || {});
-        return;
-      }
-      const copy = e.target.closest("[data-copy]");
-      if(copy){
-        e.preventDefault();
-        const id = copy.getAttribute("data-copy");
-        const row = (window.__leadsCache||[]).find(x => String(x.leadId||"")==String(id)) || {};
-        copyLeadToClipboard(row);
-        return;
-      }
-    });
-  }
-}
-
-function isTradeMode(){
-  return localStorage.getItem(LS_TRADE)==="1";
-}
-
-
-
-function applyFollowUpPreset(kind, preset){
-  const isSup = kind==="supplier";
-  const d = $(isSup ? "supFUDate" : "buyFUDate");
-  const t = $(isSup ? "supFUTime" : "buyFUTime");
-  if(!d || !t) return;
-
-  const now = new Date();
-  const setDate = (dt)=>{
-    const yyyy = dt.getFullYear();
-    const mm = String(dt.getMonth()+1).padStart(2,'0');
-    const dd = String(dt.getDate()).padStart(2,'0');
-    d.value = `${yyyy}-${mm}-${dd}`;
-  };
-
-  if(preset==="clear"){
-    d.value=""; t.value="";
-    return;
-  }
-  if(preset==="tomorrow"){
-    const dt = new Date(now.getFullYear(), now.getMonth(), now.getDate()+1);
-    setDate(dt);
-    t.value = "10:00";
-    return;
-  }
-  if(preset==="nextweek"){
-    const dt = new Date(now.getFullYear(), now.getMonth(), now.getDate()+7);
-    setDate(dt);
-    t.value = t.value || "10:00";
-    return;
-  }
-  if(preset==="twoweeks"){
-    const dt = new Date(now.getFullYear(), now.getMonth(), now.getDate()+14);
-    setDate(dt);
-    t.value = t.value || "10:00";
-    return;
-  }
-}
-
-function draftKey(){
-  return (mode==="supplier") ? LS_DRAFT_SUP : LS_DRAFT_BUY;
-}
-
-function collectDraft(){
-  const isSup = mode==="supplier";
-  const obj = {
-    mode,
-    step: getCaptureStep(mode),
-    at: new Date().toISOString(),
-    fields: {}
-  };
-
-  const ids = isSup ? [
-    "supCompany","supContact","supTitle","supEmail",
-    "supPhone","supPhone2","supWebsite","supSocial","supPL",
-    "supExFactory","supFOB","supProducts","supNotes","supFUDate","supFUTime","supFUNotes"
-  ] : [
-    "buyCompany","buyContact","buyTitle","buyEmail",
-    "buyPhone","buyPhone2","buyWebsite","buySocial","buyPL",
-    "buyNeeds","buyNotes","buyFUDate","buyFUTime","buyFUNotes"
-  ];
-
-  ids.forEach(id=>{
-    const el = $(id);
-    if(el) obj.fields[id] = el.value;
-  });
-
-  // combos
-  try{
-    if(isSup){
-      obj.fields.supCountryCombo = supCountry?.value || "";
-      obj.fields.supMarketsCombo = supMarkets?.value || "";
-      obj.fields.supProductTypeCombo = supPT?.value || "";
-    }else{
-      obj.fields.buyCountryCombo = buyCountry?.value || "";
-      obj.fields.buyMarketsCombo = buyMarkets?.value || "";
-      obj.fields.buyProductTypeCombo = buyPT?.value || "";
-    }
-  }catch(_){}
-  return obj;
-}
-
-function applyDraft(draft){
-  if(!draft || !draft.fields) return;
-  const f = draft.fields;
-
-  Object.keys(f).forEach(k=>{
-    const el = $(k);
-    if(el) el.value = f[k];
-  });
-
-  try{
-    if(draft.mode==="supplier"){
-      supCountry?.setValue(f.supCountryCombo||"");
-      supMarkets?.setValue(f.supMarketsCombo||"");
-      supPT?.setValue(f.supProductTypeCombo||"");
-      setCaptureStep("supplier", draft.step==="details" ? "details" : "quick");
-    }else{
-      buyCountry?.setValue(f.buyCountryCombo||"");
-      buyMarkets?.setValue(f.buyMarketsCombo||"");
-      buyPT?.setValue(f.buyProductTypeCombo||"");
-      setCaptureStep("buyer", draft.step==="details" ? "details" : "quick");
-    }
-  }catch(_){}
-}
-
-function saveDraftNow(){
-  try{
-    const obj = collectDraft();
-    localStorage.setItem(draftKey(), JSON.stringify(obj));
-  }catch(_){}
-}
-
-const saveDraftDebounced = debounce(saveDraftNow, 450);
-
-function setupDraftAutosave(){
-  const sup = $("supplierForm");
-  const buy = $("buyerForm");
-  [sup,buy].forEach(form=>{
-    if(!form) return;
-    form.addEventListener("input", ()=> {
-      // only autosave when capture view is visible
-      const captureVisible = $("viewCapture") && $("viewCapture").style.display !== "none";
-      if(!captureVisible) return;
-      saveDraftDebounced();
-    });
-    form.addEventListener("change", ()=> {
-      const captureVisible = $("viewCapture") && $("viewCapture").style.display !== "none";
-      if(!captureVisible) return;
-      saveDraftDebounced();
-    });
-  });
-}
-
-function showDraftBannerIfAny(){
-  const banner = $("draftBanner");
-  if(!banner) return;
-  const raw = localStorage.getItem(draftKey());
-  if(!raw){ banner.classList.add("hidden"); return; }
-  banner.classList.remove("hidden");
-}
-
-function restoreDraft(){
-  const raw = localStorage.getItem(draftKey());
-  if(!raw) return;
-  try{
-    const d = JSON.parse(raw);
-    applyDraft(d);
-    $("draftBanner")?.classList.add("hidden");
-    updateSticky();
-  }catch(_){}
-}
-
-function dismissDraft(){
-  localStorage.removeItem(draftKey());
-  $("draftBanner")?.classList.add("hidden");
-}
-
-;
+});
