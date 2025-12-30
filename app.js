@@ -100,6 +100,11 @@ function getExecUrl(){
   return getScriptUrl();
 }
 
+function getScriptUrl_(){
+  // Backward-compat alias used by older code paths
+  return getScriptUrl();
+}
+
 function requireExecUrl(){
   const u = getScriptUrl();
   if(!u) throw new Error("Missing Apps Script /exec URL. Open Settings and paste your Apps Script Web App URL.");
@@ -150,6 +155,13 @@ function esc(s){
     .replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")
     .replaceAll('"',"&quot;").replaceAll("'","&#039;");
 }
+
+function safeValue_(el){
+  if(!el || typeof el.value === "undefined" || el.value === null) return "";
+  return String(el.value);
+}
+
+
 
 /* ---------- Global quick search ---------- */
 let __gsLastQ = "";
@@ -1338,10 +1350,10 @@ async function refreshDashboard(){
     const data = await getJson({
       action:"listLeads",
       limit:"200",
-      q:$("dashQ").value.trim(),
-      country: dashCountry.value,
-      market: dashMarket.value,
-      productType: dashPT.value
+      q:safeValue_($("dashQ")).trim(),
+      country: safeValue_(dashCountry),
+      market: safeValue_(dashMarket),
+      productType: safeValue_(dashPT)
     });
 
     window.__leadsCache = data.rows || [];
@@ -1500,10 +1512,10 @@ async function refreshLeads(){
     const data = await getJson({
       action:"listLeads",
       limit:"1000",
-      q:$("leadsQ").value.trim(),
-      country: leadsCountry.value,
-      market: leadsMarket.value,
-      productType: leadsPT.value
+      q:safeValue_($("leadsQ")).trim(),
+      country: safeValue_(leadsCountry),
+      market: safeValue_(leadsMarket),
+      productType: safeValue_(leadsPT)
     });
 
     window.__leadsCache = data.rows || [];
@@ -2414,17 +2426,15 @@ function buildVcard_(u){
   if(phone2) lines.push(`TEL;TYPE=WORK:${escapeV_(phone2)}`);
   if(website) lines.push(`URL:${escapeV_(website)}`);
 
-  // Attach logo/photo so phones can show an image with the contact.
+  // Attach site logo / photo as contact image
   try{
-    const base = window.location.origin + window.location.pathname.replace(/[^/]+$/,"");
+    const base = window.location.origin + window.location.pathname.replace(/[^/]+$/, "");
     const logoUrl = base + "boi-logo.png";
     if(logoUrl){
-      // Many phones understand PHOTO; some treat LOGO as well.
       lines.push(`PHOTO;VALUE=URI:${escapeV_(logoUrl)}`);
-      // lines.push(`LOGO;VALUE=URI:${escapeV_(logoUrl)}`); // optional second line
     }
   }catch(e){
-    // no-op on environments without window/location
+    // ignore if not in browser environment
   }
 
   if(social) lines.push(`NOTE:Social ${escapeV_(social)}`);
@@ -2447,7 +2457,7 @@ function openVcardOverlay_(){
   const meta = [u.Title, u.Email, u.Phone1].filter(Boolean).join(" • ");
   $("vcardMeta").textContent = meta || "—";
 
-  // QR image via public QR service
+  // QR image via qrserver
   const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=" + encodeURIComponent(vcf);
   $("vcardQr").src = qrUrl;
 
