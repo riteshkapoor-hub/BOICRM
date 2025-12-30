@@ -46,6 +46,21 @@ let html5Qr = null;
 let qrRunning = false;
 let sessionCount = 0;
 
+// --- Enterprise IA state ---
+let __leadsAll = [];
+let __leadsAllFetchedAt = 0;
+let __followupsAll = [];
+let __followupsFetchedAt = 0;
+
+let __leadsCapturedFilter = "all"; // all|today|week|month
+let __leadsDueFilter = "all";      // all|overdue|today|next7|none
+let __leadsPage = 1;
+const __LEADS_PAGE_SIZE = 30;
+let __leadsFiltered = [];
+let __leadNextFollow = new Map(); // leadId -> {d:Date,label:string,status:string}
+
+
+
 // Prevent duplicate saves when network is slow / user taps multiple times
 let supplierSaveInFlight = false;
 let buyerSaveInFlight = false;
@@ -77,16 +92,6 @@ let queuedSupplierFU = null;
 let queuedBuyerFU = null;
 
 const $ = (id) => document.getElementById(id);
-// Escape HTML for safe rendering in innerHTML templates
-function escapeHtml(s){
-  return String(s ?? "")
-    .replace(/&/g,"&amp;")
-    .replace(/</g,"&lt;")
-    .replace(/>/g,"&gt;")
-    .replace(/"/g,"&quot;")
-    .replace(/'/g,"&#39;");
-}
-
 
 // --- utils: debounce (used by global search + auto-density resize) ---
 // Some builds referenced debounce_ without defining it.
@@ -141,16 +146,32 @@ function ensureUser() {
   openOverlay("userOverlay");
 }
 
+
 function showTab(which){
-  const tabs = ["Capture","Dashboard","Leads","Calendar"];
+  const tabs = ["Capture","Dashboard","Leads","Pipeline","Calendar","Insights"];
   tabs.forEach(t=>{
-    $(`tab${t}`).classList.toggle("isActive", t===which);
-    $(`view${t}`).style.display = (t===which) ? "" : "none";
+    const tabBtn = $(`tab${t}`);
+    const view = $(`view${t}`);
+    if(tabBtn) tabBtn.classList.toggle("isActive", t===which);
+    if(view) view.style.display = (t===which) ? "" : "none";
   });
-  if(which==="Dashboard") refreshDashboard();
-  if(which==="Leads") refreshLeads();
+
+  // Only show lead-type switch + scan on Capture (keeps Home clean)
+  const leadType = document.querySelector(".leadtype");
+  const btnScan = $("btnScan");
+  const summary = $("summary");
+  if(leadType) leadType.style.display = (which==="Capture") ? "" : "none";
+  if(btnScan) btnScan.style.display = (which==="Capture") ? "" : "none";
+  if(summary) summary.style.display = (which==="Capture") ? "" : "none";
+
+  // Lazy-load heavy tabs
+  if(which==="Dashboard") refreshHome_();
+  if(which==="Leads") refreshLeadsEnterprise_();
+  if(which==="Pipeline") refreshPipeline_();
   if(which==="Calendar") refreshCalendar();
+  if(which==="Insights") refreshInsights_();
 }
+
 
 function setMode(newMode){
   mode = newMode;
@@ -166,6 +187,32 @@ function esc(s){
     .replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")
     .replaceAll('"',"&quot;").replaceAll("'","&#039;");
 }
+
+function parseISTLabel_(label){
+  const s = String(label||"").trim();
+  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{2})\s+(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if(!m) return null;
+  const MM = parseInt(m[1],10);
+  const DD = parseInt(m[2],10);
+  const YY = 2000 + parseInt(m[3],10);
+  let HH = parseInt(m[4],10);
+  const MI = parseInt(m[5],10);
+  const ap = String(m[6]||"").toUpperCase();
+  if(ap==="PM" && HH<12) HH += 12;
+  if(ap==="AM" && HH===12) HH = 0;
+  // Interpret as IST (+05:30)
+  const iso = `${YY}-${String(MM).padStart(2,"0")}-${String(DD).padStart(2,"0")}T${String(HH).padStart(2,"0")}:${String(MI).padStart(2,"0")}:00+05:30`;
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function startOfDay_(d){
+  const x = new Date(d);
+  x.setHours(0,0,0,0);
+  return x;
+}
+
+
 
 function safeValue_(el){
   if(!el || typeof el.value === "undefined" || el.value === null) return "";
@@ -233,7 +280,7 @@ function initGlobalSearch_(){
         box.value = q || "";
         box.dispatchEvent(new Event('input', { bubbles:true }));
       }
-      await refreshLeads();
+      await refreshLeadsEnterprise_();
       if(box) box.focus();
     }catch{}
   };
@@ -996,45 +1043,6 @@ function formatISTFromInputs(dateVal, timeVal){
   }
 }
 
-
-async function fetchActivities_(leadId){
-  try{
-    const url = getScriptUrl_() + `?action=listActivities&leadId=${encodeURIComponent(leadId)}`;
-    const res = await fetch(url, { cache:"no-store" });
-    const j = await res.json();
-    return (j && j.result==="success") ? (j.activities||[]) : [];
-  }catch(e){
-    console.warn("activities fetch failed", e);
-    return [];
-  }
-}
-
-function renderTimeline_(items){
-  const host = $("editTimeline");
-  if(!host) return;
-  if(!items || !items.length){
-    host.innerHTML = `<div class="hint">No activity yet.</div>`;
-    return;
-  }
-  host.innerHTML = items.map(it=>{
-    const meta = [it.timestampIST || it.timestampISO, it.actor, it.kind].filter(Boolean).join(" • ");
-    const msg = escapeHtml(String(it.message||""));
-    return `<div class="timelineItem">
-      <div class="timelineDot"></div>
-      <div class="timelineMain">
-        <div class="timelineMeta">${escapeHtml(meta)}</div>
-        <div class="timelineMsg">${msg}</div>
-      </div>
-    </div>`;
-  }).join("");
-}
-
-async function refreshEditTimeline_(leadId){
-  const host = $("editTimeline");
-  if(host) host.innerHTML = `<div class="hint">Loading…</div>`;
-  const items = await fetchActivities_(leadId);
-  renderTimeline_(items);
-}
 function applyQuickFU(dateInputId, timeInputId, daysAhead){
   const dEl = $(dateInputId);
   const tEl = $(timeInputId);
@@ -1046,9 +1054,6 @@ function applyQuickFU(dateInputId, timeInputId, daysAhead){
   const dd = String(base.getDate()).padStart(2,"0");
   dEl.value = `${yyyy}-${mm}-${dd}`;
   tEl.value = "10:00";
-  dEl.dataset.quick = "1";
-  tEl.dataset.quick = "1";
-
   dEl.dispatchEvent(new Event("input"));
   tEl.dispatchEvent(new Event("input"));
 }
@@ -1070,15 +1075,12 @@ function queueFollowUp(kind){
   }
 
   const f = formatISTFromInputs(d,t);
-  const quick = ($(dateId).dataset.quick==="1" || $(timeId).dataset.quick==="1");
-  const fu = { scheduledAtIST: f.label, scheduledAtISO: f.iso, notes, _createCalendar: quick };
+  const fu = { scheduledAtIST: f.label, scheduledAtISO: f.iso, notes };
 
   if(kind==="supplier") queuedSupplierFU = fu;
   else queuedBuyerFU = fu;
 
-  $(outId).textContent = quick ? `Will schedule after save (Calendar enabled): ${f.label}` : `Will schedule after save: ${f.label}`;
-  // clear quick marker once queued
-  try{ delete $(dateId).dataset.quick; delete $(timeId).dataset.quick; }catch(_){ }
+  $(outId).textContent = `Will schedule after save: ${f.label}`;
 }
 
 /* ---------- Clear forms ---------- */
@@ -1176,7 +1178,7 @@ async function saveSupplier(closeAfter){
       catalogFiles:uploads.catalogFiles,
       cardFile:uploads.cardFile,
       pendingFollowUp: queuedSupplierFU,
-      createCalendarEvent: Boolean(queuedSupplierFU && queuedSupplierFU._createCalendar)
+      createCalendarEvent: false
     };
 
     const res = await postPayload(payload);
@@ -1261,7 +1263,7 @@ async function saveBuyer(closeAfter){
       catalogFiles:uploads.catalogFiles,
       cardFile:uploads.cardFile,
       pendingFollowUp: queuedBuyerFU,
-      createCalendarEvent: Boolean(queuedBuyerFU && queuedBuyerFU._createCalendar)
+      createCalendarEvent: false
     };
 
     const res = await postPayload(payload);
@@ -1305,76 +1307,17 @@ function safeWa(phone){
   return d ? `https://wa.me/${d}` : "";
 }
 
-// ===========================
-// WhatsApp Intro (user-initiated, prefilled message)
-// ===========================
-const WHATSAPP_INTRO_TEMPLATE = `Hello {{ContactName}},
-
-This is {{SenderName}} from Blue Orbit International LLP.
-We work with export-ready food & ingredient solutions.
-
-You can reach me directly at:
-📞 {{SenderPhone1}}{{SenderPhone2Line}}
-✉️ {{SenderEmail}}
-
-Looking forward to connecting.`;
-
-function safeWaText(phone, text){
-  const d = digitsOnly(phone);
-  if(!d) return "";
-  const q = text ? `?text=${encodeURIComponent(String(text))}` : "";
-  return `https://wa.me/${d}${q}`;
-}
-
-function pick_(obj, keys){
-  for(const k of keys){
-    if(obj && obj[k]!==undefined && obj[k]!==null){
-      const v = String(obj[k]).trim();
-      if(v) return v;
-    }
-  }
-  return "";
-}
-
-function getSenderPhones_(u){
-  // Support multiple header styles from Users sheet
-  const p1 = pick_(u, ["Phone1","Phone 1","Phone","Mobile","Mobile 1","Primary Phone","PrimaryPhone","Phone Number","PhoneNumber"]);
-  const p2 = pick_(u, ["Phone2","Phone 2","Alt Phone","Alternate Phone","Secondary Phone","SecondaryPhone","Mobile 2"]);
-  return { p1, p2 };
-}
-
-function buildWhatsIntroText_(lead){
-  const u = getCurrentUser_() || {};
-  const { p1, p2 } = getSenderPhones_(u);
-  const senderName = pick_(u, ["Name","User","User Name","Full Name","FullName"]) || (localStorage.getItem(LS_USER)||"");
-  const senderEmail = pick_(u, ["Email","EmailID","Email Id","E-mail"]) || "";
-  const contactName = String((lead?.contact || lead?.company || "there")).trim() || "there";
-
-  const map = {
-    "{{ContactName}}": contactName,
-    "{{SenderName}}": senderName || "—",
-    "{{SenderEmail}}": senderEmail || "—",
-    "{{SenderPhone1}}": p1 || "—",
-    "{{SenderPhone2}}": p2 || "",
-    "{{SenderPhone2Line}}": p2 ? ` / ${p2}` : ""
-  };
-
-  let msg = WHATSAPP_INTRO_TEMPLATE;
-  Object.keys(map).forEach(k=>{
-    msg = msg.split(k).join(map[k]);
-  });
-  return msg;
-}
-
-
 function svgPhone(){
-  // Phone handset icon (stroke uses currentColor)
+  // Lucide-style phone (stroke uses currentColor)
   return `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <path d="M7.5 3.5h2.2c.6 0 1.1.4 1.3.9l1.4 3.6c.2.6 0 1.2-.5 1.6l-1.5 1.1c1.1 2.3 2.9 4.1 5.2 5.2l1.1-1.5c.4-.5 1-.7 1.6-.5l3.6 1.4c.5.2.9.7.9 1.3v2.2c0 .8-.6 1.5-1.4 1.6l-1.1.2c-1.1.2-2.1.2-3.2 0-6.3-1-11.3-6-12.3-12.3-.2-1.1-.2-2.1 0-3.2l.2-1.1c.1-.8.8-1.4 1.6-1.4Z"
-      stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07
+             19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.08 4.18
+             2 2 0 0 1 4.06 2h3a2 2 0 0 1 2 1.72c.12.81.3 1.6.54 2.36
+             a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.72-1.72
+             a2 2 0 0 1 2.11-.45c.76.24 1.55.42 2.36.54A2 2 0 0 1 22 16.92z"
+          stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
   </svg>`;
 }
-
 function svgMail(){
   return `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
     <path d="M4 6h16v12H4z" stroke="currentColor" stroke-width="1.8"/>
@@ -1388,15 +1331,16 @@ function svgEdit(){
   </svg>`;
 }
 function svgWhatsApp(){
-  // WhatsApp-like bubble glyph (stroke uses currentColor)
+  // Lightweight "chat + handset" icon (WhatsApp action) using currentColor
   return `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <path d="M20 11.9a8 8 0 0 1-11.8 7L4 20l1.1-4.1A8 8 0 1 1 20 11.9Z"
-      stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
-    <path d="M9.2 8.9c.2-.5.5-.8 1-.8h.9c.4 0 .8.2 1 .6l.8 1.7c.2.4.1.9-.2 1.2l-.7.7c.7 1.4 1.8 2.5 3.2 3.2l.7-.7c.3-.3.8-.4 1.2-.2l1.7.8c.4.2.6.6.6 1v.9c0 .5-.3.8-.8 1-1.1.4-2.7.2-4.6-.9-1.9-1.1-3.6-2.8-4.7-4.7-1.1-1.9-1.3-3.5-.9-4.6Z"
+    <path d="M20.5 12a8.5 8.5 0 0 1-12.7 7.3L4 20l.7-3.7A8.5 8.5 0 1 1 20.5 12z"
+      stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+    <path d="M10.2 10.3c.5 1.4 1.6 2.6 3.2 3.2l.9-.9c.2-.2.5-.3.8-.2l1.4.6
+             c.3.1.5.4.5.7 0 1-.8 1.8-1.8 1.8-3.6 0-6.6-3-6.6-6.6
+             0-1 .8-1.8 1.8-1.8.3 0 .6.2.7.5l.6 1.4c.1.3 0 .6-.2.8l-.9.9z"
       stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
   </svg>`;
 }
-
 
 let leadsView = "cards"; // "cards" | "list"
 function setLeadsView(v){
@@ -1439,7 +1383,6 @@ function renderLeadCard(r){
       <div class="leadcard__actions">
         ${r.phone ? `<a class="iconbtn" href="tel:${esc(safeTel(r.phone))}">${svgPhone()} Call</a>` : ``}
         ${wa1 ? `<a class="iconbtn" target="_blank" rel="noopener" href="${esc(wa1)}">${svgWhatsApp()} WhatsApp</a>` : ``}
-        ${(r.phone||r.phone2) ? `<a class="iconbtn iconbtn--primary" target="_blank" rel="noopener" href="${esc(safeWaText(r.phone||r.phone2, buildWhatsIntroText_(r)))}">${svgWhatsApp()} Intro</a>` : ``}
         ${r.email ? `<a class="iconbtn" href="mailto:${esc(r.email)}">${svgMail()} Email</a>` : ``}
         ${r.leadId ? `<button class="iconbtn" type="button" data-edit="${esc(r.leadId)}">${svgEdit()} Edit</button>` : ``}
       </div>
@@ -1463,6 +1406,376 @@ function renderKpis(k){
     d.innerHTML = `<div class="kpi__v">${esc(val)}</div><div class="kpi__l">${esc(label)}</div>`;
     el.appendChild(d);
   });
+}
+
+
+
+/* ---------- Enterprise IA: cached loads + quick filters + pagination ---------- */
+async function getLeadsAll_(){
+  const now = Date.now();
+  if(__leadsAll && __leadsAll.length && (now - __leadsAllFetchedAt) < 60_000) return __leadsAll;
+  const execUrl = getExecUrl();
+  if(!execUrl) throw new Error("Missing /exec URL");
+  const data = await getJson({ action:"listLeads", limit:"5000" });
+  const rows = Array.isArray(data.rows) ? data.rows : [];
+  __leadsAll = rows;
+  __leadsAllFetchedAt = now;
+  return __leadsAll;
+}
+
+async function getFollowUpsAll_(){
+  const now = Date.now();
+  if(__followupsAll && __followupsAll.length && (now - __followupsFetchedAt) < 60_000) return __followupsAll;
+  const execUrl = getExecUrl();
+  if(!execUrl) throw new Error("Missing /exec URL");
+  // listFollowUps already exists for Calendar
+  const data = await getJson({ action:"listFollowUps", limit:"5000" });
+  const rows = Array.isArray(data.rows) ? data.rows : [];
+  __followupsAll = rows;
+  __followupsFetchedAt = now;
+  return __followupsAll;
+}
+
+function computeNextFollowMap_(followRows){
+  __leadNextFollow = new Map();
+  const byLead = new Map();
+  (followRows||[]).forEach(f=>{
+    const id = String(f.leadId||"").trim();
+    if(!id) return;
+    const d = f.scheduledAtISO ? new Date(f.scheduledAtISO) : parseISTLabel_(f.scheduledAtIST);
+    if(!d || isNaN(d.getTime())) return;
+    if(!byLead.has(id)) byLead.set(id, []);
+    byLead.get(id).push({ d, label: String(f.scheduledAtIST||""), status: String(f.status||""), notes: String(f.notes||"") });
+  });
+  byLead.forEach((arr, id)=>{
+    arr.sort((a,b)=>a.d - b.d);
+    __leadNextFollow.set(id, arr[0]);
+  });
+}
+
+function setChipGroupActive_(root, selector, key, value){
+  if(!root) return;
+  root.querySelectorAll(selector).forEach(btn=>{
+    const v = btn.getAttribute(key);
+    btn.classList.toggle("isActive", v === value);
+  });
+}
+
+function capturedMatch_(lead, now){
+  if(__leadsCapturedFilter === "all") return true;
+  const d = parseISTLabel_(lead.timestampIST);
+  if(!d) return false;
+  const localNow = now;
+  const sNow = startOfDay_(localNow);
+  const sLead = startOfDay_(d);
+  const diffDays = Math.round((sNow - sLead) / 86400000);
+  if(__leadsCapturedFilter === "today") return diffDays === 0;
+  if(__leadsCapturedFilter === "week") return diffDays >= 0 && diffDays < 7;
+  if(__leadsCapturedFilter === "month") return diffDays >= 0 && diffDays < 31;
+  return true;
+}
+
+function dueBucket_(lead, now){
+  const nf = __leadNextFollow.get(String(lead.leadId||""));
+  if(!nf) return "none";
+  const d = nf.d;
+  const sNow = startOfDay_(now);
+  const sD = startOfDay_(d);
+  const diffDays = Math.round((sD - sNow) / 86400000);
+  if(diffDays < 0) return "overdue";
+  if(diffDays === 0) return "today";
+  if(diffDays <= 7) return "next7";
+  return "later";
+}
+
+function applyEnterpriseLeadFilters_(rows){
+  const q = safeValue_($("leadsQ")).trim().toLowerCase();
+  const c = safeValue_(leadsCountry).trim().toLowerCase();
+  const m = safeValue_(leadsMarket).trim().toLowerCase();
+  const pt = safeValue_(leadsPT).trim().toLowerCase();
+  const now = new Date();
+
+  let out = (rows||[]).slice();
+
+  // Newest first (sheet order is oldest->newest; reverse)
+  out = out.reverse();
+
+  // dropdown filters
+  out = out.filter(r=>{
+    if(c && String(r.country||"").toLowerCase() !== c) return false;
+    if(pt && String(r.productType||"").toLowerCase().indexOf(pt) === -1) return false;
+    if(m && String(r.markets||"").toLowerCase().indexOf(m) === -1) return false;
+    return true;
+  });
+
+  // captured quick filter
+  out = out.filter(r=>capturedMatch_(r, now));
+
+  // due filter
+  if(__leadsDueFilter !== "all"){
+    out = out.filter(r=>{
+      const b = dueBucket_(r, now);
+      return b === __leadsDueFilter;
+    });
+  }
+
+  // search contains
+  if(q){
+    out = out.filter(r=>{
+      const hay = (
+        (r.timestampIST||"")+" "+(r.type||"")+" "+(r.enteredBy||"")+" "+
+        (r.company||"")+" "+(r.contact||"")+" "+(r.email||"")+" "+
+        (r.phone||"")+" "+(r.phone2||"")+" "+(r.country||"")+" "+
+        (r.markets||"")+" "+(r.productType||"")
+      ).toLowerCase();
+      return hay.indexOf(q) !== -1;
+    });
+  }
+
+  __leadsFiltered = out;
+  return out;
+}
+
+function renderLeadsPage_(){
+  const cards = $("leadsCards");
+  const tbody = $("leadsTable")?.querySelector("tbody");
+  const pager = $("leadsPager");
+  const hint = $("leadsPagerHint");
+
+  const total = __leadsFiltered.length;
+  const upto = Math.min(total, __leadsPage * __LEADS_PAGE_SIZE);
+  const slice = __leadsFiltered.slice(0, upto);
+
+  // cards
+  if(cards){
+    cards.innerHTML = slice.map(renderLeadCard).join("");
+    cards.querySelectorAll("[data-edit]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        const id = btn.getAttribute("data-edit");
+        const row = slice.find(x=>String(x.leadId)===String(id));
+        openEdit(id, row);
+      });
+    });
+  }
+
+  // list
+  if(tbody){
+    tbody.innerHTML = "";
+    slice.forEach(r=>{
+      const wa1 = safeWa(r.phone);
+      const wa2 = safeWa(r.phone2);
+      const tr=document.createElement("tr");
+      tr.innerHTML = `
+        <td>${esc(r.timestampIST||"")}</td>
+        <td>${esc(r.type||"")}</td>
+        <td>${esc(r.company||"")}</td>
+        <td>${esc(r.contact||"")}</td>
+        <td>
+          <div class="cellicons">
+            ${r.email ? `<a class="iconlink" href="mailto:${esc(r.email)}" title="Email">${svgMail()}<span>${esc(r.email)}</span></a>` : `<span class="smallmuted">—</span>`}
+          </div>
+        </td>
+        <td>
+          <div class="cellicons">
+            ${r.phone ? `<a class="iconlink" href="tel:${esc(safeTel(r.phone))}" title="Call">${svgPhone()}<span>${esc(r.phone)}</span></a>` : `<span class="smallmuted">—</span>`}
+            ${wa1 ? `<a class="iconlink" href="${esc(wa1)}" target="_blank" rel="noopener" title="WhatsApp">${svgWhatsApp()}<span>WhatsApp</span></a>` : ``}
+            ${r.phone2 ? `<a class="iconlink" href="tel:${esc(safeTel(r.phone2))}" title="Call (2)">${svgPhone()}<span>${esc(r.phone2)}</span></a>` : ``}
+            ${wa2 ? `<a class="iconlink" href="${esc(wa2)}" target="_blank" rel="noopener" title="WhatsApp (2)">${svgWhatsApp()}<span>WA (2)</span></a>` : ``}
+          </div>
+        </td>
+        <td>${esc(r.country||"")}</td>
+        <td>${esc(r.markets||"")}</td>
+        <td>${esc(r.productType||"")}</td>
+        <td>${esc(r.enteredBy||"")}</td>
+        <td>
+          ${rowLink(r.folderUrl,"Folder")} ${r.itemsSheetUrl ? " | " + rowLink(r.itemsSheetUrl,"Items") : ""}
+          ${r.leadId ? ` | <button class="btn btn--ghost" data-edit="${esc(r.leadId)}">${svgEdit()} Edit</button>` : ""}
+        </td>
+      `;
+      tbody.appendChild(tr);
+      const eb = tr.querySelector('[data-edit]');
+      if(eb){ eb.addEventListener("click", ()=> openEdit(r.leadId, r)); }
+    });
+  }
+
+  if(pager){
+    const show = total > __LEADS_PAGE_SIZE;
+    pager.style.display = show ? "" : "none";
+    if(hint) hint.textContent = total ? `Showing ${upto} of ${total}` : "No leads match.";
+    const btn = $("btnLeadsLoadMore");
+    if(btn) btn.disabled = upto >= total;
+  }
+}
+
+async function refreshLeadsEnterprise_(){
+  const execUrl = getExecUrl();
+  if(!execUrl){ setStatus("Missing /exec URL. Open Settings."); return; }
+  try{
+    setStatus("Loading leads…");
+    const [leads, fus] = await Promise.all([getLeadsAll_(), getFollowUpsAll_().catch(()=>[])]);
+    computeNextFollowMap_(fus||[]);
+    __leadsPage = 1;
+    applyEnterpriseLeadFilters_(leads||[]);
+    renderLeadsPage_();
+    setStatus("Ready");
+  }catch(e){
+    console.error(e);
+    setStatus("Leads load failed.");
+  }
+}
+
+async function refreshHome_(){
+  const execUrl = getExecUrl();
+  if(!execUrl){ setStatus("Missing /exec URL. Open Settings."); return; }
+  try{
+    setStatus("Loading…");
+    const [leads, fus] = await Promise.all([getLeadsAll_(), getFollowUpsAll_().catch(()=>[])]);
+    computeNextFollowMap_(fus||[]);
+    // KPI counts
+    const now = new Date();
+    const buckets = { overdue:0, today:0, next7:0 };
+    (leads||[]).forEach(l=>{
+      const b = dueBucket_(l, now);
+      if(buckets[b] !== undefined) buckets[b] += 1;
+    });
+    const capturedToday = (leads||[]).filter(l=>{ const d=parseISTLabel_(l.timestampIST); if(!d) return false; return startOfDay_(d).getTime()===startOfDay_(now).getTime(); }).length;
+
+    // Render only 4 tiles on Home
+    const el = $("kpis");
+    if(el){
+      el.innerHTML = "";
+      const items = [
+        ["Overdue", buckets.overdue],
+        ["Due Today", buckets.today],
+        ["Next 7 Days", buckets.next7],
+        ["Captured Today", capturedToday]
+      ];
+      items.forEach(([label,val])=>{
+        const d=document.createElement("div");
+        d.className="kpi";
+        d.innerHTML = `<div class="kpi__v">${esc(val)}</div><div class="kpi__l">${esc(label)}</div>`;
+        d.setAttribute("data-homefilter", label);
+        el.appendChild(d);
+      });
+      // click tiles -> go to Leads with chip prefilter
+      el.querySelectorAll("[data-homefilter]").forEach(k=>{
+        k.addEventListener("click", ()=>{
+          const l = k.getAttribute("data-homefilter");
+          showTab("Leads");
+          if(l==="Overdue") setDueFilter_("overdue");
+          if(l==="Due Today") setDueFilter_("today");
+          if(l==="Next 7 Days") setDueFilter_("next7");
+          if(l==="Captured Today") setCapturedFilter_("today");
+          refreshLeadsEnterprise_();
+        });
+      });
+    }
+
+    // Recent leads uses existing widget
+    try{ renderRecentLeads_((leads||[])); }catch{}
+
+    // Drive shortcuts + today's attachments remain
+    try{ await refreshDashboardInfo(); }catch{}
+    setStatus("Ready");
+  }catch(e){
+    console.error(e);
+    setStatus("Home load failed.");
+  }
+}
+
+async function refreshPipeline_(){
+  const board = $("pipelineBoard");
+  if(!board) return;
+  const execUrl = getExecUrl();
+  if(!execUrl){ setStatus("Missing /exec URL. Open Settings."); return; }
+  try{
+    setStatus("Loading pipeline…");
+    const [leads, fus] = await Promise.all([getLeadsAll_(), getFollowUpsAll_().catch(()=>[])]);
+    computeNextFollowMap_(fus||[]);
+    const now = new Date();
+
+    const cols = [
+      { key:"overdue", title:"Overdue" },
+      { key:"today", title:"Due Today" },
+      { key:"next7", title:"Next 7 Days" },
+      { key:"none", title:"No Follow‑up" }
+    ];
+
+    const by = { overdue:[], today:[], next7:[], none:[] };
+
+    // newest first
+    const ordered = (leads||[]).slice().reverse();
+    ordered.forEach(l=>{
+      const b = dueBucket_(l, now);
+      if(b==="later") return;
+      if(!by[b]) by[b]=[];
+      by[b].push(l);
+    });
+
+    board.innerHTML = cols.map(c=>{
+      const arr = by[c.key] || [];
+      const cards = arr.slice(0, 80).map(l=>{
+        const nf = __leadNextFollow.get(String(l.leadId||""));
+        const when = nf ? (nf.label || "") : "";
+        const meta = [l.type, l.country, l.productType].filter(Boolean).join(" • ");
+        const wa = safeWa(l.phone);
+        return `
+          <div class="kcard">
+            <div class="kcard__title">${esc(l.company||l.contact||"—")}</div>
+            <div class="kcard__meta">
+              ${meta ? `<span>${esc(meta)}</span>` : ``}
+              ${when ? `<span>• ${esc(when)}</span>` : ``}
+            </div>
+            <div class="kcard__actions">
+              ${l.phone ? `<a class="btn btn--ghost btn--sm" href="tel:${esc(safeTel(l.phone))}">${svgPhone()}</a>` : ``}
+              ${wa ? `<a class="btn btn--ghost btn--sm" href="${esc(wa)}" target="_blank" rel="noopener">${svgWhatsApp()}</a>` : ``}
+              ${l.email ? `<a class="btn btn--ghost btn--sm" href="mailto:${esc(l.email)}">${svgMail()}</a>` : ``}
+              ${l.leadId ? `<button class="btn btn--ghost btn--sm" type="button" data-pedit="${esc(l.leadId)}">${svgEdit()}</button>` : ``}
+            </div>
+          </div>
+        `;
+      }).join("") || `<div class="hint">Nothing here.</div>`;
+      return `
+        <div class="kcol">
+          <div class="kcol__hdr">
+            <div class="kcol__title">${esc(c.title)}</div>
+            <div class="kcol__count">${arr.length}</div>
+          </div>
+          <div class="kcol__body">${cards}</div>
+        </div>
+      `;
+    }).join("");
+
+    board.querySelectorAll("[data-pedit]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        const id = btn.getAttribute("data-pedit");
+        const row = (leads||[]).find(x=>String(x.leadId)===String(id));
+        openEdit(id, row);
+      });
+    });
+
+    setStatus("Ready");
+  }catch(e){
+    console.error(e);
+    setStatus("Pipeline load failed.");
+  }
+}
+
+async function refreshInsights_(){
+  // Insights reuses the server-filtered table (more accurate for deep filters)
+  await refreshDashboard();
+}
+
+// Helpers for chip state
+function setCapturedFilter_(val){
+  __leadsCapturedFilter = val;
+  const root = $("leadsChips");
+  setChipGroupActive_(root, "[data-captured]", "data-captured", val);
+}
+function setDueFilter_(val){
+  __leadsDueFilter = val;
+  const root = $("leadsChips");
+  setChipGroupActive_(root, "[data-due]", "data-due", val);
 }
 
 async function refreshDashboard(){
@@ -1681,7 +1994,6 @@ async function refreshLeads(){
           <div class="cellicons">
             ${r.phone ? `<a class="iconlink" href="tel:${esc(safeTel(r.phone))}" title="Call">${svgPhone()}<span>${esc(r.phone)}</span></a>` : `<span class="smallmuted">—</span>`}
             ${wa1 ? `<a class="iconlink" href="${esc(wa1)}" target="_blank" rel="noopener" title="WhatsApp">${svgWhatsApp()}<span>WhatsApp</span></a>` : ``}
-            ${(r.phone||r.phone2) ? `<a class="iconlink iconlink--primary" href="${esc(safeWaText(r.phone||r.phone2, buildWhatsIntroText_(r)))}" target="_blank" rel="noopener" title="Intro">${svgWhatsApp()}<span>Intro</span></a>` : ``}
             ${r.phone2 ? `<a class="iconlink" href="tel:${esc(safeTel(r.phone2))}" title="Call (2)">${svgPhone()}<span>${esc(r.phone2)}</span></a>` : ``}
             ${wa2 ? `<a class="iconlink" href="${esc(wa2)}" target="_blank" rel="noopener" title="WhatsApp (2)">${svgWhatsApp()}<span>WA (2)</span></a>` : ``}
           </div>
@@ -1742,9 +2054,7 @@ function openEdit(leadId, row){
   $("editStatus").textContent = "";
 
   $("editSub").textContent = `${row?.leadId||leadId||""} • ${row?.company||row?.contact||""}`;
-    try{ $("editAddNote").value=""; }catch(_){ }
-  try{ refreshEditTimeline_(leadId); }catch(_){ }
-openOverlay("editOverlay");
+  openOverlay("editOverlay");
 }
 
 function clearEditFollowup(){
@@ -1764,10 +2074,8 @@ async function saveEdit(){
   const d = $("editFUDate").value;
   const t = $("editFUTime").value;
   const notes = $("editFUNotes").value.trim();
-  let quickCal = false;
   if(d && t){
     const f = formatISTFromInputs(d,t);
-    quickCal = ($("editFUDate").dataset.quick==="1" || $("editFUTime").dataset.quick==="1");
     newFollowUp = { scheduledAtIST: f.label, scheduledAtISO: f.iso, notes };
   }
 
@@ -1798,8 +2106,7 @@ async function saveEdit(){
     exFactory: $("editExFactory").value.trim(),
     fob: $("editFOB").value.trim(),
     notes: $("editNotes").value.trim(),
-    newFollowUp,
-    createCalendarEvent: Boolean(quickCal)
+    newFollowUp
   };
 
   try{
@@ -1807,7 +2114,7 @@ async function saveEdit(){
     $("editStatus").textContent = "Saved ✓" + (res?.calendarEventUrl ? " (Calendar updated)" : "");
 
     await refreshDashboard();
-    await refreshLeads();
+    await refreshLeadsEnterprise_();
     await refreshCalendar();
   } catch(e){
     console.error(e);
@@ -2268,6 +2575,8 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   $("tabCapture").addEventListener("click", ()=>showTab("Capture"));
   $("tabDashboard").addEventListener("click", ()=>showTab("Dashboard"));
   $("tabLeads").addEventListener("click", ()=>showTab("Leads"));
+  const tp=$("tabPipeline"); if(tp) tp.addEventListener("click", ()=>showTab("Pipeline"));
+  const ti=$("tabInsights"); if(ti) ti.addEventListener("click", ()=>showTab("Insights"));
   $("tabCalendar").addEventListener("click", ()=>showTab("Calendar"));
 
   // global search
@@ -2396,45 +2705,6 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   $("buyFUQuickToday").addEventListener("click", ()=>applyQuickFU("buyFUDate","buyFUTime",0));
   $("buyFUQuick7").addEventListener("click", ()=>applyQuickFU("buyFUDate","buyFUTime",7));
   $("buyFUQuick14").addEventListener("click", ()=>applyQuickFU("buyFUDate","buyFUTime",14));
-  // Edit overlay quick follow-up buttons (one-tap schedule + calendar enabled)
-  $("editFUQuickToday").addEventListener("click", async ()=>{
-    applyQuickFU("editFUDate","editFUTime",0);
-    $("editFUQuickHint").textContent = "Calendar enabled • saving…";
-    await saveEdit();
-    $("editFUQuickHint").textContent = "";
-  });
-  $("editFUQuick7").addEventListener("click", async ()=>{
-    applyQuickFU("editFUDate","editFUTime",7);
-    $("editFUQuickHint").textContent = "Calendar enabled • saving…";
-    await saveEdit();
-    $("editFUQuickHint").textContent = "";
-  });
-  $("editFUQuick14").addEventListener("click", async ()=>{
-    applyQuickFU("editFUDate","editFUTime",14);
-    $("editFUQuickHint").textContent = "Calendar enabled • saving…";
-    await saveEdit();
-    $("editFUQuickHint").textContent = "";
-  });
-
-  // Add Note (logs to Activities sheet + refreshes timeline)
-  $("btnAddNote").addEventListener("click", async ()=>{
-    const leadId = $("editLeadId").value.trim();
-    const note = $("editAddNote").value.trim();
-    if(!leadId || !note) return;
-    $("editAddNote").value = "";
-    try{
-      await postPayload({
-        action:"addActivityNote",
-        leadId,
-        note,
-        enteredBy: (localStorage.getItem(LS_USER)||"Unknown").trim() || "Unknown"
-      });
-    }catch(e){
-      console.warn(e);
-    }
-    await refreshEditTimeline_(leadId);
-  });
-
   $("editQuickToday").addEventListener("click", ()=>applyQuickFU("editFUDate","editFUTime",0));
   $("editQuick7").addEventListener("click", ()=>applyQuickFU("editFUDate","editFUTime",7));
   $("editQuick14").addEventListener("click", ()=>applyQuickFU("editFUDate","editFUTime",14));
@@ -2463,9 +2733,32 @@ document.addEventListener("DOMContentLoaded", async ()=>{
     $("dashQ").value = "";
     refreshDashboard();
   });
-  $("btnLeadsRefresh").addEventListener("click", refreshLeads);
-  $("btnLeadsViewCards").addEventListener("click", ()=>{ setLeadsView("cards"); refreshLeads(); });
-  $("btnLeadsViewList").addEventListener("click", ()=>{ setLeadsView("list"); refreshLeads(); });
+  $("btnLeadsRefresh").addEventListener("click", refreshLeadsEnterprise_);
+  const lm=$("btnLeadsLoadMore"); if(lm) lm.addEventListener("click", ()=>{ __leadsPage += 1; renderLeadsPage_(); });
+
+  // Leads quick filters (chips)
+  const chips = $("leadsChips");
+  if(chips){
+    chips.querySelectorAll("[data-captured]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        setCapturedFilter_(btn.getAttribute("data-captured"));
+        __leadsPage = 1;
+        applyEnterpriseLeadFilters_(__leadsAll||[]);
+        renderLeadsPage_();
+      });
+    });
+    chips.querySelectorAll("[data-due]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        setDueFilter_(btn.getAttribute("data-due"));
+        __leadsPage = 1;
+        applyEnterpriseLeadFilters_(__leadsAll||[]);
+        renderLeadsPage_();
+      });
+    });
+  }
+
+  $("btnLeadsViewCards").addEventListener("click", ()=>{ setLeadsView("cards"); refreshLeadsEnterprise_(); });
+  $("btnLeadsViewList").addEventListener("click", ()=>{ setLeadsView("list"); refreshLeadsEnterprise_(); });
   setLeadsView("cards");
 
   // calendar controls
