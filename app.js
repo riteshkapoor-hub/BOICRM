@@ -2444,10 +2444,6 @@ function buildVcard_(u){
     // ignore if not in browser environment
   }
 
-  (e){
-    // ignore if not in browser environment
-  }
-
   if(social) lines.push(`NOTE:Social ${escapeV_(social)}`);
   lines.push("END:VCARD");
   return lines.join("\n");
