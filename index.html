@@ -61,7 +61,7 @@
                 <input id="supCompany" type="text" placeholder="Company" autocomplete="organization" />
               </div>
               <div class="field">
-                <label>Contact person</label>
+                <label>Contact person <span class="req">*</span></label>
                 <input id="supContact" type="text" placeholder="Name" autocomplete="name" />
               </div>
             </div>
@@ -79,7 +79,7 @@
 
             <div class="row2">
               <div class="field">
-                <label>Country (type to search)</label>
+                <label>Country (type to search) <span class="req">*</span></label>
                 <div id="supCountryCombo"></div>
               </div>
               <div class="field">
@@ -101,17 +101,6 @@
 
             <div class="row2">
               <div class="field">
-                <label>Website</label>
-                <input id="supWebsite" type="url" placeholder="https://…" />
-              </div>
-              <div class="field">
-                <label>Social</label>
-                <input id="supSocial" type="text" placeholder="@company" />
-              </div>
-            </div>
-
-            <div class="row2">
-              <div class="field">
                 <label>Product Type (type to search)</label>
                 <div id="supProductTypeCombo"></div>
               </div>
@@ -124,23 +113,55 @@
                   <option>Both</option>
                 </select>
               </div>
+            <div class="notesDock" id="supNotesDock">
+              <div class="notesDock__hdr">
+                <label for="supNotes">Notes</label>
+                <div class="notesDock__actions">
+                  <button id="supNotesMic" type="button" class="btn btn--ghost btn--sm" title="Voice to text">🎙️ Dictate</button>
+                  <span id="supNotesMicStatus" class="hint"></span>
+                </div>
+              </div>
+              <textarea id="supNotes" rows="3" placeholder="Quick notes…"></textarea>
             </div>
 
-            <div class="row2">
-              <div class="field">
-                <label>Price — Ex-Factory</label>
-                <input id="supExFactory" type="text" placeholder="USD / unit" />
-              </div>
-              <div class="field">
-                <label>Price — FOB</label>
-                <input id="supFOB" type="text" placeholder="USD / unit" />
-              </div>
             </div>
 
-            <div class="field">
-              <label>What do they sell? (one per line) <span class="req">*</span></label>
-              <textarea id="supProducts" rows="4" placeholder="Item 1&#10;Item 2&#10;Item 3"></textarea>
-            </div>
+            <details class="accordion">
+              <summary class="accordion__summary">Optional details (tap to expand)</summary>
+              <div class="accordion__body">
+                <div class="row2">
+                  <div class="field">
+                    <label>Website</label>
+                    <input id="supWebsite" type="url" placeholder="https://…" />
+                  </div>
+                  <div class="field">
+                    <label>Social</label>
+                    <input id="supSocial" type="text" placeholder="@company" />
+                  </div>
+                </div>
+
+                <div class="row2">
+                  <div class="field">
+                    <label>Price — Ex-Factory</label>
+                    <input id="supExFactory" type="text" placeholder="USD / unit" />
+                  </div>
+                  <div class="field">
+                    <label>Price — FOB</label>
+                    <input id="supFOB" type="text" placeholder="USD / unit" />
+                  </div>
+                </div>
+
+                <div class="field">
+                  <label>What do they sell? (one per line)</label>
+                  <textarea id="supProducts" rows="4" placeholder="Item 1&#10;Item 2&#10;Item 3"></textarea>
+                </div>
+
+                <div class="field">
+                  <label>QR raw (auto-filled if scanned)</label>
+                  <input id="supQR" type="text" />
+                </div>
+</div>
+            </details>
 
             <div class="row2">
               <div class="field">
@@ -151,16 +172,6 @@
                 <label>Attach card image (optional)</label>
                 <input id="supCardFile" type="file" />
               </div>
-            </div>
-
-            <div class="field">
-              <label>QR raw (auto-filled if scanned)</label>
-              <input id="supQR" type="text" />
-            </div>
-
-            <div class="field">
-              <label>Notes</label>
-              <textarea id="supNotes" rows="3"></textarea>
             </div>
 
             <!-- FOLLOW-UP -->
@@ -208,7 +219,7 @@
                 <input id="buyContact" type="text" placeholder="Name" autocomplete="name" />
               </div>
               <div class="field">
-                <label>Company</label>
+                <label>Company <span class="req">*</span></label>
                 <input id="buyCompany" type="text" placeholder="Company" autocomplete="organization" />
               </div>
             </div>
@@ -226,7 +237,7 @@
 
             <div class="row2">
               <div class="field">
-                <label>Country (type to search)</label>
+                <label>Country (type to search) <span class="req">*</span></label>
                 <div id="buyCountryCombo"></div>
               </div>
               <div class="field">
@@ -244,18 +255,44 @@
                 <label>Phone 2 (optional)</label>
                 <input id="buyPhone2" type="tel" placeholder="+91 …" autocomplete="tel" />
               </div>
+            <div class="notesDock" id="buyNotesDock">
+              <div class="notesDock__hdr">
+                <label for="buyNotes">Notes</label>
+                <div class="notesDock__actions">
+                  <button id="buyNotesMic" type="button" class="btn btn--ghost btn--sm" title="Voice to text">🎙️ Dictate</button>
+                  <span id="buyNotesMicStatus" class="hint"></span>
+                </div>
+              </div>
+              <textarea id="buyNotes" rows="3" placeholder="Quick notes…"></textarea>
             </div>
 
-            <div class="row2">
-              <div class="field">
-                <label>Website</label>
-                <input id="buyWebsite" type="url" placeholder="https://…" />
-              </div>
-              <div class="field">
-                <label>Social</label>
-                <input id="buySocial" type="text" placeholder="@company" />
-              </div>
             </div>
+
+            <details class="accordion">
+              <summary class="accordion__summary">Optional details (tap to expand)</summary>
+              <div class="accordion__body">
+                <div class="row2">
+                  <div class="field">
+                    <label>Website</label>
+                    <input id="buyWebsite" type="url" placeholder="https://…" />
+                  </div>
+                  <div class="field">
+                    <label>Social</label>
+                    <input id="buySocial" type="text" placeholder="@company" />
+                  </div>
+                </div>
+
+                <div class="field">
+                  <label>What do they want to buy? (one per line)</label>
+                  <textarea id="buyNeeds" rows="4" placeholder="Item 1&#10;Item 2&#10;Item 3"></textarea>
+                </div>
+
+                <div class="field">
+                  <label>QR raw (auto-filled if scanned)</label>
+                  <input id="buyQR" type="text" />
+                </div>
+</div>
+            </details>
 
             <div class="row2">
               <div class="field">
@@ -273,11 +310,6 @@
               </div>
             </div>
 
-            <div class="field">
-              <label>What do they want to buy? (one per line) <span class="req">*</span></label>
-              <textarea id="buyNeeds" rows="4" placeholder="Item 1&#10;Item 2&#10;Item 3"></textarea>
-            </div>
-
             <div class="row2">
               <div class="field">
                 <label>Attach docs (optional • multiple)</label>
@@ -287,16 +319,6 @@
                 <label>Attach card image (optional)</label>
                 <input id="buyCardFile" type="file" />
               </div>
-            </div>
-
-            <div class="field">
-              <label>QR raw (auto-filled if scanned)</label>
-              <input id="buyQR" type="text" />
-            </div>
-
-            <div class="field">
-              <label>Notes</label>
-              <textarea id="buyNotes" rows="3"></textarea>
             </div>
 
             <!-- FOLLOW-UP -->
@@ -366,6 +388,32 @@
         </div>
 
         <div class="kpis" id="kpis"></div>
+
+        <div class="dashdrive">
+          <div class="dashdrive__hdr">
+            <div class="dashdrive__title">Drive shortcuts</div>
+            <div class="hint">Uploads are stored in root folders (fast save).</div>
+          </div>
+          <div class="dashdrive__btns">
+            <a id="dashSupplierRoot" class="btn btn--ghost" target="_blank" rel="noopener" href="#">Open Supplier Upload Folder</a>
+            <a id="dashBuyerRoot" class="btn btn--ghost" target="_blank" rel="noopener" href="#">Open Buyer Upload Folder</a>
+            <button id="btnDashAttachments" class="btn btn--ghost" type="button">Refresh Attachments</button>
+          </div>
+
+          <div class="dashattach">
+            <div class="dashattach__hdr">
+              <div class="dashattach__title">Today’s attachments</div>
+              <div id="dashAttachHint" class="hint">—</div>
+
+              <div class="dashattach__views">
+                <button id="dashAttachViewList" type="button" class="btn btn--ghost btn--sm isActive">List</button>
+                <button id="dashAttachViewGallery" type="button" class="btn btn--ghost btn--sm">Gallery</button>
+              </div>
+            </div>
+            <div id="dashAttachList" class="dashattach__list"></div>
+            <div id="dashAttachGallery" class="dashattach__gallery" style="display:none"></div>
+          </div>
+        </div>
 
         <div class="filters">
           <div class="field">
