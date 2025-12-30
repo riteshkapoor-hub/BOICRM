@@ -1,3 +1,4 @@
+
 function fallbackLists(){
   return {
     countries: ["All","United States","India","UAE","Saudi Arabia","Qatar","Kuwait","Oman","Bahrain","UK","Germany","France","Netherlands","Italy","Spain","Canada","Australia"],
@@ -1250,8 +1251,14 @@ function safeWa(phone){
 }
 
 function svgPhone(){
+  // Lucide-style phone (stroke uses currentColor)
   return `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <path d="M7 3h3l2 5-2 1c1.2 2.6 3.4 4.8 6 6l1-2 5 2v3c0 1.1-.9 2-2 2-9.4 0-17-7.6-17-17 0-1.1.9-2 2-2z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07
+             19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.08 4.18
+             2 2 0 0 1 4.06 2h3a2 2 0 0 1 2 1.72c.12.81.3 1.6.54 2.36
+             a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.72-1.72
+             a2 2 0 0 1 2.11-.45c.76.24 1.55.42 2.36.54A2 2 0 0 1 22 16.92z"
+          stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
   </svg>`;
 }
 function svgMail(){
@@ -1267,12 +1274,14 @@ function svgEdit(){
   </svg>`;
 }
 function svgWhatsApp(){
-  // simple WA glyph (keeps your theme – uses currentColor)
+  // Lightweight "chat + handset" icon (WhatsApp action) using currentColor
   return `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <path d="M20 12a8 8 0 0 1-12.9 6.2L4 20l1.9-3.1A8 8 0 1 1 20 12z"
+    <path d="M20.5 12a8.5 8.5 0 0 1-12.7 7.3L4 20l.7-3.7A8.5 8.5 0 1 1 20.5 12z"
       stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
-    <path d="M9.2 9.2c.2-.5.4-.6.7-.6h.6c.2 0 .4 0 .6.4l.8 1.9c.1.3.1.5-.1.7l-.4.5c-.1.1-.2.3 0 .5.2.5.8 1.4 1.6 2.1.8.7 1.6 1 2.1 1.2.2.1.4 0 .5-.1l.7-.8c.2-.2.4-.3.7-.2l2 .8c.3.1.4.3.4.5 0 .2 0 1.2-.6 1.8-.5.6-1.2.6-1.6.5-.3 0-1.4-.3-2.7-1.1-1.1-.6-2.3-1.7-3.2-2.9-.9-1.2-1.3-2.3-1.4-2.7-.1-.4-.1-1.1.4-1.5z"
-      stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M10.2 10.3c.5 1.4 1.6 2.6 3.2 3.2l.9-.9c.2-.2.5-.3.8-.2l1.4.6
+             c.3.1.5.4.5.7 0 1-.8 1.8-1.8 1.8-3.6 0-6.6-3-6.6-6.6
+             0-1 .8-1.8 1.8-1.8.3 0 .6.2.7.5l.6 1.4c.1.3 0 .6-.2.8l-.9.9z"
+      stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
   </svg>`;
 }
 
