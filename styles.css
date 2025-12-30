@@ -829,6 +829,8 @@ body.density-tablet{
 }
 
 
+
+.vcard__logo{width:64px;height:64px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.04);padding:10px;display:block;margin-bottom:10px;object-fit:contain}
 /* vCard overlay */
 .vcard{display:flex; gap:16px; align-items:stretch;}
 .vcard__left{flex:1; min-width:220px;}
