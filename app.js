@@ -2407,6 +2407,8 @@ function buildVcard_(u){
   const phone2 = String(u?.Phone2||"").trim();
   const website = String(u?.Website||"").trim();
   const social = String(u?.SocialHandle||"").trim();
+  const company = String(u?.Company||u?.CompanyName||"").trim();
+  const logoUrlUser = String(u?.LogoUrl||u?.LogoURL||"").trim();
 
   // naive split for N:
   const parts = name.split(" ");
@@ -2420,20 +2422,29 @@ function buildVcard_(u){
     `N:${n}`,
     `FN:${escapeV_(name)}`,
   ];
+  if(company) lines.push(`ORG:${escapeV_(company)}`);
   if(title) lines.push(`TITLE:${escapeV_(title)}`);
   if(email) lines.push(`EMAIL;TYPE=INTERNET:${escapeV_(email)}`);
   if(phone1) lines.push(`TEL;TYPE=CELL:${escapeV_(phone1)}`);
   if(phone2) lines.push(`TEL;TYPE=WORK:${escapeV_(phone2)}`);
   if(website) lines.push(`URL:${escapeV_(website)}`);
 
-  // Attach site logo / photo as contact image
+  // Attach logo / photo as contact image
   try{
-    const base = window.location.origin + window.location.pathname.replace(/[^/]+$/, "");
-    const logoUrl = base + "boi-logo.png";
+    let logoUrl = logoUrlUser;
+    if(!logoUrl){
+      const base = window.location.origin + window.location.pathname.replace(/[^/]+$/, "");
+      logoUrl = base + "boi-logo.png";
+    }
     if(logoUrl){
       lines.push(`PHOTO;VALUE=URI:${escapeV_(logoUrl)}`);
+      lines.push(`LOGO;VALUE=URI:${escapeV_(logoUrl)}`);
     }
   }catch(e){
+    // ignore if not in browser environment
+  }
+
+  (e){
     // ignore if not in browser environment
   }
 
@@ -2454,8 +2465,16 @@ function openVcardOverlay_(){
   }
   const vcf = buildVcard_(u);
   $("vcardName").textContent = u.Name || "—";
-  const meta = [u.Title, u.Email, u.Phone1].filter(Boolean).join(" • ");
+  const meta = [u.Company, u.Title, u.Email, u.Phone1].filter(Boolean).join(" • ");
   $("vcardMeta").textContent = meta || "—";
+
+    // Logo
+  try{
+    const base = window.location.origin + window.location.pathname.replace(/[^/]+$/, "");
+    const logo = (u.LogoUrl||u.LogoURL||"").trim() || (base + "boi-logo.png");
+    const el = $("vcardLogo");
+    if(el) el.src = logo;
+  }catch{}
 
   // QR image via qrserver
   const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=" + encodeURIComponent(vcf);
@@ -2483,7 +2502,7 @@ function openVcardOverlay_(){
   }
 
   $("btnCopyVcard").onclick = async ()=>{
-    const txt = [u.Name, u.Title, u.Email, u.Phone1, u.Website, u.SocialHandle].filter(Boolean).join("\n");
+    const txt = [u.Name, u.Company, u.Title, u.Email, u.Phone1, u.Website, u.SocialHandle].filter(Boolean).join("\n");
     try{ await navigator.clipboard.writeText(txt); setStatus("Copied."); }catch{ setStatus("Copy not available."); }
   };
 
