@@ -698,6 +698,12 @@ Item 3" rows="4"></textarea>
 <button class="btn btn--ghost btn--sm" id="editQuick7" type="button">+7 @10am</button>
 <button class="btn btn--ghost btn--sm" id="editQuick14" type="button">+14 @10am</button>
 </div>
+<div class="follow__quick">
+<button class="btn btn--ghost btn--sm" id="editFUQuickToday" type="button">Today @10am</button>
+<button class="btn btn--ghost btn--sm" id="editFUQuick7" type="button">+7 @10am</button>
+<button class="btn btn--ghost btn--sm" id="editFUQuick14" type="button">+14 @10am</button>
+<span class="hint" id="editFUQuickHint" style="margin-left:8px;"></span>
+</div>
 <div class="row2">
 <div class="field">
 <label>Date</label>
@@ -718,6 +724,17 @@ Item 3" rows="4"></textarea>
 <button class="btn btn--ghost" id="btnClearEditFU" type="button">Clear Follow-up Fields</button>
 </div>
 <div class="hint" id="editStatus" style="padding:10px 2px 0 2px;"></div>
+<div class="timelineBox">
+  <div class="timelineHdr">
+    <div class="timelineTitle">Activity</div>
+    <div class="timelineTools">
+      <input id="editAddNote" type="text" placeholder="Add a quick note…" />
+      <button class="btn btn--primary btn--sm" id="btnAddNote" type="button">Add Note</button>
+    </div>
+  </div>
+  <div class="timelineList" id="editTimeline"></div>
+</div>
+
 </div>
 </div>
 </div>
