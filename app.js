@@ -77,6 +77,20 @@ let queuedBuyerFU = null;
 
 const $ = (id) => document.getElementById(id);
 
+// --- utils: debounce (used by global search + auto-density resize) ---
+// Some builds referenced debounce_ without defining it.
+function debounce_(fn, wait = 150){
+  let t = null;
+  return function(...args){
+    const ctx = this;
+    clearTimeout(t);
+    t = setTimeout(()=>fn.apply(ctx, args), wait);
+  };
+}
+
+// Back-compat alias (in case any older call sites use debounce)
+const debounce = debounce_;
+
 function getScriptUrl() {
   return (localStorage.getItem(LS_SCRIPT_URL) || DEFAULT_SCRIPT_URL).trim();
 }
