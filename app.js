@@ -986,6 +986,45 @@ function formatISTFromInputs(dateVal, timeVal){
   }
 }
 
+
+async function fetchActivities_(leadId){
+  try{
+    const url = getScriptUrl_() + `?action=listActivities&leadId=${encodeURIComponent(leadId)}`;
+    const res = await fetch(url, { cache:"no-store" });
+    const j = await res.json();
+    return (j && j.result==="success") ? (j.activities||[]) : [];
+  }catch(e){
+    console.warn("activities fetch failed", e);
+    return [];
+  }
+}
+
+function renderTimeline_(items){
+  const host = $("editTimeline");
+  if(!host) return;
+  if(!items || !items.length){
+    host.innerHTML = `<div class="hint">No activity yet.</div>`;
+    return;
+  }
+  host.innerHTML = items.map(it=>{
+    const meta = [it.timestampIST || it.timestampISO, it.actor, it.kind].filter(Boolean).join(" • ");
+    const msg = escapeHtml(String(it.message||""));
+    return `<div class="timelineItem">
+      <div class="timelineDot"></div>
+      <div class="timelineMain">
+        <div class="timelineMeta">${escapeHtml(meta)}</div>
+        <div class="timelineMsg">${msg}</div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+async function refreshEditTimeline_(leadId){
+  const host = $("editTimeline");
+  if(host) host.innerHTML = `<div class="hint">Loading…</div>`;
+  const items = await fetchActivities_(leadId);
+  renderTimeline_(items);
+}
 function applyQuickFU(dateInputId, timeInputId, daysAhead){
   const dEl = $(dateInputId);
   const tEl = $(timeInputId);
@@ -997,6 +1036,9 @@ function applyQuickFU(dateInputId, timeInputId, daysAhead){
   const dd = String(base.getDate()).padStart(2,"0");
   dEl.value = `${yyyy}-${mm}-${dd}`;
   tEl.value = "10:00";
+  dEl.dataset.quick = "1";
+  tEl.dataset.quick = "1";
+
   dEl.dispatchEvent(new Event("input"));
   tEl.dispatchEvent(new Event("input"));
 }
@@ -1018,12 +1060,15 @@ function queueFollowUp(kind){
   }
 
   const f = formatISTFromInputs(d,t);
-  const fu = { scheduledAtIST: f.label, scheduledAtISO: f.iso, notes };
+  const quick = ($(dateId).dataset.quick==="1" || $(timeId).dataset.quick==="1");
+  const fu = { scheduledAtIST: f.label, scheduledAtISO: f.iso, notes, _createCalendar: quick };
 
   if(kind==="supplier") queuedSupplierFU = fu;
   else queuedBuyerFU = fu;
 
-  $(outId).textContent = `Will schedule after save: ${f.label}`;
+  $(outId).textContent = quick ? `Will schedule after save (Calendar enabled): ${f.label}` : `Will schedule after save: ${f.label}`;
+  // clear quick marker once queued
+  try{ delete $(dateId).dataset.quick; delete $(timeId).dataset.quick; }catch(_){ }
 }
 
 /* ---------- Clear forms ---------- */
@@ -1121,7 +1166,7 @@ async function saveSupplier(closeAfter){
       catalogFiles:uploads.catalogFiles,
       cardFile:uploads.cardFile,
       pendingFollowUp: queuedSupplierFU,
-      createCalendarEvent: false
+      createCalendarEvent: Boolean(queuedSupplierFU && queuedSupplierFU._createCalendar)
     };
 
     const res = await postPayload(payload);
@@ -1206,7 +1251,7 @@ async function saveBuyer(closeAfter){
       catalogFiles:uploads.catalogFiles,
       cardFile:uploads.cardFile,
       pendingFollowUp: queuedBuyerFU,
-      createCalendarEvent: false
+      createCalendarEvent: Boolean(queuedBuyerFU && queuedBuyerFU._createCalendar)
     };
 
     const res = await postPayload(payload);
@@ -1250,17 +1295,76 @@ function safeWa(phone){
   return d ? `https://wa.me/${d}` : "";
 }
 
+// ===========================
+// WhatsApp Intro (user-initiated, prefilled message)
+// ===========================
+const WHATSAPP_INTRO_TEMPLATE = `Hello {{ContactName}},
+
+This is {{SenderName}} from Blue Orbit International LLP.
+We work with export-ready food & ingredient solutions.
+
+You can reach me directly at:
+📞 {{SenderPhone1}}{{SenderPhone2Line}}
+✉️ {{SenderEmail}}
+
+Looking forward to connecting.`;
+
+function safeWaText(phone, text){
+  const d = digitsOnly(phone);
+  if(!d) return "";
+  const q = text ? `?text=${encodeURIComponent(String(text))}` : "";
+  return `https://wa.me/${d}${q}`;
+}
+
+function pick_(obj, keys){
+  for(const k of keys){
+    if(obj && obj[k]!==undefined && obj[k]!==null){
+      const v = String(obj[k]).trim();
+      if(v) return v;
+    }
+  }
+  return "";
+}
+
+function getSenderPhones_(u){
+  // Support multiple header styles from Users sheet
+  const p1 = pick_(u, ["Phone1","Phone 1","Phone","Mobile","Mobile 1","Primary Phone","PrimaryPhone","Phone Number","PhoneNumber"]);
+  const p2 = pick_(u, ["Phone2","Phone 2","Alt Phone","Alternate Phone","Secondary Phone","SecondaryPhone","Mobile 2"]);
+  return { p1, p2 };
+}
+
+function buildWhatsIntroText_(lead){
+  const u = getCurrentUser_() || {};
+  const { p1, p2 } = getSenderPhones_(u);
+  const senderName = pick_(u, ["Name","User","User Name","Full Name","FullName"]) || (localStorage.getItem(LS_USER)||"");
+  const senderEmail = pick_(u, ["Email","EmailID","Email Id","E-mail"]) || "";
+  const contactName = String((lead?.contact || lead?.company || "there")).trim() || "there";
+
+  const map = {
+    "{{ContactName}}": contactName,
+    "{{SenderName}}": senderName || "—",
+    "{{SenderEmail}}": senderEmail || "—",
+    "{{SenderPhone1}}": p1 || "—",
+    "{{SenderPhone2}}": p2 || "",
+    "{{SenderPhone2Line}}": p2 ? ` / ${p2}` : ""
+  };
+
+  let msg = WHATSAPP_INTRO_TEMPLATE;
+  Object.keys(map).forEach(k=>{
+    msg = msg.split(k).join(map[k]);
+  });
+  return msg;
+}
+
+
 function svgPhone(){
-  // Lucide-style phone (stroke uses currentColor)
+  // Phone handset icon (stroke uses currentColor)
   return `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07
-             19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.08 4.18
-             2 2 0 0 1 4.06 2h3a2 2 0 0 1 2 1.72c.12.81.3 1.6.54 2.36
-             a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.72-1.72
-             a2 2 0 0 1 2.11-.45c.76.24 1.55.42 2.36.54A2 2 0 0 1 22 16.92z"
-          stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="M7.5 3.5h2.2c.6 0 1.1.4 1.3.9l1.4 3.6c.2.6 0 1.2-.5 1.6l-1.5 1.1c1.1 2.3 2.9 4.1 5.2 5.2l1.1-1.5c.4-.5 1-.7 1.6-.5l3.6 1.4c.5.2.9.7.9 1.3v2.2c0 .8-.6 1.5-1.4 1.6l-1.1.2c-1.1.2-2.1.2-3.2 0-6.3-1-11.3-6-12.3-12.3-.2-1.1-.2-2.1 0-3.2l.2-1.1c.1-.8.8-1.4 1.6-1.4Z"
+      stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
   </svg>`;
 }
+
 function svgMail(){
   return `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
     <path d="M4 6h16v12H4z" stroke="currentColor" stroke-width="1.8"/>
@@ -1274,16 +1378,15 @@ function svgEdit(){
   </svg>`;
 }
 function svgWhatsApp(){
-  // Lightweight "chat + handset" icon (WhatsApp action) using currentColor
+  // WhatsApp-like bubble glyph (stroke uses currentColor)
   return `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <path d="M20.5 12a8.5 8.5 0 0 1-12.7 7.3L4 20l.7-3.7A8.5 8.5 0 1 1 20.5 12z"
-      stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
-    <path d="M10.2 10.3c.5 1.4 1.6 2.6 3.2 3.2l.9-.9c.2-.2.5-.3.8-.2l1.4.6
-             c.3.1.5.4.5.7 0 1-.8 1.8-1.8 1.8-3.6 0-6.6-3-6.6-6.6
-             0-1 .8-1.8 1.8-1.8.3 0 .6.2.7.5l.6 1.4c.1.3 0 .6-.2.8l-.9.9z"
+    <path d="M20 11.9a8 8 0 0 1-11.8 7L4 20l1.1-4.1A8 8 0 1 1 20 11.9Z"
+      stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+    <path d="M9.2 8.9c.2-.5.5-.8 1-.8h.9c.4 0 .8.2 1 .6l.8 1.7c.2.4.1.9-.2 1.2l-.7.7c.7 1.4 1.8 2.5 3.2 3.2l.7-.7c.3-.3.8-.4 1.2-.2l1.7.8c.4.2.6.6.6 1v.9c0 .5-.3.8-.8 1-1.1.4-2.7.2-4.6-.9-1.9-1.1-3.6-2.8-4.7-4.7-1.1-1.9-1.3-3.5-.9-4.6Z"
       stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
   </svg>`;
 }
+
 
 let leadsView = "cards"; // "cards" | "list"
 function setLeadsView(v){
@@ -1326,6 +1429,7 @@ function renderLeadCard(r){
       <div class="leadcard__actions">
         ${r.phone ? `<a class="iconbtn" href="tel:${esc(safeTel(r.phone))}">${svgPhone()} Call</a>` : ``}
         ${wa1 ? `<a class="iconbtn" target="_blank" rel="noopener" href="${esc(wa1)}">${svgWhatsApp()} WhatsApp</a>` : ``}
+        ${(r.phone||r.phone2) ? `<a class="iconbtn iconbtn--primary" target="_blank" rel="noopener" href="${esc(safeWaText(r.phone||r.phone2, buildWhatsIntroText_(r)))}">${svgWhatsApp()} Intro</a>` : ``}
         ${r.email ? `<a class="iconbtn" href="mailto:${esc(r.email)}">${svgMail()} Email</a>` : ``}
         ${r.leadId ? `<button class="iconbtn" type="button" data-edit="${esc(r.leadId)}">${svgEdit()} Edit</button>` : ``}
       </div>
@@ -1567,6 +1671,7 @@ async function refreshLeads(){
           <div class="cellicons">
             ${r.phone ? `<a class="iconlink" href="tel:${esc(safeTel(r.phone))}" title="Call">${svgPhone()}<span>${esc(r.phone)}</span></a>` : `<span class="smallmuted">—</span>`}
             ${wa1 ? `<a class="iconlink" href="${esc(wa1)}" target="_blank" rel="noopener" title="WhatsApp">${svgWhatsApp()}<span>WhatsApp</span></a>` : ``}
+            ${(r.phone||r.phone2) ? `<a class="iconlink iconlink--primary" href="${esc(safeWaText(r.phone||r.phone2, buildWhatsIntroText_(r)))}" target="_blank" rel="noopener" title="Intro">${svgWhatsApp()}<span>Intro</span></a>` : ``}
             ${r.phone2 ? `<a class="iconlink" href="tel:${esc(safeTel(r.phone2))}" title="Call (2)">${svgPhone()}<span>${esc(r.phone2)}</span></a>` : ``}
             ${wa2 ? `<a class="iconlink" href="${esc(wa2)}" target="_blank" rel="noopener" title="WhatsApp (2)">${svgWhatsApp()}<span>WA (2)</span></a>` : ``}
           </div>
@@ -1627,7 +1732,9 @@ function openEdit(leadId, row){
   $("editStatus").textContent = "";
 
   $("editSub").textContent = `${row?.leadId||leadId||""} • ${row?.company||row?.contact||""}`;
-  openOverlay("editOverlay");
+    try{ $("editAddNote").value=""; }catch(_){ }
+  try{ refreshEditTimeline_(leadId); }catch(_){ }
+openOverlay("editOverlay");
 }
 
 function clearEditFollowup(){
@@ -1647,8 +1754,10 @@ async function saveEdit(){
   const d = $("editFUDate").value;
   const t = $("editFUTime").value;
   const notes = $("editFUNotes").value.trim();
+  let quickCal = false;
   if(d && t){
     const f = formatISTFromInputs(d,t);
+    quickCal = ($("editFUDate").dataset.quick==="1" || $("editFUTime").dataset.quick==="1");
     newFollowUp = { scheduledAtIST: f.label, scheduledAtISO: f.iso, notes };
   }
 
@@ -1679,7 +1788,8 @@ async function saveEdit(){
     exFactory: $("editExFactory").value.trim(),
     fob: $("editFOB").value.trim(),
     notes: $("editNotes").value.trim(),
-    newFollowUp
+    newFollowUp,
+    createCalendarEvent: Boolean(quickCal)
   };
 
   try{
@@ -2276,6 +2386,45 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   $("buyFUQuickToday").addEventListener("click", ()=>applyQuickFU("buyFUDate","buyFUTime",0));
   $("buyFUQuick7").addEventListener("click", ()=>applyQuickFU("buyFUDate","buyFUTime",7));
   $("buyFUQuick14").addEventListener("click", ()=>applyQuickFU("buyFUDate","buyFUTime",14));
+  // Edit overlay quick follow-up buttons (one-tap schedule + calendar enabled)
+  $("editFUQuickToday").addEventListener("click", async ()=>{
+    applyQuickFU("editFUDate","editFUTime",0);
+    $("editFUQuickHint").textContent = "Calendar enabled • saving…";
+    await saveEdit();
+    $("editFUQuickHint").textContent = "";
+  });
+  $("editFUQuick7").addEventListener("click", async ()=>{
+    applyQuickFU("editFUDate","editFUTime",7);
+    $("editFUQuickHint").textContent = "Calendar enabled • saving…";
+    await saveEdit();
+    $("editFUQuickHint").textContent = "";
+  });
+  $("editFUQuick14").addEventListener("click", async ()=>{
+    applyQuickFU("editFUDate","editFUTime",14);
+    $("editFUQuickHint").textContent = "Calendar enabled • saving…";
+    await saveEdit();
+    $("editFUQuickHint").textContent = "";
+  });
+
+  // Add Note (logs to Activities sheet + refreshes timeline)
+  $("btnAddNote").addEventListener("click", async ()=>{
+    const leadId = $("editLeadId").value.trim();
+    const note = $("editAddNote").value.trim();
+    if(!leadId || !note) return;
+    $("editAddNote").value = "";
+    try{
+      await postPayload({
+        action:"addActivityNote",
+        leadId,
+        note,
+        enteredBy: (localStorage.getItem(LS_USER)||"Unknown").trim() || "Unknown"
+      });
+    }catch(e){
+      console.warn(e);
+    }
+    await refreshEditTimeline_(leadId);
+  });
+
   $("editQuickToday").addEventListener("click", ()=>applyQuickFU("editFUDate","editFUTime",0));
   $("editQuick7").addEventListener("click", ()=>applyQuickFU("editFUDate","editFUTime",7));
   $("editQuick14").addEventListener("click", ()=>applyQuickFU("editFUDate","editFUTime",14));
