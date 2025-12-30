@@ -945,3 +945,60 @@ body.density-tablet{
   align-items:center;
   margin: 10px 0 6px;
 }
+
+
+/* === PATCH: Modal responsive scroll + icon visibility (2025-12-30) === */
+
+/* Allow overlay content to scroll on smaller screens (iPhone/iPad) */
+.overlay{ overflow:auto; -webkit-overflow-scrolling:touch; }
+.overlay.open{ display:flex; }
+
+/* Make modal vertically scrollable instead of overflowing viewport */
+.modal{
+  display:flex;
+  flex-direction:column;
+  max-height:calc(100vh - 32px);
+  margin:auto;
+}
+
+/* Keep header visible while scrolling inside modal */
+.modal__hdr{
+  position:sticky;
+  top:0;
+  background:linear-gradient(180deg, rgba(11,18,34,.98), rgba(7,11,20,.98));
+  z-index:2;
+}
+
+/* Scroll the form area inside the modal */
+.modal .form{
+  overflow:auto;
+  -webkit-overflow-scrolling:touch;
+  max-height:calc(100vh - 32px - 72px);
+}
+
+/* On small screens, align modal to top so it can scroll naturally */
+@media (max-width: 900px){
+  .overlay{ align-items:flex-start; }
+  .modal{ margin:12px auto; max-height:calc(100vh - 24px); }
+  .modal .form{ max-height:calc(100vh - 24px - 72px); }
+}
+@media (max-width: 560px){
+  .modal{ border-radius:16px; }
+  /* Ensure edit form uses single column on phones */
+  .row2{ grid-template-columns:1fr !important; }
+}
+
+/* Dashboard icons: ensure SVGs are visible and not clipped */
+.dashrecent__actions .btn,
+.lead-actions .btn,
+.actions .btn{
+  color:var(--text) !important;
+}
+.dashrecent__actions .btn svg,
+.lead-actions .btn svg,
+.actions .btn svg{
+  display:block !important;
+  opacity:1 !important;
+  stroke:currentColor !important;
+  fill:none !important;
+}
