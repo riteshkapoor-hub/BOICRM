@@ -77,6 +77,16 @@ let queuedSupplierFU = null;
 let queuedBuyerFU = null;
 
 const $ = (id) => document.getElementById(id);
+// Escape HTML for safe rendering in innerHTML templates
+function escapeHtml(s){
+  return String(s ?? "")
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;")
+    .replace(/'/g,"&#39;");
+}
+
 
 // --- utils: debounce (used by global search + auto-density resize) ---
 // Some builds referenced debounce_ without defining it.
