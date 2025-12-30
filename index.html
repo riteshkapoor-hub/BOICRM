@@ -5,7 +5,7 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width,initial-scale=1" name="viewport"/>
 <title>BOI CRM</title>
-<link href="styles.css?v=20251229_fix_execurl_guard" rel="stylesheet"/>
+<link href="styles.css?v=20251230_enterprise_IA_tested" rel="stylesheet"/>
 </head>
 <body>
 <header class="topbar">
@@ -33,7 +33,9 @@
 <main class="shell">
 <nav class="tabs">
 <button class="tab isActive" id="tabCapture" type="button">Capture</button>
-<button class="tab" id="tabDashboard" type="button">Dashboard</button>
+<button class="tab" id="tabDashboard" type="button">Home</button>
+<button class="tab" id="tabPipeline" type="button">Pipeline</button>
+<button class="tab" id="tabInsights" type="button">Insights</button>
 <button class="tab" id="tabLeads" type="button">Leads</button>
 <button class="tab" id="tabCalendar" type="button">Calendar</button>
 <div class="tabs__spacer"></div>
@@ -366,7 +368,7 @@ Item 3" rows="4"></textarea>
 <section class="view" id="viewDashboard" style="display:none;">
 <div class="card">
 <div class="card__hdr">
-<div class="card__title">Dashboard</div>
+<div class="card__title">Home</div>
 <div class="card__sub">Filters apply across all leads saved in the master sheet.</div>
 </div>
 <div class="kpis" id="kpis"></div>
@@ -402,37 +404,6 @@ Item 3" rows="4"></textarea>
   <div class="dashrecent__list" id="dashRecentList"></div>
 </div>
 
-<div class="filters">
-<div class="field">
-<label>Country</label>
-<div id="dashCountryCombo"></div>
-</div>
-<div class="field">
-<label>Markets</label>
-<div id="dashMarketCombo"></div>
-</div>
-<div class="field">
-<label>Product Type</label>
-<div id="dashPTCombo"></div>
-</div>
-<div class="field">
-<label>Search (contains)</label>
-<input id="dashQ" placeholder="company, contact, email…" type="text"/>
-</div>
-<button class="btn btn--ghost" id="btnDashRefresh" type="button">Refresh</button>
-<button class="btn btn--ghost" id="btnDashClear" type="button">Clear Filters</button>
-</div>
-<div class="tablewrap">
-<table class="table" id="dashTable">
-<thead>
-<tr>
-<th>Time (IST)</th><th>Type</th><th>Company</th><th>Contact</th>
-<th>Country</th><th>Markets</th><th>Product Type</th><th>Entered By</th><th>Drive</th>
-</tr>
-</thead>
-<tbody></tbody>
-</table>
-</div>
 </div>
 </section>
 <!-- LEADS -->
@@ -465,6 +436,29 @@ Item 3" rows="4"></textarea>
 </div>
 <button class="btn btn--ghost" id="btnLeadsRefresh" type="button">Refresh</button>
 </div>
+
+<div class="chips" id="leadsChips">
+  <div class="chips__group">
+    <span class="chips__label">Captured</span>
+    <button class="chip isActive" data-captured="all" type="button">All</button>
+    <button class="chip" data-captured="today" type="button">Today</button>
+    <button class="chip" data-captured="week" type="button">This Week</button>
+    <button class="chip" data-captured="month" type="button">This Month</button>
+  </div>
+  <div class="chips__group">
+    <span class="chips__label">Follow‑up</span>
+    <button class="chip isActive" data-due="all" type="button">All</button>
+    <button class="chip" data-due="overdue" type="button">Overdue</button>
+    <button class="chip" data-due="today" type="button">Due Today</button>
+    <button class="chip" data-due="next7" type="button">Next 7 Days</button>
+    <button class="chip" data-due="none" type="button">No Follow‑up</button>
+  </div>
+</div>
+<div class="pager" id="leadsPager" style="display:none">
+  <button class="btn btn--ghost btn--sm" id="btnLeadsLoadMore" type="button">Load more</button>
+  <div class="hint" id="leadsPagerHint"></div>
+</div>
+
 <div class="cardsGrid" id="leadsCards"></div>
 <div class="tablewrap">
 <table class="table" id="leadsTable">
@@ -480,6 +474,59 @@ Item 3" rows="4"></textarea>
 </div>
 </div>
 </section>
+
+<!-- PIPELINE -->
+<section class="view" id="viewPipeline" style="display:none;">
+  <div class="card">
+    <div class="card__hdr">
+      <div class="card__title">Pipeline</div>
+      <div class="card__sub">Kanban view by follow-up urgency (fast triage).</div>
+    </div>
+    <div class="kanban" id="pipelineBoard"></div>
+  </div>
+</section>
+<!-- INSIGHTS -->
+<section class="view" id="viewInsights" style="display:none;">
+  <div class="card">
+    <div class="card__hdr">
+      <div class="card__title">Insights</div>
+      <div class="card__sub">Deep filters + table view (optional). Home stays clean.</div>
+    </div>
+    <div class="filters">
+<div class="field">
+<label>Country</label>
+<div id="dashCountryCombo"></div>
+</div>
+<div class="field">
+<label>Markets</label>
+<div id="dashMarketCombo"></div>
+</div>
+<div class="field">
+<label>Product Type</label>
+<div id="dashPTCombo"></div>
+</div>
+<div class="field">
+<label>Search (contains)</label>
+<input id="dashQ" placeholder="company, contact, email…" type="text"/>
+</div>
+<button class="btn btn--ghost" id="btnDashRefresh" type="button">Refresh</button>
+<button class="btn btn--ghost" id="btnDashClear" type="button">Clear Filters</button>
+</div>
+<div class="tablewrap">
+<table class="table" id="dashTable">
+<thead>
+<tr>
+<th>Time (IST)</th><th>Type</th><th>Company</th><th>Contact</th>
+<th>Country</th><th>Markets</th><th>Product Type</th><th>Entered By</th><th>Drive</th>
+</tr>
+</thead>
+<tbody></tbody>
+</table>
+</div>
+
+  </div>
+</section>
+
 <!-- CALENDAR -->
 <section class="view" id="viewCalendar" style="display:none;">
 <div class="card">
@@ -698,12 +745,6 @@ Item 3" rows="4"></textarea>
 <button class="btn btn--ghost btn--sm" id="editQuick7" type="button">+7 @10am</button>
 <button class="btn btn--ghost btn--sm" id="editQuick14" type="button">+14 @10am</button>
 </div>
-<div class="follow__quick">
-<button class="btn btn--ghost btn--sm" id="editFUQuickToday" type="button">Today @10am</button>
-<button class="btn btn--ghost btn--sm" id="editFUQuick7" type="button">+7 @10am</button>
-<button class="btn btn--ghost btn--sm" id="editFUQuick14" type="button">+14 @10am</button>
-<span class="hint" id="editFUQuickHint" style="margin-left:8px;"></span>
-</div>
 <div class="row2">
 <div class="field">
 <label>Date</label>
@@ -724,23 +765,12 @@ Item 3" rows="4"></textarea>
 <button class="btn btn--ghost" id="btnClearEditFU" type="button">Clear Follow-up Fields</button>
 </div>
 <div class="hint" id="editStatus" style="padding:10px 2px 0 2px;"></div>
-<div class="timelineBox">
-  <div class="timelineHdr">
-    <div class="timelineTitle">Activity</div>
-    <div class="timelineTools">
-      <input id="editAddNote" type="text" placeholder="Add a quick note…" />
-      <button class="btn btn--primary btn--sm" id="btnAddNote" type="button">Add Note</button>
-    </div>
-  </div>
-  <div class="timelineList" id="editTimeline"></div>
-</div>
-
 </div>
 </div>
 </div>
 <!-- IMPORTANT: load QR lib only once (local vendor copy) -->
 <script src="./vendor/html5-qrcode.min.js"></script>
 <!-- main app -->
-<script src="app.js?v=20251229_fix_execurl_guard"></script>
+<script src="app.js?v=20251230_enterprise_IA_tested"></script>
 </body>
 </html>
