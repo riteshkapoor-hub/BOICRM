@@ -35,7 +35,11 @@ function isValidExecUrl(u){
 
 const LS_SCRIPT_URL = "boi_crm_script_url";
 const LS_USER = "boi_crm_user";
+const LS_USERID = "boi_crm_userid";
+const LS_USEROBJ = "boi_crm_userobj";
+const LS_DENSITY = "boi_crm_ui_density";
 
+let USERS = [];
 let mode = "supplier";
 let html5Qr = null;
 let qrRunning = false;
@@ -93,8 +97,9 @@ function requireExecUrl(){
 function setStatus(msg) { $("status").textContent = msg || ""; }
 function updateSummary() { $("summary").textContent = `${sessionCount} leads this session`; }
 function setUserPill() {
-  const u = (localStorage.getItem(LS_USER) || "").trim();
-  $("userPill").textContent = `User: ${u || "—"}`;
+  const u = getCurrentUser_();
+  const name = String(u?.Name || "").trim();
+  $("userPill").textContent = `User: ${name || "—"}`;
 }
 
 function openOverlay(id) { $(id).classList.add("open"); $(id).setAttribute("aria-hidden","false"); }
@@ -130,6 +135,201 @@ function esc(s){
   return String(s||"")
     .replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")
     .replaceAll('"',"&quot;").replaceAll("'","&#039;");
+}
+
+/* ---------- Global quick search ---------- */
+let __gsLastQ = "";
+let __gsOpen = false;
+let __gsIdx = -1;
+let __gsRows = [];
+let __gsFooter = null;
+
+function initGlobalSearch_(){
+  const wrap = $("gsearchWrap");
+  const inp = $("globalSearch");
+  const res = $("globalSearchResults");
+  if(!wrap || !inp || !res) return;
+
+  const close = ()=>{
+    __gsOpen = false;
+    __gsIdx = -1;
+    __gsRows = [];
+    __gsFooter = null;
+    res.style.display = "none";
+    res.innerHTML = "";
+  };
+
+  const open = ()=>{ __gsOpen = true; res.style.display = ""; };
+
+  // Focus with /
+  document.addEventListener('keydown', (e)=>{
+    if(e.key !== '/') return;
+    const tag = (document.activeElement && document.activeElement.tagName || "").toLowerCase();
+    if(tag === 'input' || tag === 'textarea' || tag === 'select') return;
+    e.preventDefault();
+    inp.focus();
+  });
+
+  // Click outside closes
+  document.addEventListener('click', (e)=>{
+    if(!__gsOpen) return;
+    if(wrap.contains(e.target)) return;
+    close();
+  });
+
+  const setActive = (idx)=>{
+    __gsIdx = idx;
+    __gsRows.forEach((el,i)=>el.classList.toggle('isActive', i===__gsIdx));
+    if(__gsFooter) __gsFooter.classList.toggle('isActive', __gsIdx === __gsRows.length);
+    const activeEl = (__gsIdx >= 0 && __gsIdx < __gsRows.length) ? __gsRows[__gsIdx] : (__gsIdx === __gsRows.length ? __gsFooter : null);
+    if(activeEl && activeEl.scrollIntoView){
+      activeEl.scrollIntoView({ block:'nearest' });
+    }
+  };
+
+  const viewInLeads = async (q)=>{
+    close();
+    try{
+      showTab("Leads");
+      const box = $("leadsQ");
+      if(box){
+        box.value = q || "";
+        box.dispatchEvent(new Event('input', { bubbles:true }));
+      }
+      await refreshLeads();
+      if(box) box.focus();
+    }catch{}
+  };
+
+  inp.addEventListener('keydown', (e)=>{
+    if(e.key === 'Escape'){ close(); inp.blur(); return; }
+    if(!__gsOpen) return;
+    if(e.key === 'ArrowDown'){
+      e.preventDefault();
+      const max = (__gsRows.length ? __gsRows.length : 0) + (__gsFooter ? 1 : 0);
+      if(!max) return;
+      const next = Math.min((__gsIdx<0?0:__gsIdx+1), max-1);
+      setActive(next);
+      return;
+    }
+    if(e.key === 'ArrowUp'){
+      e.preventDefault();
+      const max = (__gsRows.length ? __gsRows.length : 0) + (__gsFooter ? 1 : 0);
+      if(!max) return;
+      const prev = Math.max((__gsIdx<0?0:__gsIdx-1), 0);
+      setActive(prev);
+      return;
+    }
+    if(e.key === 'Enter'){
+      e.preventDefault();
+      if(__gsIdx === __gsRows.length && __gsFooter){
+        viewInLeads(__gsLastQ);
+        return;
+      }
+      const el = (__gsIdx>=0 && __gsIdx<__gsRows.length) ? __gsRows[__gsIdx] : null;
+      if(el){ el.click(); }
+      return;
+    }
+  });
+
+  const doSearch = debounce_(async ()=>{
+    const q = inp.value.trim();
+    if(q.length < 2){ close(); return; }
+    if(q === __gsLastQ && __gsOpen) return;
+    __gsLastQ = q;
+
+    try{
+      const data = await getJson({ action:"listLeads", limit:"20", q });
+      const rows = data.rows || [];
+      if(!rows.length){
+        res.innerHTML = `<div class="hint" style="padding:10px 12px">No matches</div>`;
+        open();
+        return;
+      }
+
+      res.innerHTML = rows.slice().reverse().map(r=>{
+        const title = `${esc(r.company||'—')} • ${esc(r.contact||'')}`;
+        const sub = [r.type, r.country, r.productType].filter(Boolean).map(x=>`<span class="pill pill--sm">${esc(x)}</span>`).join('');
+        const when = esc(r.timestampIST||"");
+        const id = esc(r.leadId||"");
+        const extra = r.email ? esc(r.email) : (r.phone ? esc(r.phone) : "");
+        return `
+          <div class="gsearch__row" data-gs-id="${id}">
+            <div class="gsearch__main">
+              <div class="gsearch__title" title="${title}">${esc(r.company||'—')}</div>
+              <div class="gsearch__sub">${sub}${extra ? `<span class="muted">${extra}</span>` : ``}</div>
+            </div>
+            <div class="gsearch__meta">${when}</div>
+          </div>
+        `;
+      }).join('');
+
+      // Footer action: view all results in Leads
+      const footer = document.createElement('div');
+      footer.className = 'gsearch__footer';
+      footer.innerHTML = `
+        <button type="button" class="gsearch__view" id="gsViewInLeads">View all results in Leads</button>
+      `;
+      res.appendChild(footer);
+      open();
+
+      __gsRows = Array.from(res.querySelectorAll('.gsearch__row'));
+      __gsFooter = res.querySelector('#gsViewInLeads');
+      __gsIdx = -1;
+      setActive(0);
+
+      if(__gsFooter){
+        __gsFooter.addEventListener('click', ()=>viewInLeads(__gsLastQ));
+      }
+
+      res.querySelectorAll('[data-gs-id]').forEach(el=>{
+        el.addEventListener('click', ()=>{
+          const id = el.getAttribute('data-gs-id');
+          const row = (data.rows||[]).find(x=>String(x.leadId)===String(id));
+          close();
+          // Open edit directly; feels enterprise and saves taps.
+          openEdit(id, row);
+        });
+      });
+
+      // Hover sets active row (mouse / trackpad)
+      __gsRows.forEach((el,i)=>{
+        el.addEventListener('mouseenter', ()=>setActive(i));
+      });
+    }catch(e){
+      console.error(e);
+      close();
+    }
+  }, 180);
+
+  inp.addEventListener('input', doSearch);
+  inp.addEventListener('focus', ()=>{ if(inp.value.trim().length>=2) doSearch(); });
+
+  // One-time hint: "/" to search (shown once per device)
+  // If the hint couldn't be shown at load (e.g., hidden header), show it on first focus instead.
+  try {
+    const hintKey = "boi_gsearch_hint_v1";
+    const isPhone = window.matchMedia && window.matchMedia("(max-width: 640px)").matches;
+    const canShow = ()=> !isPhone && wrap && wrap.offsetParent !== null;
+
+    const showHintOnce = ()=>{
+      if(!canShow()) return;
+      if(localStorage.getItem(hintKey)) return;
+      const hint = document.createElement("div");
+      hint.className = "gsearch__hint";
+      hint.innerHTML = `<span class="gsearch__hintKey">/</span> to search • <span class="gsearch__hintKey">Esc</span> to close`;
+      wrap.appendChild(hint);
+      localStorage.setItem(hintKey, "1");
+      setTimeout(()=>{ hint.classList.add("hide"); setTimeout(()=>hint.remove(), 600); }, 4200);
+    };
+
+    // Show on load if possible
+    showHintOnce();
+
+    // If it wasn't visible on load, show it when the user first focuses the search box
+    inp.addEventListener('focus', showHintOnce, { once:false });
+  } catch(_e) {}
+
 }
 
 // ---------- Notes: Voice-to-text (Web Speech API) ----------
@@ -1133,6 +1333,9 @@ async function refreshDashboard(){
     window.__leadsCache = data.rows || [];
     renderKpis(data.kpis || {});
 
+    // Recent leads widget (newest first)
+    try{ renderRecentLeads_(window.__leadsCache); }catch{}
+
     const tbody = $("dashTable").querySelector("tbody");
     tbody.innerHTML = "";
 
@@ -1158,6 +1361,50 @@ async function refreshDashboard(){
     console.error(e);
     setStatus("Dashboard load failed.");
   }
+}
+
+function renderRecentLeads_(rows){
+  const list = $("dashRecentList");
+  if(!list) return;
+  const hint = $("dashRecentHint");
+
+  const r = Array.isArray(rows) ? rows.slice().reverse() : [];
+  const top = r.slice(0, 20);
+  if(hint) hint.textContent = top.length ? `Latest ${top.length} lead(s) (newest first)` : "No leads found for current filters.";
+
+  list.innerHTML = top.map(x=>{
+    const wa = safeWa(x.phone);
+    const title = `${esc(x.company||'—')} • ${esc(x.contact||'')}`;
+    const meta = [x.type, x.country, x.markets, x.productType].filter(Boolean).map(m=>`<span class="pill pill--sm">${esc(m)}</span>`).join('');
+    const when = esc(x.timestampIST||"");
+    const id = esc(x.leadId||"");
+    return `
+      <div class="dashrecent__item">
+        <div class="dashrecent__main">
+          <div class="dashrecent__name" title="${title}">${esc(x.company||'—')}</div>
+          <div class="dashrecent__meta">
+            ${meta}
+            ${x.enteredBy ? `<span class="muted">By:</span><span>${esc(x.enteredBy)}</span>` : ``}
+            ${when ? `<span class="muted">Time:</span><span>${when}</span>` : ``}
+          </div>
+        </div>
+        <div class="dashrecent__actions">
+          ${x.phone ? `<a class="btn btn--ghost btn--sm" href="tel:${esc(safeTel(x.phone))}" title="Call">${svgPhone()}</a>` : ``}
+          ${wa ? `<a class="btn btn--ghost btn--sm" href="${esc(wa)}" target="_blank" rel="noopener" title="WhatsApp">${svgWhatsApp()}</a>` : ``}
+          ${x.email ? `<a class="btn btn--ghost btn--sm" href="mailto:${esc(x.email)}" title="Email">${svgMail()}</a>` : ``}
+          ${id ? `<button class="btn btn--ghost btn--sm" data-recent-edit="${id}" title="Edit">${svgEdit()}</button>` : ``}
+        </div>
+      </div>
+    `;
+  }).join("") || `<div class="hint">Nothing to show.</div>`;
+
+  list.querySelectorAll('[data-recent-edit]').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      const id = b.getAttribute('data-recent-edit');
+      const row = (window.__leadsCache||[]).find(z=>String(z.leadId)===String(id));
+      openEdit(id, row);
+    });
+  });
 }
 
 async function refreshDashboardInfo(){
@@ -1835,13 +2082,41 @@ function renderSideListForRange(range){
   });
 }
 
+
+/* ---------- UI DENSITY (AUTO BY DEVICE) ---------- */
+function detectDeviceClass_(){
+  // Heuristic tuned for iPhone / iPad / Samsung tablets + laptops.
+  const w = Math.min(window.innerWidth || 9999, screen?.width || 9999);
+  const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  if(w <= 640) return 'phone';
+  // Most tablets (incl. iPad portrait/landscape, Samsung tablets) land here.
+  if(w <= 1024) return 'tablet';
+  // Large tablets in desktop-like widths but still touch.
+  if(coarse && w <= 1366) return 'tablet';
+  return 'desktop';
+}
+function applyAutoDensity_(){
+  const device = detectDeviceClass_();  document.body.classList.remove('density-compact','density-phone','density-tablet');
+  if(device === 'phone') document.body.classList.add('density-phone');
+  else if(device === 'tablet') document.body.classList.add('density-tablet');
+  document.body.dataset.device = device;
+}
+
 /* ---------- BOOT (FULL) ---------- */
 document.addEventListener("DOMContentLoaded", async ()=>{
+  // density (auto by device; no user toggle)
+  applyAutoDensity_();
+  window.addEventListener('resize', debounce_(applyAutoDensity_, 120));
+  window.addEventListener('orientationchange', ()=>setTimeout(applyAutoDensity_, 50));
+
   // tabs
   $("tabCapture").addEventListener("click", ()=>showTab("Capture"));
   $("tabDashboard").addEventListener("click", ()=>showTab("Dashboard"));
   $("tabLeads").addEventListener("click", ()=>showTab("Leads"));
   $("tabCalendar").addEventListener("click", ()=>showTab("Calendar"));
+
+  // global search
+  try{ initGlobalSearch_(); }catch{}
 
   // lead type
   $("btnSupplier").addEventListener("click", ()=>setMode("supplier"));
@@ -1849,7 +2124,7 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   setMode("supplier");
 
   // overlays close on backdrop click
-  ["qrOverlay","settingsOverlay","userOverlay","editOverlay"].forEach(id=>{
+  ["qrOverlay","settingsOverlay","userOverlay","vcardOverlay","editOverlay"].forEach(id=>{
     $(id).addEventListener("click",(e)=>{ if(e.target.id===id) closeOverlay(id); });
   });
 
@@ -1876,21 +2151,44 @@ document.addEventListener("DOMContentLoaded", async ()=>{
     setStatus("Settings saved.");
   });
 
-  // user
+  
+  // users (from Users tab)
   setUserPill();
   ensureUser();
+  fetchUsers_();
+
   $("btnStartSession").addEventListener("click", ()=>{
-    const name=$("usernameInput").value.trim();
-    if(!name){ alert("Enter username"); return; }
-    localStorage.setItem(LS_USER, name);
+    const sel = $("userSelect");
+    const selected = sel ? String(sel.value||"").trim() : "";
+    let u = null;
+    if(selected && USERS.length){
+      u = USERS.find(x=>String(x.UserID||x.Name||"")===selected) || USERS.find(x=>String(x.Name||"")===selected);
+    }
+    const manual = $("usernameInput").value.trim();
+
+    if(u){
+      setCurrentUser_(u);
+      setUserPill();
+      closeOverlay("userOverlay");
+      return;
+    }
+
+    if(!manual){ alert("Select a user or enter username"); return; }
+    setCurrentUser_({ UserID:"", Name:manual });
     setUserPill();
     closeOverlay("userOverlay");
   });
+
   $("btnSwitchUser").addEventListener("click", ()=>{
     localStorage.removeItem(LS_USER);
+    localStorage.removeItem(LS_USERID);
+    localStorage.removeItem(LS_USEROBJ);
     setUserPill();
     openOverlay("userOverlay");
   });
+
+  $("btnShareVcard").addEventListener("click", ()=>openVcardOverlay_());
+  $("btnCloseVcard").addEventListener("click", ()=>closeOverlay("vcardOverlay"));
 
   // combos
   supCountry = createCombo("supCountryCombo", COUNTRIES, "Search country…");
@@ -2011,4 +2309,147 @@ document.addEventListener("DOMContentLoaded", async ()=>{
 
   setStatus("Ready");
   updateSummary();
-});
+})
+function fetchUsers_(){
+  const url = getScriptUrl_();
+  return fetch(url + "?action=users")
+    .then(r=>r.json())
+    .then(j=>{
+      if(j && j.result==="success" && Array.isArray(j.users)){ USERS = j.users; }
+      else USERS = [];
+      populateUserSelect_();
+      return USERS;
+    })
+    .catch(_=>{ USERS = []; populateUserSelect_(); return USERS; });
+}
+
+function populateUserSelect_(){
+  const sel = $("userSelect");
+  if(!sel) return;
+  sel.innerHTML = "";
+  if(!USERS.length){
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "— No users found —";
+    sel.appendChild(opt);
+    return;
+  }
+  const opt0 = document.createElement("option");
+  opt0.value = "";
+  opt0.textContent = "Select…";
+  sel.appendChild(opt0);
+  USERS.forEach(u=>{
+    const id = String(u.UserID||"").trim();
+    const name = String(u.Name||"").trim();
+    if(!id && !name) return;
+    const opt = document.createElement("option");
+    opt.value = id || name;
+    opt.textContent = name ? `${name}${id?` (${id})`:""}` : (id||"");
+    sel.appendChild(opt);
+  });
+
+  // preselect from storage
+  const savedId = localStorage.getItem(LS_USERID) || "";
+  if(savedId){
+    sel.value = savedId;
+  }
+}
+
+function getCurrentUser_(){
+  try{
+    const obj = localStorage.getItem(LS_USEROBJ);
+    if(obj) return JSON.parse(obj);
+  }catch{}
+  const name = localStorage.getItem(LS_USER) || "";
+  const uid = localStorage.getItem(LS_USERID) || "";
+  return { UserID: uid, Name: name };
+}
+
+function setCurrentUser_(u){
+  const name = String(u?.Name || "").trim();
+  const uid = String(u?.UserID || "").trim();
+  if(name) localStorage.setItem(LS_USER, name); else localStorage.removeItem(LS_USER);
+  if(uid) localStorage.setItem(LS_USERID, uid); else localStorage.removeItem(LS_USERID);
+  localStorage.setItem(LS_USEROBJ, JSON.stringify(u || {}));
+}
+
+function buildVcard_(u){
+  const name = String(u?.Name||"").trim();
+  const title = String(u?.Title||"").trim();
+  const email = String(u?.Email||"").trim();
+  const phone1 = String(u?.Phone1||"").trim();
+  const phone2 = String(u?.Phone2||"").trim();
+  const website = String(u?.Website||"").trim();
+  const social = String(u?.SocialHandle||"").trim();
+
+  // naive split for N:
+  const parts = name.split(" ");
+  const last = parts.length>1 ? parts.pop() : "";
+  const first = parts.join(" ");
+  const n = `${last};${first};;;`;
+
+  const lines = [
+    "BEGIN:VCARD",
+    "VERSION:3.0",
+    `N:${n}`,
+    `FN:${escapeV_(name)}`,
+  ];
+  if(title) lines.push(`TITLE:${escapeV_(title)}`);
+  if(email) lines.push(`EMAIL;TYPE=INTERNET:${escapeV_(email)}`);
+  if(phone1) lines.push(`TEL;TYPE=CELL:${escapeV_(phone1)}`);
+  if(phone2) lines.push(`TEL;TYPE=WORK:${escapeV_(phone2)}`);
+  if(website) lines.push(`URL:${escapeV_(website)}`);
+  if(social) lines.push(`NOTE:Social ${escapeV_(social)}`);
+  lines.push("END:VCARD");
+  return lines.join("\n");
+}
+
+function escapeV_(s){
+  return String(s||"").replace(/\\/g,"\\\\").replace(/\n/g,"\\n").replace(/;/g,"\\;").replace(/,/g,"\\,");
+}
+
+function openVcardOverlay_(){
+  const u = getCurrentUser_();
+  if(!u || !(u.Name||"").trim()){
+    openOverlay("userOverlay");
+    return;
+  }
+  const vcf = buildVcard_(u);
+  $("vcardName").textContent = u.Name || "—";
+  const meta = [u.Title, u.Email, u.Phone1].filter(Boolean).join(" • ");
+  $("vcardMeta").textContent = meta || "—";
+
+  // QR image via Google Charts
+  const qrUrl = "https://chart.googleapis.com/chart?cht=qr&chs=240x240&chld=M|0&chl=" + encodeURIComponent(vcf);
+  $("vcardQr").src = qrUrl;
+
+  // download vcf
+  const blob = new Blob([vcf], {type:"text/vcard;charset=utf-8"});
+  const href = URL.createObjectURL(blob);
+  const a = $("btnDownloadVcf");
+  a.href = href;
+  a.download = (u.Name ? u.Name.replace(/[^a-z0-9]+/gi,"_") : "contact") + ".vcf";
+
+  // share button
+  const shareBtn = $("btnShareVcardSystem");
+  if(navigator.share){
+    shareBtn.style.display = "";
+    shareBtn.onclick = async ()=>{
+      try{
+        const file = new File([vcf], a.download, {type:"text/vcard"});
+        await navigator.share({ title: u.Name || "Contact", text: "My contact card", files: [file] });
+      }catch{}
+    };
+  }else{
+    shareBtn.style.display = "none";
+  }
+
+  $("btnCopyVcard").onclick = async ()=>{
+    const txt = [u.Name, u.Title, u.Email, u.Phone1, u.Website, u.SocialHandle].filter(Boolean).join("\n");
+    try{ await navigator.clipboard.writeText(txt); setStatus("Copied."); }catch{ setStatus("Copy not available."); }
+  };
+
+  openOverlay("vcardOverlay");
+}
+
+;
