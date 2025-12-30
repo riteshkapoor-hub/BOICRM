@@ -20,7 +20,8 @@ function applyLists(lists){
 // Keeps:
 // - Your existing theme, Calendar UI, Edit UI behaviors
 
-const DEFAULT_SCRIPT_URL = "";
+// Default to your deployed Apps Script Web App URL (can be overridden in Settings)
+const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzrHBqp6ZcS3lvRir9EchBhsldBS1jRghuQCWhj7XOY4nyuy8NRQP6mz3J1WGNYm-cD/exec";
 
 function isValidExecUrl(u){
   if(!u) return false;
@@ -39,6 +40,32 @@ let mode = "supplier";
 let html5Qr = null;
 let qrRunning = false;
 let sessionCount = 0;
+
+// Prevent duplicate saves when network is slow / user taps multiple times
+let supplierSaveInFlight = false;
+let buyerSaveInFlight = false;
+
+function makeSubmissionId(prefix){
+  // Unique-enough for idempotency across retries
+  const rnd = Math.random().toString(16).slice(2);
+  return `${prefix}_${Date.now()}_${rnd}`;
+}
+
+function setSaving(kind, isSaving){
+  const ids = (kind === "supplier")
+    ? ["saveSupplierNew","saveSupplierClose"]
+    : ["saveBuyerNew","saveBuyerClose"];
+
+  ids.forEach(id=>{
+    const btn = $(id);
+    if(!btn) return;
+    btn.disabled = !!isSaving;
+    btn.classList.toggle("isLoading", !!isSaving);
+  });
+
+  // Small status cue so user knows it's working
+  if(isSaving) setStatus("Saving… please wait");
+}
 
 let LISTS = { productTypes: [], markets: [] };
 let queuedSupplierFU = null;
@@ -719,123 +746,157 @@ function clearBuyer(){
 
 /* ---------- Save handlers ---------- */
 async function saveSupplier(closeAfter){
+  if(supplierSaveInFlight) return;
   const company = $("supCompany").value.trim();
   const products = $("supProducts").value.trim();
   if(!company || !products){ alert("Fill Company and What do they sell."); return; }
 
-  queueFollowUp("supplier");
-  const enteredBy = (localStorage.getItem(LS_USER)||"Unknown").trim() || "Unknown";
+  supplierSaveInFlight = true;
+  setSaving("supplier", true);
 
-  await maybeSaveListItem("market", supMarkets);
-  await maybeSaveListItem("productType", supProductType);
+  try {
+    queueFollowUp("supplier");
+    const enteredBy = (localStorage.getItem(LS_USER)||"Unknown").trim() || "Unknown";
 
-  // Normalize phones now
-  const phone = normalizePhone(supCountry.value, $("supPhone").value);
-  const phone2 = normalizePhone(supCountry.value, $("supPhone2").value);
-  const email = $("supEmail").value.trim();
+    await maybeSaveListItem("market", supMarkets);
+    await maybeSaveListItem("productType", supProductType);
 
-  // Duplicate check (block save unless user confirms)
-  const ok = await checkDuplicatesBeforeSave({ email, phone, phone2 });
-  if(!ok) return;
+    // Normalize phones now
+    const phone = normalizePhone(supCountry.value, $("supPhone").value);
+    const phone2 = normalizePhone(supCountry.value, $("supPhone2").value);
+    const email = $("supEmail").value.trim();
 
-  const uploads = await collectUploads("supCatalogFiles","supCardFile");
+    // Duplicate check (block save unless user confirms)
+    const ok = await checkDuplicatesBeforeSave({ email, phone, phone2 });
+    if(!ok) return;
 
-  const payload = {
-    type:"supplier",
-    enteredBy,
-    company,
-    contact:$("supContact").value.trim(),
-    title:$("supTitle").value.trim(),
-    email,
-    phone,
-    phone2,
-    website:$("supWebsite").value.trim(),
-    social:$("supSocial").value.trim(),
-    country:supCountry.value,
-    markets:supMarkets.value,
-    privateLabel:$("supPL").value.trim(),
-    productType:supProductType.value,
-    productsOrNeeds:products,
-    exFactory:$("supExFactory").value.trim(),
-    fob:$("supFOB").value.trim(),
-    qrData:$("supQR").value.trim(),
-    notes:$("supNotes").value.trim(),
-    catalogFiles:uploads.catalogFiles,
-    cardFile:uploads.cardFile,
-    pendingFollowUp: queuedSupplierFU
-  };
+    const uploads = await collectUploads("supCatalogFiles","supCardFile");
 
-  const res = await postPayload(payload);
+    const payload = {
+      action: "saveLeadFast",
+      fastMode: true,
+      type:"supplier",
+      submissionId: makeSubmissionId("sup"),
+      enteredBy,
+      company,
+      contact:$("supContact").value.trim(),
+      title:$("supTitle").value.trim(),
+      email,
+      phone,
+      phone2,
+      website:$("supWebsite").value.trim(),
+      social:$("supSocial").value.trim(),
+      country:supCountry.value,
+      markets:supMarkets.value,
+      privateLabel:$("supPL").value.trim(),
+      productType:supProductType.value,
+      productsOrNeeds:products,
+      exFactory:$("supExFactory").value.trim(),
+      fob:$("supFOB").value.trim(),
+      qrData:$("supQR").value.trim(),
+      notes:$("supNotes").value.trim(),
+      catalogFiles:uploads.catalogFiles,
+      cardFile:uploads.cardFile,
+      pendingFollowUp: queuedSupplierFU,
+      createCalendarEvent: false
+    };
 
+    const res = await postPayload(payload);
+
+  const folderLine = res.folderUrl ? `Drive folder: <a target="_blank" rel="noopener" href="${esc(res.folderUrl)}">Open folder</a><br>` : "Drive folder: <i>not created yet (fast save)</i><br>";
+  const itemsLine = res.itemsSheetUrl ? `Items sheet: <a target="_blank" rel="noopener" href="${esc(res.itemsSheetUrl)}">Open items</a>` : "Items sheet: <i>not created yet (fast save)</i>";
+  const attachLine = (typeof res.attachmentCount === "number") ? `<br>Attachments saved: <b>${esc(res.attachmentCount)}</b> (${res.attachmentsRootUrl ? `<a target="_blank" rel="noopener" href="${esc(res.attachmentsRootUrl)}">Open root folder</a>` : ""})` : "";
   $("supResult").innerHTML =
     `Lead ID: <b>${esc(res.leadId)}</b><br>` +
-    `Drive folder: <a target="_blank" rel="noopener" href="${esc(res.folderUrl)}">Open folder</a><br>` +
-    `Items sheet: <a target="_blank" rel="noopener" href="${esc(res.itemsSheetUrl)}">Open items</a>` +
-    (res.calendarEventUrl ? `<br>Calendar: <a target="_blank" rel="noopener" href="${esc(res.calendarEventUrl)}">Open event</a>` : "");
+    folderLine +
+    itemsLine +
+    attachLine;
 
   sessionCount++; updateSummary();
   addSessionRow("Supplier", `${company}${payload.contact? " / "+payload.contact:""}`, payload.country);
 
   clearSupplier();
   if(closeAfter) showTab("Dashboard");
+
+  } finally {
+    supplierSaveInFlight = false;
+    setSaving("supplier", false);
+  }
 }
 
 async function saveBuyer(closeAfter){
+  if(buyerSaveInFlight) return;
   const contact = $("buyContact").value.trim();
   const needs = $("buyNeeds").value.trim();
   if(!contact || !needs){ alert("Fill Contact and What do they want to buy."); return; }
 
-  queueFollowUp("buyer");
-  const enteredBy = (localStorage.getItem(LS_USER)||"Unknown").trim() || "Unknown";
+  buyerSaveInFlight = true;
+  setSaving("buyer", true);
 
-  await maybeSaveListItem("market", buyMarkets);
-  await maybeSaveListItem("productType", buyProductType);
+  try {
+    queueFollowUp("buyer");
+    const enteredBy = (localStorage.getItem(LS_USER)||"Unknown").trim() || "Unknown";
 
-  const phone = normalizePhone(buyCountry.value, $("buyPhone").value);
-  const phone2 = normalizePhone(buyCountry.value, $("buyPhone2").value);
-  const email = $("buyEmail").value.trim();
+    await maybeSaveListItem("market", buyMarkets);
+    await maybeSaveListItem("productType", buyProductType);
 
-  const ok = await checkDuplicatesBeforeSave({ email, phone, phone2 });
-  if(!ok) return;
+    const phone = normalizePhone(buyCountry.value, $("buyPhone").value);
+    const phone2 = normalizePhone(buyCountry.value, $("buyPhone2").value);
+    const email = $("buyEmail").value.trim();
 
-  const uploads = await collectUploads("buyCatalogFiles","buyCardFile");
+    const ok = await checkDuplicatesBeforeSave({ email, phone, phone2 });
+    if(!ok) return;
 
-  const payload = {
-    type:"buyer",
-    enteredBy,
-    company:$("buyCompany").value.trim(),
-    contact,
-    title:$("buyTitle").value.trim(),
-    email,
-    phone,
-    phone2,
-    website:$("buyWebsite").value.trim(),
-    social:$("buySocial").value.trim(),
-    country:buyCountry.value,
-    markets:buyMarkets.value,
-    privateLabel:$("buyPL").value.trim(),
-    productType:buyProductType.value,
-    productsOrNeeds:needs,
-    qrData:$("buyQR").value.trim(),
-    notes:$("buyNotes").value.trim(),
-    catalogFiles:uploads.catalogFiles,
-    cardFile:uploads.cardFile,
-    pendingFollowUp: queuedBuyerFU
-  };
+    const uploads = await collectUploads("buyCatalogFiles","buyCardFile");
 
-  const res = await postPayload(payload);
+    const payload = {
+      action: "saveLeadFast",
+      fastMode: true,
+      type:"buyer",
+      submissionId: makeSubmissionId("buy"),
+      enteredBy,
+      company:$("buyCompany").value.trim(),
+      contact,
+      title:$("buyTitle").value.trim(),
+      email,
+      phone,
+      phone2,
+      website:$("buyWebsite").value.trim(),
+      social:$("buySocial").value.trim(),
+      country:buyCountry.value,
+      markets:buyMarkets.value,
+      privateLabel:$("buyPL").value.trim(),
+      productType:buyProductType.value,
+      productsOrNeeds:needs,
+      qrData:$("buyQR").value.trim(),
+      notes:$("buyNotes").value.trim(),
+      catalogFiles:uploads.catalogFiles,
+      cardFile:uploads.cardFile,
+      pendingFollowUp: queuedBuyerFU,
+      createCalendarEvent: false
+    };
 
+    const res = await postPayload(payload);
+
+  const folderLine = res.folderUrl ? `Drive folder: <a target="_blank" rel="noopener" href="${esc(res.folderUrl)}">Open folder</a><br>` : "Drive folder: <i>not created yet (fast save)</i><br>";
+  const itemsLine = res.itemsSheetUrl ? `Items sheet: <a target="_blank" rel="noopener" href="${esc(res.itemsSheetUrl)}">Open items</a>` : "Items sheet: <i>not created yet (fast save)</i>";
+  const attachLine = (typeof res.attachmentCount === "number") ? `<br>Attachments saved: <b>${esc(res.attachmentCount)}</b> (${res.attachmentsRootUrl ? `<a target="_blank" rel="noopener" href="${esc(res.attachmentsRootUrl)}">Open root folder</a>` : ""})` : "";
   $("buyResult").innerHTML =
     `Lead ID: <b>${esc(res.leadId)}</b><br>` +
-    `Drive folder: <a target="_blank" rel="noopener" href="${esc(res.folderUrl)}">Open folder</a><br>` +
-    `Items sheet: <a target="_blank" rel="noopener" href="${esc(res.itemsSheetUrl)}">Open items</a>` +
-    (res.calendarEventUrl ? `<br>Calendar: <a target="_blank" rel="noopener" href="${esc(res.calendarEventUrl)}">Open event</a>` : "");
+    folderLine +
+    itemsLine +
+    attachLine;
 
   sessionCount++; updateSummary();
   addSessionRow("Buyer", `${contact}${payload.company? " / "+payload.company:""}`, payload.country);
 
   clearBuyer();
   if(closeAfter) showTab("Dashboard");
+
+  } finally {
+    buyerSaveInFlight = false;
+    setSaving("buyer", false);
+  }
 }
 
 /* ---------- Icons + links ---------- */
