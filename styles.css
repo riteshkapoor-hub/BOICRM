@@ -847,214 +847,101 @@ body.density-tablet{
 
 
 /* =========================================================
-   BOI CRM Patch — Theme Consistency + Button/Icon Fix
-   v2025-12-30
-   (appends overrides without breaking existing layout)
+   Enhancement: WhatsApp Intro button styles
    ========================================================= */
-
-:root{
-  /* Missing aliases used throughout file (prevents inconsistent colors) */
-  --border: var(--line);
-  --card: var(--panel);
-  --r12: 12px;
-  --muter: rgba(255,255,255,.55);
-}
-
-/* Make background more "corporate" (reduce multi-color glow) */
-body{
-  background:
-    radial-gradient(900px 520px at 15% 0%, rgba(79,140,255,.16), transparent 60%),
-    radial-gradient(900px 520px at 85% 10%, rgba(79,140,255,.08), transparent 65%),
-    var(--bg) !important;
-}
-
-/* Ensure tab active style works whether JS uses .isActive or .active */
-.tab.active{
-  border-color: rgba(47,107,255,.55);
-  color: var(--text);
-  background: rgba(47,107,255,.15);
-}
-
-/* Fix a typo causing placeholder color to break in some browsers */
-.gsearch input::placeholder{ color: var(--muter) !important; }
-
-/* Button + icon alignment (fixes “icons not showing/offset” in Dashboard + Leads) */
-.btn, button, a.btn{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  gap:8px;
-  line-height:1.1;
-}
-.btn svg, button svg, a.btn svg{
-  width:18px;
-  height:18px;
-  flex:0 0 auto;
-  display:block;
-  stroke: currentColor;
-  fill: none;
-}
-.btn i, button i, a.btn i{
-  font-size:18px;
-  line-height:1;
-}
-
-/* Ensure small icon buttons still have good tap-target */
-.btn--sm{
-  min-height:34px;
-}
-
-/* Keep “ghost” buttons visible against panels */
-.btn--ghost{
-  background: rgba(255,255,255,.03);
-}
-.btn--ghost:hover{
-  background: rgba(255,255,255,.06);
-}
-
-/* Dashboard / Recent Leads action buttons: keep consistent sizing */
-.dashrecent__actions .btn{
-  padding:8px 10px;
-}
-
-
-
-/* =========================================================
-   BOI CRM — Enterprise Theme v2 (Token-based layering)
-   Notes:
-   - Inspired by enterprise design systems that use tokens + layering models
-     (Material 3 / Carbon / Fluent / Atlassian).
-   - This block overrides prior theme rules safely.
-   ========================================================= */
-
-:root{
-  /* Neutral ramp + surface layering (dark) */
-  --surface-0:#0B1220;   /* app canvas */
-  --surface-1:#0F172A;   /* main sections */
-  --surface-2:#111B2E;   /* cards */
-  --surface-3:#16233A;   /* raised / hover */
-  --stroke-1:rgba(255,255,255,.10);
-  --stroke-2:rgba(255,255,255,.14);
-
-  /* Text */
-  --fg-1:#F9FAFB;        /* primary text */
-  --fg-2:rgba(249,250,251,.84); /* body */
-  --fg-3:rgba(249,250,251,.62); /* muted */
-
-  /* Brand + focus */
-  --brand-1:#2563EB;     /* primary */
-  --brand-2:#3B82F6;     /* hover */
-  --focus-ring:rgba(59,130,246,.35);
-
-  /* Status */
-  --ok:#22C55E;
-  --warn:#F59E0B;
-  --bad:#EF4444;
-
-  /* Shape / motion */
-  --radius-1:12px;
-  --radius-2:16px;
-  --shadow-1: 0 8px 24px rgba(0,0,0,.32);
-  --shadow-2: 0 12px 34px rgba(0,0,0,.40);
-}
-
-/* Canvas */
-html, body{
-  background: var(--surface-0) !important;
-  color: var(--fg-2) !important;
-}
-
-/* Header */
-header, .topbar{
-  background: rgba(15,23,42,.80) !important; /* surface-1 with blur */
-  border-bottom: 1px solid var(--stroke-1) !important;
-}
-
-/* Cards / panels */
-.card, .panel, .box, .sheet, .lead-card, .kpi-card, .attachment-card{
-  background: var(--surface-2) !important;
-  border: 1px solid var(--stroke-1) !important;
-  border-radius: var(--radius-2) !important;
-  box-shadow: var(--shadow-1);
-}
-.card:hover, .lead-card:hover, .kpi-card:hover{
-  border-color: var(--stroke-2) !important;
-  background: var(--surface-3) !important;
-}
-
-/* Typography */
-h1,h2,h3,h4,.title,.section-title,.card__title{
-  color: var(--fg-1) !important;
-}
-small,.muted,.subtle,.label,.hint{
-  color: var(--fg-3) !important;
-}
-
-/* Inputs */
-input, select, textarea{
-  background: rgba(11,18,32,.85) !important; /* surface-0-ish */
-  color: var(--fg-2) !important;
-  border: 1px solid var(--stroke-1) !important;
-  border-radius: var(--radius-1) !important;
-}
-input:focus, select:focus, textarea:focus{
-  border-color: rgba(59,130,246,.75) !important;
-  box-shadow: 0 0 0 4px var(--focus-ring) !important;
-}
-input::placeholder, textarea::placeholder{
-  color: rgba(249,250,251,.45) !important;
-}
-
-/* Buttons */
-button, .btn{
-  background: rgba(255,255,255,.06) !important;
-  border: 1px solid var(--stroke-1) !important;
-  color: var(--fg-2) !important;
-  border-radius: var(--radius-1) !important;
-}
-button:hover, .btn:hover{
-  background: rgba(255,255,255,.09) !important;
-  border-color: var(--stroke-2) !important;
-}
-.btn-primary, .primary, .btn--primary{
-  background: var(--brand-1) !important;
-  border-color: rgba(255,255,255,.14) !important;
+.iconbtn--primary{
+  background: var(--primary) !important;
   color: #fff !important;
+  border-color: rgba(255,255,255,.14) !important;
 }
-.btn-primary:hover, .primary:hover, .btn--primary:hover{
-  background: var(--brand-2) !important;
+.iconbtn--primary:hover{
+  background: var(--primary-hover) !important;
 }
-.btn:focus, button:focus{
-  outline: none !important;
-  box-shadow: 0 0 0 4px var(--focus-ring) !important;
-}
-
-/* Chips / tags */
-.chip, .tag, .pill, .badge{
-  background: rgba(255,255,255,.06) !important;
-  border: 1px solid var(--stroke-1) !important;
-  color: var(--fg-2) !important;
-}
-
-/* Links */
-a, .link{
+.iconlink--primary{
   color: rgba(147,197,253,.95) !important;
-  text-decoration-color: rgba(147,197,253,.35) !important;
 }
-a:hover, .link:hover{ color: #BFDBFE !important; }
+.iconlink--primary:hover{
+  color: #BFDBFE !important;
+}
 
-/* Icons: enforce visibility + alignment */
-i, svg, .icon{
-  color: rgba(249,250,251,.70) !important;
-  fill: currentColor !important;
-  stroke: currentColor !important;
+
+/* ===========================
+   Activity Timeline (Enterprise)
+   =========================== */
+.timelineBox{
+  margin-top: 14px;
+  border: 1px solid var(--border, rgba(255,255,255,.10));
+  border-radius: 16px;
+  background: rgba(255,255,255,.03);
+  overflow: hidden;
 }
-.btn, button{
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+.timelineHdr{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 12px;
+  border-bottom: 1px solid var(--border, rgba(255,255,255,.10));
+}
+.timelineTitle{
+  font-weight: 700;
+  color: var(--text-strong, #F9FAFB);
+}
+.timelineTools{
+  display:flex;
+  align-items:center;
   gap: 8px;
+  flex: 1;
+  justify-content: flex-end;
 }
-.btn svg, button svg, .card svg{ width: 18px !important; height: 18px !important; flex: 0 0 auto; }
-.btn i, button i, .card i{ font-size: 18px !important; line-height: 1 !important; flex: 0 0 auto; }
-svg{ overflow: visible !important; }
+#editAddNote{
+  min-width: 220px;
+  max-width: 420px;
+}
+@media (max-width: 520px){
+  .timelineHdr{ flex-direction: column; align-items: stretch; }
+  .timelineTools{ justify-content: stretch; }
+  #editAddNote{ width: 100%; min-width: 0; max-width: none; }
+}
+.timelineList{
+  padding: 10px 12px 12px;
+  display:flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 280px;
+  overflow:auto;
+}
+.timelineItem{
+  display:flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(17,24,39,.55);
+}
+.timelineDot{
+  width: 10px;
+  height: 10px;
+  margin-top: 4px;
+  border-radius: 999px;
+  background: var(--primary, #2563EB);
+  flex: 0 0 auto;
+}
+.timelineMain{ flex:1; }
+.timelineMeta{
+  font-size: 12px;
+  color: var(--text-muted, #9CA3AF);
+  margin-bottom: 4px;
+}
+.timelineMsg{
+  color: var(--text-body, #E5E7EB);
+  white-space: pre-wrap;
+}
+.follow__quick{
+  display:flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items:center;
+  margin: 10px 0 6px;
+}
