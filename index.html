@@ -116,6 +116,18 @@
 </div>
 
 </div>
+
+<div class="row2">
+  <div class="field">
+    <label>Supplier Stage</label>
+    <select id="supStage"></select>
+  </div>
+  <div class="field">
+    <label>Next Step</label>
+    <select id="supNextStep"></select>
+  </div>
+</div>
+
 <div class="notesDock" id="supNotesDock">
 <div class="notesDock__hdr">
 <label for="supNotes">Notes</label>
@@ -291,6 +303,18 @@ Item 3" rows="4"></textarea>
 </select>
 </div>
 </div>
+
+<div class="row2">
+  <div class="field">
+    <label>Buyer Stage</label>
+    <select id="buyStage"></select>
+  </div>
+  <div class="field">
+    <label>Next Step</label>
+    <select id="buyNextStep"></select>
+  </div>
+</div>
+
 <div class="notesDock" id="buyNotesDock">
 <div class="notesDock__hdr">
 <label for="buyNotes">Notes</label>
@@ -482,7 +506,8 @@ Item 3" rows="4"></textarea>
       <div class="card__title">Pipeline</div>
       <div class="card__sub">Kanban view by follow-up urgency (fast triage).</div>
     </div>
-    <div class="kanban" id="pipelineBoard"></div>
+    <div class="seg" style="margin:10px 0;"><button class="seg__btn is-active" id="pipeBuyer" type="button">Buyer Pipeline</button><button class="seg__btn" id="pipeSupplier" type="button">Supplier Pipeline</button></div>
+<div class="kanban" id="pipelineBoard"></div>
   </div>
 </section>
 <!-- INSIGHTS -->
@@ -665,6 +690,14 @@ Item 3" rows="4"></textarea>
 <label>Type</label>
 <input disabled="" id="editType" type="text"/>
 </div>
+</div>
+<div class="row2">
+  <div class="field"><label>Stage</label><select id="editStage"></select></div>
+  <div class="field"><label>Next Step</label><select id="editNextStep"></select></div>
+</div>
+<div class="row2">
+<div class="field">
+</div>
 <div class="field">
 <label>Entered By</label>
 <input disabled="" id="editEnteredBy" type="text"/>
@@ -737,6 +770,18 @@ Item 3" rows="4"></textarea>
 <div class="field">
 <label>Notes</label>
 <textarea id="editNotes" rows="3"></textarea>
+
+<div class="field">
+  <label>Activity</label>
+  <div class="activityBox">
+    <div class="activityList" id="editActivityList"></div>
+    <div class="row2" style="margin-top:8px;">
+      <input id="editActivityNote" type="text" placeholder="Add a note (logs to timeline)"/>
+      <button class="btn btn--ghost" id="btnAddActivityNote" type="button">Add</button>
+    </div>
+  </div>
+</div>
+
 </div>
 <div class="follow">
 <div class="follow__hdr">Add a new follow-up (optional • IST)</div>
@@ -771,6 +816,6 @@ Item 3" rows="4"></textarea>
 <!-- IMPORTANT: load QR lib only once (local vendor copy) -->
 <script src="./vendor/html5-qrcode.min.js"></script>
 <!-- main app -->
-<script src="app.js?v=20251230_enterprise_IA_tested"></script>
+<script src="app.js?v=20251230_stage_pipeline"></script>
 </body>
 </html>
