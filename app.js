@@ -50,6 +50,7 @@ let sessionCount = 0;
 let __leadsAll = [];
 let __leadsAllFetchedAt = 0;
 let __followupsAll = [];
+let __usersProfiles = {};
 let __followupsFetchedAt = 0;
 
 let __leadsCapturedFilter = "all"; // all|today|week|month
@@ -1174,7 +1175,9 @@ async function saveSupplier(closeAfter){
       exFactory:$("supExFactory").value.trim(),
       fob:$("supFOB").value.trim(),
       qrData:$("supQR").value.trim(),
-      notes:$("supNotes").value.trim(),
+      stage: safeValue_($("supStage")),
+      nextStep: safeValue_($("supNextStep")),
+      notes: $("supNotes").value.trim(),
       catalogFiles:uploads.catalogFiles,
       cardFile:uploads.cardFile,
       pendingFollowUp: queuedSupplierFU,
@@ -1259,7 +1262,9 @@ async function saveBuyer(closeAfter){
       productType:buyProductType.value,
       productsOrNeeds:$("buyNeeds").value.trim(),
       qrData:$("buyQR").value.trim(),
-      notes:$("buyNotes").value.trim(),
+      stage: safeValue_($("buyStage")),
+      nextStep: safeValue_($("buyNextStep")),
+      notes: $("buyNotes").value.trim(),
       catalogFiles:uploads.catalogFiles,
       cardFile:uploads.cardFile,
       pendingFollowUp: queuedBuyerFU,
@@ -1581,6 +1586,7 @@ function renderLeadsPage_(){
             ${wa1 ? `<a class="iconlink" href="${esc(wa1)}" target="_blank" rel="noopener" title="WhatsApp">${svgWhatsApp()}<span>WhatsApp</span></a>` : ``}
             ${r.phone2 ? `<a class="iconlink" href="tel:${esc(safeTel(r.phone2))}" title="Call (2)">${svgPhone()}<span>${esc(r.phone2)}</span></a>` : ``}
             ${wa2 ? `<a class="iconlink" href="${esc(wa2)}" target="_blank" rel="noopener" title="WhatsApp (2)">${svgWhatsApp()}<span>WA (2)</span></a>` : ``}
+            ${wa1 ? `<button class="iconbtn" type="button" data-intro="1" data-leadid="${esc(r.leadId)}" title="WhatsApp Intro">${svgWhatsApp()}<span>Intro</span></button>` : ``}
           </div>
         </td>
         <td>${esc(r.country||"")}</td>
@@ -1996,6 +2002,7 @@ async function refreshLeads(){
             ${wa1 ? `<a class="iconlink" href="${esc(wa1)}" target="_blank" rel="noopener" title="WhatsApp">${svgWhatsApp()}<span>WhatsApp</span></a>` : ``}
             ${r.phone2 ? `<a class="iconlink" href="tel:${esc(safeTel(r.phone2))}" title="Call (2)">${svgPhone()}<span>${esc(r.phone2)}</span></a>` : ``}
             ${wa2 ? `<a class="iconlink" href="${esc(wa2)}" target="_blank" rel="noopener" title="WhatsApp (2)">${svgWhatsApp()}<span>WA (2)</span></a>` : ``}
+            ${wa1 ? `<button class="iconbtn" type="button" data-intro="1" data-leadid="${esc(r.leadId)}" title="WhatsApp Intro">${svgWhatsApp()}<span>Intro</span></button>` : ``}
           </div>
         </td>
         <td>${esc(r.country||"")}</td>
@@ -2026,7 +2033,9 @@ let currentEditRow = null;
 function openEdit(leadId, row){
   currentEditRow = row || null;
   $("editLeadId").value = leadId || "";
+  loadEditActivities_(leadId);
   $("editType").value = row?.type || "";
+  initEditStageNextStep_(row);
   $("editEnteredBy").value = row?.enteredBy || "";
   $("editCompany").value = row?.company || "";
   $("editContact").value = row?.contact || "";
@@ -2105,6 +2114,10 @@ async function saveEdit(){
     productsOrNeeds: $("editProducts").value.trim(),
     exFactory: $("editExFactory").value.trim(),
     fob: $("editFOB").value.trim(),
+    stage: safeValue_($("editStage")),
+    nextStep: safeValue_($("editNextStep")),
+    stage: safeValue_($("editStage")),
+    nextStep: safeValue_($("editNextStep")),
     notes: $("editNotes").value.trim(),
     newFollowUp
   };
@@ -2797,6 +2810,55 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   setStatus("Ready");
   updateSummary();
 })
+
+  // Stage / Next Step dropdowns
+  initStageNextStepUI_();
+
+  // Pipeline toggle
+  const pb = $("pipeBuyer"); const ps = $("pipeSupplier");
+  if(pb && ps){
+    pb.addEventListener("click", ()=>{ pb.classList.add("is-active"); ps.classList.remove("is-active"); renderPipeline_(); });
+    ps.addEventListener("click", ()=>{ ps.classList.add("is-active"); pb.classList.remove("is-active"); renderPipeline_(); });
+  }
+
+  // Add activity note
+  const btnAdd = $("btnAddActivityNote");
+  if(btnAdd){
+    btnAdd.addEventListener("click", async ()=>{
+      const leadId = $("editLeadId").value;
+      const msg = ($("editActivityNote")?.value||"").trim();
+      if(!leadId || !msg) return;
+      $("editActivityNote").value = "";
+      await addActivityNote_(leadId, msg);
+      await loadEditActivities_(leadId);
+    });
+  }
+
+  // WhatsApp Intro buttons (delegated)
+  document.addEventListener("click", async (ev)=>{
+    const btn = ev.target.closest('[data-intro="1"]');
+    if(!btn) return;
+    ev.preventDefault();
+    const leadId = btn.getAttribute("data-leadid");
+    if(!leadId) return;
+    await openWhatsAppIntro_(leadId);
+  });
+
+  // Pipeline move (delegated)
+  document.addEventListener("click", async (ev)=>{
+    const mv = ev.target.closest("[data-movelead]");
+    if(!mv) return;
+    ev.preventDefault();
+    const leadId = mv.getAttribute("data-movelead");
+    const stage = mv.getAttribute("data-stage");
+    if(leadId && stage){
+      await setLeadStage_(leadId, stage, "Moved in Pipeline");
+      await renderPipeline_();
+      await refreshDashboard_();
+      await refreshLeads_();
+    }
+  });
+
 function fetchUsers_(){
   const url = getScriptUrl_();
   return fetch(url + "?action=users")
@@ -2967,3 +3029,355 @@ function openVcardOverlay_(){
 }
 
 ;
+
+
+
+
+function getSelectedUserProfile_(){
+  const sel = document.getElementById("userSelect");
+  const uid = (sel && sel.value) ? String(sel.value) : String(localStorage.getItem(LS_USER)||"");
+  if(__usersProfiles && __usersProfiles[uid]) return __usersProfiles[uid];
+  const opt = sel ? (sel.selectedOptions ? sel.selectedOptions[0] : null) : null;
+  if(opt){
+    return {
+      id: uid,
+      name: String(opt.dataset.name||uid||"Unknown"),
+      phone1: String(opt.dataset.phone1||""),
+      phone2: String(opt.dataset.phone2||""),
+      email: String(opt.dataset.email||"")
+    };
+  }
+  return { id: uid, name: uid||"Unknown", phone1:"", phone2:"", email:"" };
+}
+
+
+
+/* ---------- Buyer/Supplier Stage + Next Step ---------- */
+const BUYER_STAGES = [
+  "New/Open",
+  "Attempting Contact/Working",
+  "Connected/Engaged",
+  "Meeting Set/Demo Scheduled",
+  "Qualified (SQL)",
+  "Long-Term Nurture/Inactive",
+  "Customer/Closed Won",
+  "Closed Lost",
+  "Unqualified/Disqualified"
+];
+
+const SUPPLIER_STAGES = [
+  "New Supplier Request",
+  "Vetting/Due Diligence",
+  "Approved Supplier",
+  "Awaiting Quote/Proposal",
+  "Inactive Vendor"
+];
+
+const NEXT_STEPS = [
+  "",
+  "Call",
+  "WhatsApp",
+  "Email",
+  "Send Catalog",
+  "Send Pricing",
+  "Request Docs",
+  "Request Quote",
+  "Schedule Meeting",
+  "Follow-up",
+  "Waiting"
+];
+
+function stagesForType_(type){
+  const t = String(type||"").toLowerCase();
+  return t === "supplier" ? SUPPLIER_STAGES : BUYER_STAGES;
+}
+function defaultStageForType_(type){
+  return String(type||"").toLowerCase()==="supplier" ? SUPPLIER_STAGES[0] : BUYER_STAGES[0];
+}
+
+function fillSelect_(sel, items){
+  if(!sel) return;
+  const v = sel.value;
+  sel.innerHTML = "";
+  items.forEach(it=>{
+    const o=document.createElement("option");
+    o.value=it;
+    o.textContent=it || "—";
+    sel.appendChild(o);
+  });
+  if(items.includes(v)) sel.value=v;
+}
+
+function initStageNextStepUI_(){
+  fillSelect_($("supStage"), SUPPLIER_STAGES);
+  fillSelect_($("buyStage"), BUYER_STAGES);
+  fillSelect_($("supNextStep"), NEXT_STEPS);
+  fillSelect_($("buyNextStep"), NEXT_STEPS);
+  // defaults (only if empty)
+  if($("supStage") && !$("supStage").value) $("supStage").value = SUPPLIER_STAGES[0];
+  if($("buyStage") && !$("buyStage").value) $("buyStage").value = BUYER_STAGES[0];
+}
+
+function initEditStageNextStep_(row){
+  const type = row?.type || $("editType")?.value || "buyer";
+  fillSelect_($("editStage"), stagesForType_(type));
+  fillSelect_($("editNextStep"), NEXT_STEPS);
+  const st = row?.stage || defaultStageForType_(type);
+  if($("editStage")) $("editStage").value = st;
+  if($("editNextStep")) $("editNextStep").value = row?.nextStep || "";
+}
+
+/* ---------- Activities (Timeline) ---------- */
+async function fetchActivities_(leadId){
+  const url = getScriptUrl_();
+  const u = `${url}?action=listActivities&leadId=${encodeURIComponent(leadId)}`;
+  const data = await fetchJSON_(u);
+  if(data?.result !== "ok") return [];
+  return Array.isArray(data.rows) ? data.rows : [];
+}
+
+function renderActivities_(rows){
+  const box = $("editActivityList");
+  if(!box) return;
+  box.innerHTML = "";
+  if(!rows.length){
+    box.innerHTML = `<div class="hint">No activity yet.</div>`;
+    return;
+  }
+  rows.forEach(r=>{
+    const div=document.createElement("div");
+    div.className="activityItem";
+    const meta = document.createElement("div");
+    meta.className="activityMeta";
+    meta.textContent = String(r.createdAtIST || r.createdAt || "").trim() || "—";
+    const msg = document.createElement("div");
+    msg.className="activityMsg";
+    msg.textContent = String(r.message||r.value||"").trim();
+    div.appendChild(meta);
+    div.appendChild(msg);
+    box.appendChild(div);
+  });
+}
+
+async function loadEditActivities_(leadId){
+  if(!leadId) return;
+  try{
+    const rows = await fetchActivities_(leadId);
+    renderActivities_(rows);
+  }catch(e){
+    console.warn("activities load failed", e);
+  }
+}
+
+async function addActivityNote_(leadId, note){
+  const payload = {
+    action: "addActivityNote",
+    leadId,
+    note,
+    createdBy: (localStorage.getItem(LS_USER)||"Unknown").trim() || "Unknown"
+  };
+  try{
+    await postJSON_(getScriptUrl_(), payload);
+  }catch(e){
+    console.warn("addActivityNote failed", e);
+  }
+}
+
+async function logActivityClient_(leadId, listType, value){
+  const payload = {
+    action: "logActivity",
+    leadId,
+    listType,
+    value,
+    createdBy: (localStorage.getItem(LS_USER)||"Unknown").trim() || "Unknown"
+  };
+  try{
+    await postJSON_(getScriptUrl_(), payload);
+  }catch(e){
+    // best-effort
+  }
+}
+
+/* ---------- WhatsApp Intro ---------- */
+function buildWhatsAppIntroText_(lead, user){
+  const contactName = (lead?.contact || "").trim() || "there";
+  const senderName = (user?.name || user?.id || "").trim() || "Blue Orbit International";
+  const senderEmail = (user?.email || "").trim();
+  const p1 = (user?.phone1 || "").trim();
+  const p2 = (user?.phone2 || "").trim();
+
+  const lines = [];
+  lines.push(`Hello ${contactName},`);
+  lines.push("");
+  lines.push(`This is ${senderName} from Blue Orbit International LLP.`);
+  lines.push("We work with export-ready food & ingredient solutions.");
+  lines.push("");
+  lines.push("You can reach me directly at:");
+  if(p1) lines.push(`📞 ${p1}`);
+  if(p2) lines.push(`📞 ${p2}`);
+  if(senderEmail) lines.push(`✉️ ${senderEmail}`);
+  lines.push("");
+  lines.push("Looking forward to connecting.");
+  return lines.join("\n");
+}
+
+async function openWhatsAppIntro_(leadId){
+  const lead = (__leadsAll||[]).find(x=>String(x.leadId)===String(leadId));
+  if(!lead){ alert("Lead not found (try refreshing)."); return; }
+  const user = getSelectedUserProfile_();
+  const wa = safeWa(lead.phone || lead.phone2 || "");
+  if(!wa){ alert("No phone number available for WhatsApp."); return; }
+
+  // Auto stage advance rule (Buyer: New/Open -> Attempting; Supplier: New Supplier Request -> Vetting)
+  const type = String(lead.type||"buyer").toLowerCase();
+  const curStage = lead.stage || defaultStageForType_(type);
+  let newStage = curStage;
+  if(type==="buyer" && curStage===BUYER_STAGES[0]) newStage = BUYER_STAGES[1];
+  if(type==="supplier" && curStage===SUPPLIER_STAGES[0]) newStage = SUPPLIER_STAGES[1];
+
+  const text = buildWhatsAppIntroText_(lead, user);
+  const waUrl = wa + "?text=" + encodeURIComponent(text);
+  window.open(waUrl, "_blank");
+
+  // Best-effort: update lead + log activity
+  const introStamp = new Date().toISOString();
+  await setLeadFields_(leadId, { introSent: introStamp, stage: newStage, nextStep: "WhatsApp" });
+  await logActivityClient_(leadId, "whatsapp_intro", `Intro sent`);
+}
+
+/* ---------- Lead field patch ---------- */
+async function setLeadFields_(leadId, patch){
+  try{
+    const payload = Object.assign({ action:"updateLead", leadId }, patch || {});
+    const res = await postJSON_(getScriptUrl_(), payload);
+    if(res?.result !== "ok") console.warn("updateLead failed", res);
+    // Update local cache
+    const i = (__leadsAll||[]).findIndex(x=>String(x.leadId)===String(leadId));
+    if(i>=0){
+      __leadsAll[i] = Object.assign({}, __leadsAll[i], patch);
+    }
+  }catch(e){
+    console.warn("setLeadFields_ error", e);
+  }
+}
+async function setLeadStage_(leadId, stage, reason){
+  await setLeadFields_(leadId, { stage });
+  await logActivityClient_(leadId, "stage", `${reason || "Stage changed"}: ${stage}`);
+}
+
+/* ---------- Pipeline Kanban (Buyer/Supplier) ---------- */
+function currentPipelineType_(){
+  const pb = $("pipeBuyer");
+  const ps = $("pipeSupplier");
+  if(ps && ps.classList.contains("is-active")) return "supplier";
+  return "buyer";
+}
+
+function renderPipeline_(){
+  const board = $("pipelineBoard");
+  if(!board) return;
+  const type = currentPipelineType_();
+  const stages = stagesForType_(type);
+  const leads = (__leadsAll||[]).filter(l=>String(l.type||"buyer").toLowerCase()===type);
+
+  // group
+  const byStage = {};
+  stages.forEach(s=>byStage[s]=[]);
+  leads.forEach(l=>{
+    const st = l.stage || defaultStageForType_(type);
+    if(!byStage[st]) byStage[st]=[];
+    byStage[st].push(l);
+  });
+
+  // sort within columns: follow-up soonest then newest timestamp
+  stages.forEach(s=>{
+    byStage[s].sort((a,b)=>{
+      const ad = __leadNextFollow.get(a.leadId)?._dt?.getTime() || 0;
+      const bd = __leadNextFollow.get(b.leadId)?._dt?.getTime() || 0;
+      if(ad && bd && ad!==bd) return ad - bd;
+      const at = Date.parse(a.timestamp||"") || 0;
+      const bt = Date.parse(b.timestamp||"") || 0;
+      return bt - at;
+    });
+  });
+
+  // render columns
+  board.innerHTML = "";
+  const wrap = document.createElement("div");
+  wrap.className = "kanban";
+  stages.forEach(stage=>{
+    const col = document.createElement("div");
+    col.className = "kanbanCol";
+    const hdr = document.createElement("div");
+    hdr.className = "kanbanHdr";
+    hdr.textContent = `${stage} • ${byStage[stage]?.length||0}`;
+    col.appendChild(hdr);
+
+    const list = document.createElement("div");
+    list.className = "kanbanList";
+    (byStage[stage]||[]).forEach(l=>{
+      const card=document.createElement("div");
+      card.className="kanbanCard";
+      const title = document.createElement("div");
+      title.className="kanbanTitle";
+      title.textContent = (l.company||l.contact||"—").trim();
+      const sub = document.createElement("div");
+      sub.className="kanbanSub";
+      sub.textContent = [l.contact, l.country].filter(Boolean).join(" • ");
+
+      const fu = __leadNextFollow.get(l.leadId);
+      const fuText = fu ? `FU: ${fu.label||""}` : "FU: —";
+      const meta = document.createElement("div");
+      meta.className="kanbanMeta";
+      meta.textContent = fuText;
+
+      const actions = document.createElement("div");
+      actions.className="kanbanActions";
+      const editBtn = document.createElement("button");
+      editBtn.className="btn btn--ghost";
+      editBtn.type="button";
+      editBtn.textContent="Edit";
+      editBtn.addEventListener("click", ()=>openEdit(l.leadId, l));
+      const introBtn = document.createElement("button");
+      introBtn.className="btn btn--ghost";
+      introBtn.type="button";
+      introBtn.textContent="Intro";
+      introBtn.setAttribute("data-intro","1");
+      introBtn.setAttribute("data-leadid", l.leadId);
+
+      const moveSel = document.createElement("div");
+      moveSel.className="moveMenu";
+      const moveLabel = document.createElement("div");
+      moveLabel.className="hint";
+      moveLabel.textContent="Move";
+      const moveButtons = document.createElement("div");
+      moveButtons.className="moveBtns";
+      stages.forEach(st=>{
+        if(st===stage) return;
+        const b=document.createElement("button");
+        b.className="btn btn--ghost";
+        b.type="button";
+        b.textContent=st;
+        b.setAttribute("data-movelead", l.leadId);
+        b.setAttribute("data-stage", st);
+        moveButtons.appendChild(b);
+      });
+      moveSel.appendChild(moveLabel);
+      moveSel.appendChild(moveButtons);
+
+      actions.appendChild(editBtn);
+      actions.appendChild(introBtn);
+
+      card.appendChild(title);
+      card.appendChild(sub);
+      card.appendChild(meta);
+      card.appendChild(actions);
+      card.appendChild(moveSel);
+      list.appendChild(card);
+    });
+
+    col.appendChild(list);
+    wrap.appendChild(col);
+  });
+  board.appendChild(wrap);
+}
