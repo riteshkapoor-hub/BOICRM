@@ -132,6 +132,92 @@ function esc(s){
     .replaceAll('"',"&quot;").replaceAll("'","&#039;");
 }
 
+// ---------- Notes: Voice-to-text (Web Speech API) ----------
+function initVoiceNotes(textareaId, btnId, statusId){
+  const ta = $(textareaId);
+  const btn = $(btnId);
+  const status = $(statusId);
+  if(!ta || !btn) return;
+
+  const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!Speech){
+    btn.style.display = "none";
+    if(status) status.textContent = "";
+    return;
+  }
+
+  let rec = null;
+  let running = false;
+
+  btn.addEventListener("click", ()=>{
+    if(running){
+      try{ rec && rec.stop(); }catch{}
+      return;
+    }
+    rec = new Speech();
+    rec.lang = (navigator.language || "en-US");
+    rec.interimResults = true;
+    rec.continuous = false;
+
+    let finalText = "";
+    running = true;
+    btn.classList.add("isLoading");
+    btn.textContent = "⏺️ Listening…";
+    if(status) status.textContent = "Speak now";
+
+    rec.onresult = (ev)=>{
+      let interim = "";
+      for(let i=ev.resultIndex; i<ev.results.length; i++){
+        const t = ev.results[i][0].transcript;
+        if(ev.results[i].isFinal) finalText += t + " ";
+        else interim += t;
+      }
+      if(status) status.textContent = interim ? interim : "…";
+    };
+    rec.onerror = (e)=>{
+      if(status) status.textContent = "Mic error";
+      console.error(e);
+    };
+    rec.onend = ()=>{
+      running = false;
+      btn.classList.remove("isLoading");
+      btn.textContent = "🎙️ Dictate";
+      if(status) status.textContent = "";
+      if(finalText.trim()){
+        const sep = ta.value.trim() ? "\n" : "";
+        ta.value = ta.value + sep + finalText.trim();
+        ta.dispatchEvent(new Event("input"));
+      }
+    };
+
+    try{ rec.start(); }catch(e){ console.error(e); }
+  });
+}
+
+// ---------- Drive preview helper ----------
+function drivePreviewUrl(fileId){
+  if(!fileId) return "";
+  return `https://drive.google.com/uc?export=view&id=${encodeURIComponent(fileId)}`;
+}
+
+function isImageMime(m){
+  return /^image\//i.test(m||"");
+}
+
+let __dashAttachView = localStorage.getItem("dashAttachView") || "list";
+function setDashAttachView(mode){
+  __dashAttachView = mode;
+  localStorage.setItem("dashAttachView", mode);
+  const bList = $("dashAttachViewList");
+  const bGal  = $("dashAttachViewGallery");
+  const list = $("dashAttachList");
+  const gal = $("dashAttachGallery");
+  if(bList) bList.classList.toggle("isActive", mode==="list");
+  if(bGal)  bGal.classList.toggle("isActive", mode==="gallery");
+  if(list) list.style.display = (mode==="list") ? "" : "none";
+  if(gal)  gal.style.display  = (mode==="gallery") ? "" : "none";
+}
+
 function istTimeLabel(){
   try{
     return new Intl.DateTimeFormat("en-US", {
@@ -748,8 +834,13 @@ function clearBuyer(){
 async function saveSupplier(closeAfter){
   if(supplierSaveInFlight) return;
   const company = $("supCompany").value.trim();
-  const products = $("supProducts").value.trim();
-  if(!company || !products){ alert("Fill Company and What do they sell."); return; }
+  const contact = $("supContact").value.trim();
+  const country = supCountry.value;
+
+  if(!company || !contact || !country){
+    alert("Please fill Company, Contact, and Country.");
+    return;
+  }
 
   supplierSaveInFlight = true;
   setSaving("supplier", true);
@@ -762,9 +853,14 @@ async function saveSupplier(closeAfter){
     await maybeSaveListItem("productType", supProductType);
 
     // Normalize phones now
-    const phone = normalizePhone(supCountry.value, $("supPhone").value);
-    const phone2 = normalizePhone(supCountry.value, $("supPhone2").value);
+    const phone = normalizePhone(country, $("supPhone").value);
+    const phone2 = normalizePhone(country, $("supPhone2").value);
     const email = $("supEmail").value.trim();
+
+    if(!email && !digitsOnly(phone)){
+      alert("Please provide at least Phone or Email.");
+      return;
+    }
 
     // Duplicate check (block save unless user confirms)
     const ok = await checkDuplicatesBeforeSave({ email, phone, phone2 });
@@ -779,18 +875,18 @@ async function saveSupplier(closeAfter){
       submissionId: makeSubmissionId("sup"),
       enteredBy,
       company,
-      contact:$("supContact").value.trim(),
+      contact,
       title:$("supTitle").value.trim(),
       email,
       phone,
       phone2,
       website:$("supWebsite").value.trim(),
       social:$("supSocial").value.trim(),
-      country:supCountry.value,
+      country,
       markets:supMarkets.value,
       privateLabel:$("supPL").value.trim(),
       productType:supProductType.value,
-      productsOrNeeds:products,
+      productsOrNeeds:$("supProducts").value.trim(),
       exFactory:$("supExFactory").value.trim(),
       fob:$("supFOB").value.trim(),
       qrData:$("supQR").value.trim(),
@@ -827,8 +923,13 @@ async function saveSupplier(closeAfter){
 async function saveBuyer(closeAfter){
   if(buyerSaveInFlight) return;
   const contact = $("buyContact").value.trim();
-  const needs = $("buyNeeds").value.trim();
-  if(!contact || !needs){ alert("Fill Contact and What do they want to buy."); return; }
+  const company = $("buyCompany").value.trim();
+  const country = buyCountry.value;
+
+  if(!company || !contact || !country){
+    alert("Please fill Company, Contact, and Country.");
+    return;
+  }
 
   buyerSaveInFlight = true;
   setSaving("buyer", true);
@@ -840,9 +941,14 @@ async function saveBuyer(closeAfter){
     await maybeSaveListItem("market", buyMarkets);
     await maybeSaveListItem("productType", buyProductType);
 
-    const phone = normalizePhone(buyCountry.value, $("buyPhone").value);
-    const phone2 = normalizePhone(buyCountry.value, $("buyPhone2").value);
+    const phone = normalizePhone(country, $("buyPhone").value);
+    const phone2 = normalizePhone(country, $("buyPhone2").value);
     const email = $("buyEmail").value.trim();
+
+    if(!email && !digitsOnly(phone)){
+      alert("Please provide at least Phone or Email.");
+      return;
+    }
 
     const ok = await checkDuplicatesBeforeSave({ email, phone, phone2 });
     if(!ok) return;
@@ -855,7 +961,7 @@ async function saveBuyer(closeAfter){
       type:"buyer",
       submissionId: makeSubmissionId("buy"),
       enteredBy,
-      company:$("buyCompany").value.trim(),
+      company,
       contact,
       title:$("buyTitle").value.trim(),
       email,
@@ -863,11 +969,11 @@ async function saveBuyer(closeAfter){
       phone2,
       website:$("buyWebsite").value.trim(),
       social:$("buySocial").value.trim(),
-      country:buyCountry.value,
+      country,
       markets:buyMarkets.value,
       privateLabel:$("buyPL").value.trim(),
       productType:buyProductType.value,
-      productsOrNeeds:needs,
+      productsOrNeeds:$("buyNeeds").value.trim(),
       qrData:$("buyQR").value.trim(),
       notes:$("buyNotes").value.trim(),
       catalogFiles:uploads.catalogFiles,
@@ -1045,10 +1151,84 @@ async function refreshDashboard(){
       `;
       tbody.appendChild(tr);
     });
+
+    // Drive shortcuts + today's attachments
+    try{ await refreshDashboardInfo(); }catch{}
   } catch(e){
     console.error(e);
     setStatus("Dashboard load failed.");
   }
+}
+
+async function refreshDashboardInfo(){
+  setDashAttachView(__dashAttachView);
+
+  const execUrl = getExecUrl();
+  if(!execUrl) return;
+
+  const info = await getJson({ action:"dashboardInfo", limit:"60" });
+
+  const supA = $("dashSupplierRoot");
+  const buyA = $("dashBuyerRoot");
+  if(supA && info.supplierRootUrl) supA.href = info.supplierRootUrl;
+  if(buyA && info.buyerRootUrl) buyA.href = info.buyerRootUrl;
+
+  const hint = $("dashAttachHint");
+  const list = $("dashAttachList");
+  if(!list) return;
+
+  const rows = info.attachmentsToday || [];
+  if(hint) hint.textContent = rows.length ? `${rows.length} file(s) uploaded today (IST)` : "No uploads logged today (IST).";
+
+  const gal = $("dashAttachGallery");
+  if(gal) gal.innerHTML = "";
+
+  list.innerHTML = rows.map(a=>{
+    const when = esc(a.createdAtIST||"");
+    const who = esc(a.createdBy||"");
+    const lead = esc(a.leadId||"");
+    const type = esc(a.type||"");
+    const name = esc(a.fileName||"File");
+    const url = esc(a.fileUrl||"");
+    const link = url ? `<a target="_blank" rel="noopener" href="${url}">${name}</a>` : name;
+    return `
+      <div class="dashattach__row">
+        <div class="dashattach__main">${link}
+          <div class="dashattach__meta">
+            <span class="pill pill--sm">${type||""}</span>
+            ${lead ? `<span class="muted">Lead:</span> <span>${lead}</span>` : ``}
+            ${who ? `<span class="muted">By:</span> <span>${who}</span>` : ``}
+          </div>
+        </div>
+        <div class="dashattach__time">${when}</div>
+      </div>
+    `;
+  }).join("") || `<div class="hint">Nothing yet today.</div>`;
+  // Gallery mode (images only)
+  if(gal){
+    const imgs = rows.filter(a=>isImageMime(a.mimeType) && a.fileId);
+    gal.innerHTML = imgs.map(a=>{
+      const url = esc(a.fileUrl||"");
+      const name = esc(a.fileName||"Image");
+      const when = esc(a.createdAtIST||"");
+      const who = esc(a.createdBy||"");
+      const imgSrc = drivePreviewUrl(a.fileId);
+      const link = url ? url : "#";
+      return `
+        <a class="dashthumb" href="${link}" target="_blank" rel="noopener">
+          <img class="dashthumb__img" src="${imgSrc}" alt="${name}" loading="lazy" />
+          <div class="dashthumb__meta">
+            <div class="dashthumb__name">${name}</div>
+            <div class="dashthumb__sub">
+              <span>${who}</span>
+              <span>${when}</span>
+            </div>
+          </div>
+        </a>
+      `;
+    }).join("") || `<div class="hint">No photos uploaded today (IST).</div>`;
+  }
+
 }
 
 async function refreshLeads(){
@@ -1776,8 +1956,14 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   $("saveBuyerClose").addEventListener("click", ()=>saveBuyer(true));
   $("clearBuyer").addEventListener("click", clearBuyer);
 
+  // Voice-to-text for Notes
+  initVoiceNotes("supNotes","supNotesMic","supNotesMicStatus");
+  initVoiceNotes("buyNotes","buyNotesMic","buyNotesMicStatus");
+
+
   // refresh buttons
   $("btnDashRefresh").addEventListener("click", refreshDashboard);
+  $("btnDashAttachments").addEventListener("click", refreshDashboardInfo);
   $("btnDashClear").addEventListener("click", ()=>{
     dashCountry.setValue("");
     dashMarket.setValue("");
