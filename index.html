@@ -112,6 +112,8 @@
 <option>Both</option>
 </select>
 </div>
+
+</div>
 <div class="notesDock" id="supNotesDock">
 <div class="notesDock__hdr">
 <label for="supNotes">Notes</label>
@@ -122,7 +124,7 @@
 </div>
 <textarea id="supNotes" placeholder="Quick notes…" rows="3"></textarea>
 </div>
-</div>
+
 <details class="accordion">
 <summary class="accordion__summary">Optional details (tap to expand)</summary>
 <div class="accordion__body">
@@ -206,13 +208,15 @@ Item 3" rows="4"></textarea>
 <form class="form" id="buyerForm" style="display:none;">
 <div class="row2">
 <div class="field">
-<label>Contact person <span class="req">*</span></label>
-<input autocomplete="name" id="buyContact" placeholder="Name" type="text"/>
-</div>
-<div class="field">
 <label>Company <span class="req">*</span></label>
 <input autocomplete="organization" id="buyCompany" placeholder="Company" type="text"/>
 </div>
+
+<div class="field">
+<label>Contact person <span class="req">*</span></label>
+<input autocomplete="name" id="buyContact" placeholder="Name" type="text"/>
+</div>
+
 </div>
 <div class="row2">
 <div class="field">
@@ -243,16 +247,7 @@ Item 3" rows="4"></textarea>
 <label>Phone 2 (optional)</label>
 <input autocomplete="tel" id="buyPhone2" placeholder="+91 …" type="tel"/>
 </div>
-<div class="notesDock" id="buyNotesDock">
-<div class="notesDock__hdr">
-<label for="buyNotes">Notes</label>
-<div class="notesDock__actions">
-<button class="btn btn--ghost btn--sm" id="buyNotesMic" title="Voice to text" type="button">🎙️ Dictate</button>
-<span class="hint" id="buyNotesMicStatus"></span>
-</div>
-</div>
-<textarea id="buyNotes" placeholder="Quick notes…" rows="3"></textarea>
-</div>
+
 </div>
 <details class="accordion">
 <summary class="accordion__summary">Optional details (tap to expand)</summary>
@@ -294,6 +289,17 @@ Item 3" rows="4"></textarea>
 </select>
 </div>
 </div>
+<div class="notesDock" id="buyNotesDock">
+<div class="notesDock__hdr">
+<label for="buyNotes">Notes</label>
+<div class="notesDock__actions">
+<button class="btn btn--ghost btn--sm" id="buyNotesMic" title="Voice to text" type="button">🎙️ Dictate</button>
+<span class="hint" id="buyNotesMicStatus"></span>
+</div>
+</div>
+<textarea id="buyNotes" placeholder="Quick notes…" rows="3"></textarea>
+</div>
+
 <div class="row2">
 <div class="field">
 <label>Attach docs (optional • multiple)</label>
