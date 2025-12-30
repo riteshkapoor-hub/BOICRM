@@ -392,3 +392,177 @@ input:focus,select:focus,textarea:focus{border-color:rgba(47,107,255,.55)}
   gap:10px;
 }
 .leadcard a{ color: inherit; }
+
+/* ---------- Optional details accordion ---------- */
+.accordion{
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  margin: 10px 0 8px;
+  overflow: hidden;
+}
+.accordion > summary{
+  cursor: pointer;
+  list-style: none;
+  padding: 12px 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.accordion > summary::-webkit-details-marker{ display:none; }
+.accordion > summary::after{
+  content: "▾";
+  opacity: .65;
+  font-weight: 700;
+}
+.accordion[open] > summary::after{ content: "▴"; }
+.accordion__body{
+  padding: 0 12px 12px;
+}
+
+/* ---------- Dashboard drive shortcuts + attachments ---------- */
+.dashdrive{ margin: 10px 0 12px; }
+.dashdrive__hdr{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:10px;
+  margin: 4px 0 8px;
+}
+.dashdrive__title{ font-weight: 700; }
+.dashdrive__btns{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-bottom: 10px;
+}
+.dashattach{
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:10px;
+  background: var(--bg);
+}
+.dashattach__hdr{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom: 8px;
+}
+.dashattach__title{ font-weight:700; }
+.dashattach__list{ display:grid; gap:8px; }
+.dashattach__row{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  padding:10px;
+  border:1px solid var(--border);
+  border-radius:12px;
+  background: var(--card);
+}
+.dashattach__main{ min-width:0; }
+.dashattach__main a{ font-weight: 600; text-decoration: none; }
+.dashattach__meta{
+  margin-top:4px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  align-items: center;
+  font-size: 12px;
+}
+.dashattach__time{
+  font-size: 12px;
+  opacity: .75;
+  white-space: nowrap;
+}
+.pill--sm{ padding: 2px 8px; font-size: 12px; }
+
+
+/* --- Enterprise capture enhancements --- */
+.notesDock{
+  margin: 10px 0 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.02);
+}
+.notesDock__hdr{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:8px;
+}
+.notesDock__hdr label{
+  font-weight:600;
+}
+.notesDock__actions{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.btn--sm{
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1;
+}
+/* Tablets + phones (touch): keep Notes docked to reduce scrolling */
+@media (max-width: 1024px) and (pointer: coarse){
+  /* Sticky notes like Salesforce "Activity" dock */
+  .notesDock{
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    backdrop-filter: blur(10px);
+  }
+  /* Give space so sticky notes doesn't cover the button row at the end */
+  .btnrow{ margin-bottom: 118px; }
+  .notesDock textarea{ min-height: 74px; }
+}
+.notesDock textarea{
+  width:100%;
+  resize: vertical;
+}
+
+/* Dashboard attachments gallery */
+.dashattach__views{
+  display:flex;
+  gap:6px;
+  margin-left:auto;
+}
+.dashattach__gallery{
+  margin-top:10px;
+  display:grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap:10px;
+}
+.dashthumb{
+  border:1px solid var(--line);
+  border-radius:14px;
+  overflow:hidden;
+  background: rgba(255,255,255,0.02);
+}
+.dashthumb__img{
+  width:100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  display:block;
+}
+.dashthumb__meta{
+  padding:8px;
+  font-size:12px;
+}
+.dashthumb__name{
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow: ellipsis;
+  margin-bottom:4px;
+}
+.dashthumb__sub{
+  display:flex;
+  justify-content:space-between;
+  gap:8px;
+  color: var(--muted);
+  font-size:11px;
+}
