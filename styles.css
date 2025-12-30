@@ -104,6 +104,20 @@ input:focus,select:focus,textarea:focus{border-color:rgba(47,107,255,.55)}
   padding:10px 12px;
   cursor:pointer;
 }
+.btn:disabled{opacity:.6;cursor:not-allowed}
+.btn.isLoading{position:relative;padding-right:36px}
+.btn.isLoading::after{
+  content:"";
+  width:14px;height:14px;
+  border:2px solid rgba(255,255,255,.35);
+  border-top-color:rgba(255,255,255,.9);
+  border-radius:50%;
+  position:absolute;
+  right:12px;top:50%;
+  transform:translateY(-50%);
+  animation:spin .8s linear infinite;
+}
+@keyframes spin{to{transform:translateY(-50%) rotate(360deg)}}
 .btn--primary{background:linear-gradient(180deg, rgba(34,197,94,.85), rgba(16,152,68,.85));border-color:rgba(34,197,94,.55)}
 .btn--ghost{background:transparent}
 .btn--scan{background:rgba(47,107,255,.22);border-color:rgba(47,107,255,.55)}
