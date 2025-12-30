@@ -100,6 +100,12 @@ function getExecUrl(){
   return getScriptUrl();
 }
 
+
+function getScriptUrl_(){
+  // Backward-compat alias used by older code paths.
+  return getScriptUrl();
+}
+
 function requireExecUrl(){
   const u = getScriptUrl();
   if(!u) throw new Error("Missing Apps Script /exec URL. Open Settings and paste your Apps Script Web App URL.");
@@ -149,6 +155,11 @@ function esc(s){
   return String(s||"")
     .replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")
     .replaceAll('"',"&quot;").replaceAll("'","&#039;");
+}
+
+function safeValue_(el){
+  if(!el || typeof el.value === "undefined" || el.value === null) return "";
+  return String(el.value);
 }
 
 /* ---------- Global quick search ---------- */
@@ -1338,10 +1349,10 @@ async function refreshDashboard(){
     const data = await getJson({
       action:"listLeads",
       limit:"200",
-      q:$("dashQ").value.trim(),
-      country: dashCountry.value,
-      market: dashMarket.value,
-      productType: dashPT.value
+      q:safeValue_($("dashQ")).trim(),
+      country: safeValue_(dashCountry),
+      market: safeValue_(dashMarket),
+      productType: safeValue_(dashPT)
     });
 
     window.__leadsCache = data.rows || [];
@@ -1500,10 +1511,10 @@ async function refreshLeads(){
     const data = await getJson({
       action:"listLeads",
       limit:"1000",
-      q:$("leadsQ").value.trim(),
-      country: leadsCountry.value,
-      market: leadsMarket.value,
-      productType: leadsPT.value
+      q:safeValue_($("leadsQ")).trim(),
+      country: safeValue_(leadsCountry),
+      market: safeValue_(leadsMarket),
+      productType: safeValue_(leadsPT)
     });
 
     window.__leadsCache = data.rows || [];
