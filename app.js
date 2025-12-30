@@ -1,3 +1,36 @@
+const BUYER_STAGES = [
+  "New/Open",
+  "Attempting Contact/Working",
+  "Connected/Engaged",
+  "Meeting Set/Demo Scheduled",
+  "Qualified (SQL)",
+  "Long-Term Nurture/Inactive",
+  "Customer/Closed Won",
+  "Closed Lost",
+  "Unqualified/Disqualified"
+];
+
+const SUPPLIER_STAGES = [
+  "New Supplier Request",
+  "Vetting/Due Diligence",
+  "Approved Supplier",
+  "Awaiting Quote/Proposal",
+  "Inactive Vendor"
+];
+
+const NEXT_STEPS = [
+  "",
+  "Call",
+  "WhatsApp",
+  "Email",
+  "Send Catalog",
+  "Send Pricing",
+  "Request Docs",
+  "Request Quote",
+  "Schedule Meeting",
+  "Follow-up",
+  "Waiting"
+];
 
 function fallbackLists(){
   return {
@@ -55,6 +88,7 @@ let __followupsFetchedAt = 0;
 
 let __leadsCapturedFilter = "all"; // all|today|week|month
 let __leadsDueFilter = "all";      // all|overdue|today|next7|none
+let __leadsTypeFilter = "all";     // all|supplier|buyer
 let __leadsPage = 1;
 const __LEADS_PAGE_SIZE = 30;
 let __leadsFiltered = [];
@@ -1388,6 +1422,7 @@ function renderLeadCard(r){
       <div class="leadcard__actions">
         ${r.phone ? `<a class="iconbtn" href="tel:${esc(safeTel(r.phone))}">${svgPhone()} Call</a>` : ``}
         ${wa1 ? `<a class="iconbtn" target="_blank" rel="noopener" href="${esc(wa1)}">${svgWhatsApp()} WhatsApp</a>` : ``}
+        ${r.leadId && wa1 ? `<button class="iconbtn" type="button" data-intro="1" data-leadid="${esc(r.leadId)}" title="WhatsApp Intro">${svgWhatsApp()} Intro</button>` : ``}
         ${r.email ? `<a class="iconbtn" href="mailto:${esc(r.email)}">${svgMail()} Email</a>` : ``}
         ${r.leadId ? `<button class="iconbtn" type="button" data-edit="${esc(r.leadId)}">${svgEdit()} Edit</button>` : ``}
       </div>
@@ -1504,6 +1539,11 @@ function applyEnterpriseLeadFilters_(rows){
 
   // Newest first (sheet order is oldest->newest; reverse)
   out = out.reverse();
+
+  // type filter (all|supplier|buyer)
+  if(__leadsTypeFilter !== "all"){
+    out = out.filter(r=>String(r.type||"").toLowerCase() === __leadsTypeFilter);
+  }
 
   // dropdown filters
   out = out.filter(r=>{
@@ -1646,11 +1686,16 @@ async function refreshHome_(){
     });
     const capturedToday = (leads||[]).filter(l=>{ const d=parseISTLabel_(l.timestampIST); if(!d) return false; return startOfDay_(d).getTime()===startOfDay_(now).getTime(); }).length;
 
+    const suppliersCount = (leads||[]).filter(l=>String(l.type||"").toLowerCase()==="supplier").length;
+    const buyersCount = (leads||[]).filter(l=>String(l.type||"").toLowerCase()==="buyer").length;
+
     // Render only 4 tiles on Home
     const el = $("kpis");
     if(el){
       el.innerHTML = "";
       const items = [
+        ["Suppliers", suppliersCount],
+        ["Buyers", buyersCount],
         ["Overdue", buckets.overdue],
         ["Due Today", buckets.today],
         ["Next 7 Days", buckets.next7],
@@ -1664,21 +1709,42 @@ async function refreshHome_(){
         el.appendChild(d);
       });
       // click tiles -> go to Leads with chip prefilter
-      el.querySelectorAll("[data-homefilter]").forEach(k=>{
-        k.addEventListener("click", ()=>{
-          const l = k.getAttribute("data-homefilter");
+      el.querySelectorAll("[data-homefilter]").forEach(kpi=>{
+        kpi.addEventListener("click", ()=>{
+          const label = kpi.getAttribute("data-homefilter") || "";
+          // Type tiles
+          if(label === "Suppliers"){
+            __leadsTypeFilter = "supplier";
+            setCapturedFilter_("all");
+            setDueFilter_("all");
+            showTab("Leads");
+            refreshLeadsEnterprise_();
+            return;
+          }
+          if(label === "Buyers"){
+            __leadsTypeFilter = "buyer";
+            setCapturedFilter_("all");
+            setDueFilter_("all");
+            showTab("Leads");
+            refreshLeadsEnterprise_();
+            return;
+          }
+
+          // Default: clear type filter when using due/captured KPIs
+          __leadsTypeFilter = "all";
+          setCapturedFilter_("all");
+          setDueFilter_("all");
+
+          if(label === "Overdue") setDueFilter_("overdue");
+          else if(label === "Due Today") setDueFilter_("today");
+          else if(label === "Next 7 Days") setDueFilter_("next7");
+          else if(label === "Captured Today") setCapturedFilter_("today");
+
           showTab("Leads");
-          if(l==="Overdue") setDueFilter_("overdue");
-          if(l==="Due Today") setDueFilter_("today");
-          if(l==="Next 7 Days") setDueFilter_("next7");
-          if(l==="Captured Today") setCapturedFilter_("today");
           refreshLeadsEnterprise_();
         });
       });
     }
-
-    // Recent leads uses existing widget
-    try{ renderRecentLeads_((leads||[])); }catch{}
 
     // Drive shortcuts + today's attachments remain
     try{ await refreshDashboardInfo(); }catch{}
@@ -2809,7 +2875,6 @@ document.addEventListener("DOMContentLoaded", async ()=>{
 
   setStatus("Ready");
   updateSummary();
-})
 
   // Stage / Next Step dropdowns
   initStageNextStepUI_();
@@ -3052,40 +3117,10 @@ function getSelectedUserProfile_(){
 
 
 
+});
+
 /* ---------- Buyer/Supplier Stage + Next Step ---------- */
-const BUYER_STAGES = [
-  "New/Open",
-  "Attempting Contact/Working",
-  "Connected/Engaged",
-  "Meeting Set/Demo Scheduled",
-  "Qualified (SQL)",
-  "Long-Term Nurture/Inactive",
-  "Customer/Closed Won",
-  "Closed Lost",
-  "Unqualified/Disqualified"
-];
 
-const SUPPLIER_STAGES = [
-  "New Supplier Request",
-  "Vetting/Due Diligence",
-  "Approved Supplier",
-  "Awaiting Quote/Proposal",
-  "Inactive Vendor"
-];
-
-const NEXT_STEPS = [
-  "",
-  "Call",
-  "WhatsApp",
-  "Email",
-  "Send Catalog",
-  "Send Pricing",
-  "Request Docs",
-  "Request Quote",
-  "Schedule Meeting",
-  "Follow-up",
-  "Waiting"
-];
 
 function stagesForType_(type){
   const t = String(type||"").toLowerCase();
