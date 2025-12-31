@@ -958,6 +958,21 @@ async function postPayload(obj){
   }
 }
 
+
+
+// Legacy helper (some modules call postJSON_ directly). 
+// Keeps requests form-encoded to avoid CORS preflight.
+async function postJSON_(url, payload){
+  const target = (url && String(url).trim()) || getScriptUrl_() || getExecUrl();
+  if(!target) throw new Error("Missing /exec URL");
+  const body = new URLSearchParams();
+  body.set("payload", JSON.stringify(payload || {}));
+  const res = await fetch(target, { method:"POST", body });
+  const t = await res.text();
+  try{ return JSON.parse(t); }
+  catch{ return { result:"error", message: t }; }
+}
+
 async function fetchJSON_(url){
   const res = await fetch(url, { method:"GET" });
   const text = await res.text();
