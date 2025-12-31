@@ -2151,6 +2151,71 @@ async function refreshLeads(){
 /* ---------- Edit Lead ---------- */
 let currentEditRow = null;
 
+// Load & render follow-ups inside Edit modal (fixes missing function + ensures existing follow-ups are visible)
+async function fetchLeadFollowUps_(leadId){
+  if(!leadId) return [];
+  const execUrl = getExecUrl();
+  if(!execUrl) throw new Error("Missing /exec URL");
+  // Prefer server-side filter if available
+  try{
+    const data = await getJson({ action:"listFollowUps", leadId:String(leadId), limit:"500" });
+    return Array.isArray(data.rows) ? data.rows : [];
+  }catch(e){
+    // Fallback: client-side filter from cached followups
+    const all = await getFollowUpsAll_().catch(()=>[]);
+    return (all||[]).filter(f=>String(f.leadId||"")===String(leadId));
+  }
+}
+
+function renderEditFollowUps_(rows){
+  const box = $("editFollowUpList");
+  if(!box) return;
+  const r = Array.isArray(rows) ? rows.slice() : [];
+  // Sort: soonest first; push completed/cancelled to bottom
+  r.sort((a,b)=>{
+    const as = String(a.status||"").toLowerCase();
+    const bs = String(b.status||"").toLowerCase();
+    const aDone = ["done","completed","cancelled","canceled"].includes(as);
+    const bDone = ["done","completed","cancelled","canceled"].includes(bs);
+    if(aDone!==bDone) return aDone ? 1 : -1;
+    const ad = a.scheduledAtISO ? Date.parse(a.scheduledAtISO) : Date.parse(String(a.scheduledAtIST||""));
+    const bd = b.scheduledAtISO ? Date.parse(b.scheduledAtISO) : Date.parse(String(b.scheduledAtIST||""));
+    return (ad||0) - (bd||0);
+  });
+
+  if(!r.length){
+    box.innerHTML = `<div class="hint">No follow-ups yet.</div>`;
+    return;
+  }
+  box.innerHTML = r.map(f=>{
+    const when = esc(f.scheduledAtIST || f.scheduledAtISO || "");
+    const st = esc(f.status || "Open");
+    const notes = esc(f.notes || "");
+    const pill = `<span class="pill pill--sm">${st}</span>`;
+    return `
+      <div class="fuItem">
+        <div class="fuMain">
+          <div class="fuWhen">${when}</div>
+          <div class="fuNotes">${notes || '<span class="muted">(no notes)</span>'}</div>
+        </div>
+        <div class="fuMeta">${pill}</div>
+      </div>
+    `;
+  }).join("");
+}
+
+async function loadEditFollowUps_(leadId){
+  if(!leadId) return;
+  try{
+    const rows = await fetchLeadFollowUps_(leadId);
+    renderEditFollowUps_(rows);
+  }catch(e){
+    console.warn("follow-ups load failed", e);
+    const box = $("editFollowUpList");
+    if(box) box.innerHTML = `<div class="hint">Could not load follow-ups.</div>`;
+  }
+}
+
 function openEdit(leadId, row){
   currentEditRow = row || null;
   $("editLeadId").value = leadId || "";
@@ -3467,8 +3532,9 @@ function renderPipeline_(){
   // sort within columns: follow-up soonest then newest timestamp
   stages.forEach(s=>{
     byStage[s].sort((a,b)=>{
-      const ad = __leadNextFollow.get(a.leadId)?._dt?.getTime() || 0;
-      const bd = __leadNextFollow.get(b.leadId)?._dt?.getTime() || 0;
+      // __leadNextFollow stores { d: Date, label: string, ... }
+      const ad = __leadNextFollow.get(String(a.leadId||""))?.d?.getTime() || 0;
+      const bd = __leadNextFollow.get(String(b.leadId||""))?.d?.getTime() || 0;
       if(ad && bd && ad!==bd) return ad - bd;
       const at = Date.parse(a.timestamp||"") || 0;
       const bt = Date.parse(b.timestamp||"") || 0;
@@ -3483,10 +3549,46 @@ function renderPipeline_(){
   board.innerHTML = "";
   const wrap = document.createElement("div");
   wrap.className = "kanban";
+
+  // Drag state (desktop) — mobile uses the move dropdown
+  let dragLeadId = "";
+
+  function allowDrop(e){
+    e.preventDefault();
+    const col = e.currentTarget;
+    col.classList.add("isDropTarget");
+  }
+  function clearDropTarget(e){
+    try{ e.currentTarget.classList.remove("isDropTarget"); }catch{}
+  }
+  async function dropOnCol(e){
+    e.preventDefault();
+    const col = e.currentTarget;
+    clearDropTarget(e);
+    const toStage = col.getAttribute("data-stage") || "";
+    const leadId = dragLeadId || e.dataTransfer?.getData("text/leadId") || "";
+    dragLeadId = "";
+    if(!leadId || !toStage) return;
+
+    // Persist stage change and refresh the board
+    try{
+      await setLeadStage_(leadId, toStage, "Moved in pipeline");
+      renderPipeline_();
+    }catch(err){
+      console.error(err);
+      alert("Could not move the card. Please try again.");
+    }
+  }
   stages.forEach(stage=>{
     const col = document.createElement("div");
     col.className = "kanbanCol";
     col.setAttribute("data-stage", stage);
+
+    // Drag target handlers
+    col.addEventListener("dragover", allowDrop);
+    col.addEventListener("dragleave", clearDropTarget);
+    col.addEventListener("drop", dropOnCol);
+
     const hdr = document.createElement("div");
     hdr.className = "kanbanHdr";
     hdr.textContent = `${stage} • ${byStage[stage]?.length||0}`;
@@ -3497,6 +3599,20 @@ function renderPipeline_(){
     (byStage[stage]||[]).forEach(l=>{
       const card=document.createElement("div");
       card.className="kanbanCard";
+
+      // Enable drag on desktop
+      card.setAttribute("draggable", "true");
+      card.addEventListener("dragstart", (e)=>{
+        dragLeadId = String(l.leadId||"");
+        try{ e.dataTransfer.setData("text/leadId", dragLeadId); }catch{}
+        try{ e.dataTransfer.effectAllowed = "move"; }catch{}
+        card.classList.add("isDragging");
+      });
+      card.addEventListener("dragend", ()=>{
+        dragLeadId = "";
+        card.classList.remove("isDragging");
+        document.querySelectorAll(".kanbanCol.isDropTarget").forEach(x=>x.classList.remove("isDropTarget"));
+      });
       const title = document.createElement("div");
       title.className="kanbanTitle";
       title.textContent = (l.company||l.contact||"—").trim();
@@ -3546,6 +3662,19 @@ function renderPipeline_(){
       });
       moveSel.appendChild(moveLabel);
       moveSel.appendChild(sel);
+
+      // Mobile-friendly stage move
+      sel.addEventListener("change", async ()=>{
+        const newStage = sel.value;
+        if(!newStage || newStage===stage) return;
+        try{
+          await setLeadStage_(String(l.leadId||""), newStage, "Moved in pipeline");
+          renderPipeline_();
+        }catch(err){
+          console.error(err);
+          alert("Could not move stage. Please try again.");
+        }
+      });
 
       actions.appendChild(editBtn);
       actions.appendChild(introBtn);
