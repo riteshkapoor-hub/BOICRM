@@ -924,41 +924,44 @@ async function collectUploads(catalogInputId, cardInputId){
 }
 
 /* ---------- Backend calls ---------- */
-async async function postPayload(obj){
+async function postPayload(obj){
   setStatus("Saving…");
   const execUrl = requireExecUrl();
 
-  // Use form-encoded payload to avoid CORS preflight on Apps Script
+  // Simple form-encoded request (no custom headers) to avoid CORS preflight
   const body = new URLSearchParams();
   body.set("payload", JSON.stringify(obj));
 
+  // Preferred path: fetch and read JSON response
   try{
-    const res = await fetch(execUrl, { method:"POST", body });
+    const res = await fetch(execUrl, { method: "POST", body });
     const text = await res.text();
-
     let json;
-    try { json = JSON.parse(text); }
-    catch { throw new Error(`Server did not return JSON: ${text.slice(0,140)}`); }
+    try{ json = JSON.parse(text); }
+    catch{ throw new Error(`Server did not return JSON: ${text.slice(0,140)}`); }
+    if(json?.result !== "success") throw new Error(json?.message || "Save failed");
+    setStatus("Saved ✓");
+    return json;
+  }catch(err){
+    // Fallback: sendBeacon (fire-and-forget). Useful when POST response is blocked by CORS.
+    try{
+      if(navigator && typeof navigator.sendBeacon === "function"){
+        const blob = new Blob([body.toString()], { type: "application/x-www-form-urlencoded;charset=UTF-8" });
+        const ok = navigator.sendBeacon(execUrl, blob);
+        if(ok){
+          setStatus("Saved ✓");
+          return { result:"success", beacon:true };
+        }
+      }
+    }catch(_){ }
+    throw err;
+  }
+}
 
 async function fetchJSON_(url){
   const res = await fetch(url, { method:"GET" });
   const text = await res.text();
-  try{ return JSON.parse(text); }catch(e){ throw new Error(`Bad JSON: ${text.slice(0,140)}`); }
-}
-
-    if(json?.result === "error") throw new Error(json.message || "Server error");
-    return json;
-  }catch(err){
-    // If the browser blocks reading the response due to CORS/redirects, fall back to a best-effort POST.
-    // We then refresh data from GET endpoints (which remain readable).
-    console.warn("POST blocked/failed, using no-cors fallback", err);
-    try{
-      await fetch(execUrl, { method:"POST", body, mode:"no-cors" });
-      return { result:"ok", optimistic:true };
-    }catch(e2){
-      throw err;
-    }
-  }
+  try{ return JSON.parse(text); }catch(_){ throw new Error(`Bad JSON: ${text.slice(0,140)}`); }
 }
 
 async function getJson(params){
@@ -2138,6 +2141,7 @@ function openEdit(leadId, row){
   currentEditRow = row || null;
   $("editLeadId").value = leadId || "";
   loadEditActivities_(leadId);
+  loadEditFollowUps_(leadId);
   $("editType").value = row?.type || "";
   initEditStageNextStep_(row);
   $("editEnteredBy").value = row?.enteredBy || "";
@@ -2221,10 +2225,27 @@ async function saveEdit(){
     stage: safeValue_($("editStage")),
     nextStep: safeValue_($("editNextStep")),
     notes: $("editNotes").value.trim()
-  };
-
-  try{
+  };  try{
     const res = await postPayload(payload);
+
+    // Add follow-up if entered in the edit modal
+    const d = $("editFUDate").value;
+    const t = $("editFUTime").value;
+    const fuNotes = $("editFUNotes").value.trim();
+    if(d && t){
+      const f = formatISTFromInputs(d,t);
+      await postPayload({
+        action: "addFollowUp",
+        leadId,
+        scheduledAtIST: f.label,
+        scheduledAtISO: f.iso,
+        notes: fuNotes,
+        createCalendar: false
+      });
+      clearEditFollowup();
+      try{ await loadEditFollowUps_(leadId); }catch{}
+    }
+
     $("editStatus").textContent = "Saved ✓" + (res?.calendarEventUrl ? " (Calendar updated)" : "");
 
     await refreshDashboard();
@@ -3184,7 +3205,7 @@ function openVcardOverlay_(){
 
 function getSelectedUserProfile_(){
   const sel = document.getElementById("userSelect");
-  const uid = (sel && sel.value) ? String(sel.value) : String(localStorage.getItem(LS_USER)||"");
+  const uid = (sel && sel.value) ? String(sel.value) : String(localStorage.getItem(LS_USERID)||localStorage.getItem(LS_USER)||"");
   if(__usersProfiles && __usersProfiles[uid]) return __usersProfiles[uid];
   const opt = sel ? (sel.selectedOptions ? sel.selectedOptions[0] : null) : null;
   if(opt){
@@ -3388,6 +3409,31 @@ function currentPipelineType_(){
   return "buyer";
 }
 
+
+function renderPipelineKpis_(stages, byStage){
+  const board = document.getElementById("pipelineBoard");
+  if(!board) return;
+  let host = document.getElementById("pipelineKpis");
+  if(!host){
+    host = document.createElement("div");
+    host.id = "pipelineKpis";
+    host.className = "kpiRow kpiRow--pipeline";
+    board.parentNode.insertBefore(host, board);
+  }
+  host.innerHTML = "";
+  stages.forEach(stage=>{
+    const count = (byStage[stage]||[]).length;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "kpiTile";
+    btn.innerHTML = `<div class="kpiNum">${count}</div><div class="kpiLbl">${esc(stage)}</div>`;
+    btn.addEventListener("click", ()=>{
+      const col = document.querySelector(`.kanbanCol[data-stage="${CSS.escape(stage)}"]`);
+      if(col) col.scrollIntoView({behavior:"smooth", inline:"start", block:"nearest"});
+    });
+    host.appendChild(btn);
+  });
+}
 function renderPipeline_(){
   const board = $("pipelineBoard");
   if(!board) return;
@@ -3416,6 +3462,9 @@ function renderPipeline_(){
     });
   });
 
+  // KPI strip (top)
+  renderPipelineKpis_(stages, byStage);
+
   // render columns
   board.innerHTML = "";
   const wrap = document.createElement("div");
@@ -3423,6 +3472,7 @@ function renderPipeline_(){
   stages.forEach(stage=>{
     const col = document.createElement("div");
     col.className = "kanbanCol";
+    col.setAttribute("data-stage", stage);
     const hdr = document.createElement("div");
     hdr.className = "kanbanHdr";
     hdr.textContent = `${stage} • ${byStage[stage]?.length||0}`;
