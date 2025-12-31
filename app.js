@@ -174,6 +174,25 @@ function requireExecUrl(){
   return u;
 }
 
+
+// Lightweight JSON helpers (some UI paths expect these)
+async function fetchJSON_(url, opts={}){
+  const r = await fetch(url, opts);
+  if(!r.ok){
+    const t = await r.text().catch(()=>"");
+    throw new Error("HTTP " + r.status + ": " + t);
+  }
+  return await r.json();
+}
+
+async function postJSON_(url, payload){
+  return await fetchJSON_(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload || {})
+  });
+}
+
 function setStatus(msg) { $("status").textContent = msg || ""; }
 function updateSummary() { $("summary").textContent = `${sessionCount} leads this session`; }
 function setUserPill() {
@@ -249,6 +268,20 @@ function parseISTLabel_(label){
   const iso = `${YY}-${String(MM).padStart(2,"0")}-${String(DD).padStart(2,"0")}T${String(HH).padStart(2,"0")}:${String(MI).padStart(2,"0")}:00+05:30`;
   const d = new Date(iso);
   return isNaN(d.getTime()) ? null : d;
+}
+
+
+// Accepts either IST label (MM/dd/yy h:mm AM/PM) OR a Date-parsable string
+function parseFlexibleDate_(value){
+  const s = String(value||"").trim();
+  if(!s) return null;
+  const d1 = parseISTLabel_(s);
+  if(d1) return d1;
+  const d2 = new Date(s);
+  if(!isNaN(d2.getTime())) return d2;
+  const t = Date.parse(s);
+  if(!isNaN(t)) return new Date(t);
+  return null;
 }
 
 function startOfDay_(d){
@@ -611,6 +644,8 @@ function createCombo(containerId, options, placeholder){
     // show/hide clear X
     clearBtn.style.display = (value || input.value.trim()) ? "" : "none";
     close();
+    // notify listeners (for auto-refresh filters)
+    try{ input.dispatchEvent(new Event("change", { bubbles:true })); }catch{}
   }
 
   function render(filter){
@@ -1543,7 +1578,7 @@ function setChipGroupActive_(root, selector, key, value){
 
 function capturedMatch_(lead, now){
   if(__leadsCapturedFilter === "all") return true;
-  const d = parseISTLabel_(lead.timestampIST);
+  const d = parseFlexibleDate_(lead.timestampIST || lead.timestamp);
   if(!d) return false;
   const localNow = now;
   const sNow = startOfDay_(localNow);
@@ -1621,7 +1656,35 @@ function applyEnterpriseLeadFilters_(rows){
   return out;
 }
 
+
+
+function updateLeadsActiveFilters_(){
+  const el = document.getElementById("leadsActiveFilters");
+  if(!el) return;
+  const tags=[];
+  if(__leadsTypeFilter!=='all') tags.push(__leadsTypeFilter.charAt(0).toUpperCase()+__leadsTypeFilter.slice(1));
+  if(__leadsCapturedFilter!=='all') tags.push("Captured: "+( __leadsCapturedFilter==='week' ? 'This Week' : __leadsCapturedFilter==='month' ? 'This Month' : __leadsCapturedFilter.charAt(0).toUpperCase()+__leadsCapturedFilter.slice(1)));
+  if(__leadsDueFilter!=='all'){
+    const m={overdue:"Overdue",today:"Due Today",next7:"Next 7 Days",none:"No Follow-up"};
+    tags.push("Follow-up: "+(m[__leadsDueFilter]||__leadsDueFilter));
+  }
+  const c = safeValue_(leadsCountry).trim();
+  const mk = safeValue_(leadsMarket).trim();
+  const pt = safeValue_(leadsPT).trim();
+  if(c) tags.push("Country: "+c);
+  if(mk) tags.push("Markets: "+mk);
+  if(pt) tags.push("Product Type: "+pt);
+  const q = (document.getElementById("leadsQ")?.value||"").trim();
+  if(q) tags.push("Search: "+q);
+
+  if(!tags.length){
+    el.innerHTML = '<span class="hint">No filters</span>';
+    return;
+  }
+  el.innerHTML = tags.map(t=>`<span class="badge">${esc(t)}</span>`).join(' ');
+}
 function renderLeadsPage_(){
+  updateLeadsActiveFilters_();
   const cards = $("leadsCards");
   const tbody = $("leadsTable")?.querySelector("tbody");
   const pager = $("leadsPager");
@@ -2104,6 +2167,7 @@ function openEdit(leadId, row){
   currentEditRow = row || null;
   $("editLeadId").value = leadId || "";
   loadEditActivities_(leadId);
+  loadEditExistingFollowups_(leadId);
   $("editType").value = row?.type || "";
   initEditStageNextStep_(row);
   $("editEnteredBy").value = row?.enteredBy || "";
@@ -2186,8 +2250,6 @@ async function saveEdit(){
     fob: $("editFOB").value.trim(),
     stage: safeValue_($("editStage")),
     nextStep: safeValue_($("editNextStep")),
-    stage: safeValue_($("editStage")),
-    nextStep: safeValue_($("editNextStep")),
     notes: $("editNotes").value.trim(),
     newFollowUp
   };
@@ -2196,9 +2258,10 @@ async function saveEdit(){
     const res = await postPayload(payload);
     $("editStatus").textContent = "Saved ✓" + (res?.calendarEventUrl ? " (Calendar updated)" : "");
 
-    await refreshDashboard();
-    await refreshLeadsEnterprise_();
-    await refreshCalendar();
+    const jobs = [refreshDashboard(), refreshLeadsEnterprise_()];
+    if(newFollowUp) jobs.push(refreshCalendar());
+    await Promise.all(jobs);
+    try{ await loadEditExistingFollowups_(leadId); }catch{}
   } catch(e){
     console.error(e);
     $("editStatus").textContent = "Save failed: " + (e?.message || e);
@@ -2822,6 +2885,20 @@ document.addEventListener("DOMContentLoaded", async ()=>{
     refreshDashboard();
   });
   $("btnLeadsRefresh").addEventListener("click", refreshLeadsEnterprise_);
+
+  // Auto-filter (no need to press Refresh)
+  [dashCountry, dashMarket, dashPT].forEach(c=>{
+    if(c && c._inputEl) c._inputEl.addEventListener("change", ()=>refreshDashboard());
+  });
+  const dq = $("dashQ");
+  if(dq){ dq.addEventListener("input", debounce_(refreshDashboard, 250)); }
+
+  [leadsCountry, leadsMarket, leadsPT].forEach(c=>{
+    if(c && c._inputEl) c._inputEl.addEventListener("change", ()=>{ __leadsPage=1; applyEnterpriseLeadFilters_(__leadsAll||[]); renderLeadsPage_(); });
+  });
+  const lq = $("leadsQ");
+  if(lq){ lq.addEventListener("input", debounce_(()=>{ __leadsPage=1; applyEnterpriseLeadFilters_(__leadsAll||[]); renderLeadsPage_(); }, 200)); }
+
   const lm=$("btnLeadsLoadMore"); if(lm) lm.addEventListener("click", ()=>{ __leadsPage += 1; renderLeadsPage_(); });
 
   // Leads quick filters (chips)
@@ -3130,25 +3207,26 @@ function openVcardOverlay_(){
 
 
 function getSelectedUserProfile_(){
+  // Prefer the full profile stored in localStorage (set via Settings user picker)
+  const cur = (typeof getCurrentUser_ === "function") ? getCurrentUser_() : null;
   const sel = document.getElementById("userSelect");
-  const uid = (sel && sel.value) ? String(sel.value) : String(localStorage.getItem(LS_USER)||"");
-  if(__usersProfiles && __usersProfiles[uid]) return __usersProfiles[uid];
-  const opt = sel ? (sel.selectedOptions ? sel.selectedOptions[0] : null) : null;
-  if(opt){
-    return {
-      id: uid,
-      name: String(opt.dataset.name||uid||"Unknown"),
-      phone1: String(opt.dataset.phone1||""),
-      phone2: String(opt.dataset.phone2||""),
-      email: String(opt.dataset.email||"")
-    };
+  const uid = (sel && sel.value) ? String(sel.value) : String(cur?.UserID || cur?.Name || localStorage.getItem(LS_USERID) || localStorage.getItem(LS_USER) || "").trim();
+
+  // Try USERS cache (freshest)
+  if(Array.isArray(USERS) && USERS.length){
+    const u = USERS.find(x => String(x.UserID||x.Name||"").trim() === uid) || USERS.find(x => String(x.Name||"").trim() === uid);
+    if(u) return u;
   }
-  return { id: uid, name: uid||"Unknown", phone1:"", phone2:"", email:"" };
+
+  // Fall back to stored profile
+  if(cur && (cur.UserID || cur.Name)) return cur;
+
+  return { UserID: uid, Name: uid || "Unknown" };
 }
 
 
 
-});
+
 
 /* ---------- Buyer/Supplier Stage + Next Step ---------- */
 
@@ -3225,6 +3303,46 @@ function renderActivities_(rows){
   });
 }
 
+
+
+function renderExistingFollowups_(rows){
+  const box = document.getElementById("editExistingFUs");
+  if(!box) return;
+  const list = (rows||[]).slice().filter(r=>{
+    const st = String(r.status||"").toLowerCase();
+    return st !== "done" && st !== "completed";
+  });
+  list.sort((a,b)=>{
+    const da = a.scheduledAtISO ? new Date(a.scheduledAtISO) : parseISTLabel_(a.scheduledAtIST);
+    const db = b.scheduledAtISO ? new Date(b.scheduledAtISO) : parseISTLabel_(b.scheduledAtIST);
+    return (da && !isNaN(da.getTime()) ? da.getTime() : 0) - (db && !isNaN(db.getTime()) ? db.getTime() : 0);
+  });
+  if(!list.length){
+    box.innerHTML = '<div class="hint">No follow-ups scheduled.</div>';
+    return;
+  }
+  box.innerHTML = '<div class="existingFUs__list" id="_tmpFuList"></div>';
+  const listEl = document.getElementById('_tmpFuList');
+  list.slice(0,20).forEach(r=>{
+    const div=document.createElement('div');
+    div.className='existingFUs__item';
+    const when = String(r.scheduledAtIST||'').trim() || (r.scheduledAtISO ? new Date(r.scheduledAtISO).toLocaleString() : '—');
+    const note = String(r.notes||'').trim();
+    div.innerHTML = `<div class="existingFUs__when">${esc(when)}</div>` + (note?`<div class="existingFUs__note">${esc(note)}</div>`:'');
+    listEl.appendChild(div);
+  });
+}
+
+async function loadEditExistingFollowups_(leadId){
+  if(!leadId) return;
+  try{
+    const all = await getFollowUpsAll_();
+    const rows = (all||[]).filter(r=>String(r.leadId||'')===String(leadId));
+    renderExistingFollowups_(rows);
+  }catch(e){
+    console.warn('followups load failed', e);
+  }
+}
 async function loadEditActivities_(leadId){
   if(!leadId) return;
   try{
@@ -3267,10 +3385,10 @@ async function logActivityClient_(leadId, listType, value){
 /* ---------- WhatsApp Intro ---------- */
 function buildWhatsAppIntroText_(lead, user){
   const contactName = (lead?.contact || "").trim() || "there";
-  const senderName = (user?.name || user?.id || "").trim() || "Blue Orbit International";
-  const senderEmail = (user?.email || "").trim();
-  const p1 = (user?.phone1 || "").trim();
-  const p2 = (user?.phone2 || "").trim();
+  const senderName = (String(user?.Name||user?.name||user?.UserID||user?.id||"")).trim() || "Blue Orbit International";
+  const senderEmail = (String(user?.Email||user?.email||"")).trim();
+  const p1 = (String(user?.Phone1||user?.phone1||"")).trim();
+  const p2 = (String(user?.Phone2||user?.phone2||"")).trim();
 
   const lines = [];
   lines.push(`Hello ${contactName},`);
