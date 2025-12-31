@@ -5,7 +5,7 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width,initial-scale=1" name="viewport"/>
 <title>BOI CRM</title>
-<link href="styles.css?v=20251230_stage_pipeline_fix2" rel="stylesheet"/>
+<link href="styles.css?v=BOI_CRM_FIX4_20251231" rel="stylesheet"/>
 </head>
 <body>
 <header class="topbar">
@@ -459,9 +459,17 @@ Item 3" rows="4"></textarea>
 <input id="leadsQ" placeholder="company, contact, email…" type="text"/>
 </div>
 <button class="btn btn--ghost" id="btnLeadsRefresh" type="button">Refresh</button>
+<button class="btn btn--ghost" id="btnLeadsClearFilters" type="button">Clear Filters</button>
 </div>
 
 <div class="chips" id="leadsChips">
+<div class="chips__group">
+  <span class="chips__label">Type</span>
+  <button class="chip isActive" data-type="all" type="button">All</button>
+  <button class="chip" data-type="supplier" type="button">Suppliers</button>
+  <button class="chip" data-type="buyer" type="button">Buyers</button>
+</div>
+
   <div class="chips__group">
     <span class="chips__label">Captured</span>
     <button class="chip isActive" data-captured="all" type="button">All</button>
@@ -507,7 +515,7 @@ Item 3" rows="4"></textarea>
       <div class="card__sub">Kanban view by follow-up urgency (fast triage).</div>
     </div>
     <div class="seg" style="margin:10px 0;"><button class="seg__btn is-active" id="pipeBuyer" type="button">Buyer Pipeline</button><button class="seg__btn" id="pipeSupplier" type="button">Supplier Pipeline</button></div>
-<div class="kanban" id="pipelineBoard"></div>
+<div id="pipelineBoard"></div>
   </div>
 </section>
 <!-- INSIGHTS -->
@@ -785,10 +793,6 @@ Item 3" rows="4"></textarea>
 </div>
 <div class="follow">
 <div class="follow__hdr">Add a new follow-up (optional • IST)</div>
-  <div class="follow__existing">
-    <div class="follow__hdr2">Existing follow-ups</div>
-    <div id="editExistingFUs" class="existingFUs"><div class="hint">—</div></div>
-  </div>
 <div class="quickfu">
 <button class="btn btn--ghost btn--sm" id="editQuickToday" type="button">Today @10am</button>
 <button class="btn btn--ghost btn--sm" id="editQuick7" type="button">+7 @10am</button>
@@ -820,6 +824,6 @@ Item 3" rows="4"></textarea>
 <!-- IMPORTANT: load QR lib only once (local vendor copy) -->
 <script src="./vendor/html5-qrcode.min.js"></script>
 <!-- main app -->
-<script src="app.js?v=20251230_stage_pipeline_fix2"></script>
+<script src="app.js?v=BOI_CRM_FIX4_20251231"></script>
 </body>
 </html>
