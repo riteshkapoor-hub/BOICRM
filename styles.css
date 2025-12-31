@@ -1103,9 +1103,34 @@ svg{ overflow: visible !important; }
 .chip:hover{filter:brightness(1.05)}
 .chip.isActive{background:var(--accent);border-color:transparent;color:#fff}
 .pager{display:flex;align-items:center;gap:10px;margin:12px 0}
-.kanban{display:grid;grid-template-columns:repeat(4,minmax(220px,1fr));gap:12px;overflow:auto;padding-bottom:4px}
-@media(max-width:900px){.kanban{grid-template-columns:repeat(2,minmax(220px,1fr))}}
-@media(max-width:560px){.kanban{grid-template-columns:1fr}}
+.kanban{
+  display:flex;
+  gap:12px;
+  overflow-x:auto;
+  overflow-y:hidden;
+  padding-bottom:8px;
+  scroll-snap-type:x proximity;
+}
+.kanbanCol{
+  min-width:280px;
+  max-width:340px;
+  flex:0 0 auto;
+  scroll-snap-align:start;
+}
+@media(max-width:560px){
+  .kanbanCol{min-width:88vw;max-width:88vw;}
+}
+
+.kanbanHdr{position:sticky;top:0;z-index:2}
+.kanbanList{max-height:calc(100vh - 280px);overflow:auto}
+.kanbanCol.isDropTarget{outline:2px dashed rgba(255,255,255,.22);outline-offset:2px}
+.kanbanCard.isDragging{opacity:.65}
+
+/* Edit modal follow-ups list */
+.fuItem{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;padding:10px 10px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.02);margin:8px 0}
+.fuWhen{font-weight:700;font-size:13px;margin-bottom:4px}
+.fuNotes{font-size:13px;color:var(--text);opacity:.95;line-height:1.35}
+.fuMeta{white-space:nowrap}
 .kcol{border:1px solid var(--line);background:var(--panel);border-radius:16px;min-height:280px;display:flex;flex-direction:column}
 .kcol__hdr{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel);z-index:2;border-top-left-radius:16px;border-top-right-radius:16px}
 .kcol__title{font-weight:700}
