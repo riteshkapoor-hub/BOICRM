@@ -1152,3 +1152,33 @@ svg{stroke:currentColor;fill:none;stroke-width:2;opacity:1}
 .kpiTile:active{transform:translateY(1px)}
 .kpiNum{font-size:18px;font-weight:900;line-height:1.1}
 .kpiLbl{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+
+/* --- Edit overlay follow-up history --- */
+.followList{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  padding:10px;
+  border:1px solid var(--border);
+  border-radius:12px;
+  background: var(--panel2);
+  max-height: 220px;
+  overflow:auto;
+}
+.fuItem{
+  padding:8px 10px;
+  border:1px solid var(--border);
+  border-radius:12px;
+  background: rgba(255,255,255,0.03);
+}
+.fuItem__meta{
+  font-size:12px;
+  opacity:0.85;
+  margin-bottom:4px;
+}
+.fuItem__note{
+  font-size:13px;
+  line-height:1.25;
+}
+
