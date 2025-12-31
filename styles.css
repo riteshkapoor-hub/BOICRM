@@ -1103,7 +1103,7 @@ svg{ overflow: visible !important; }
 .chip:hover{filter:brightness(1.05)}
 .chip.isActive{background:var(--accent);border-color:transparent;color:#fff}
 .pager{display:flex;align-items:center;gap:10px;margin:12px 0}
-.kanban{display:flex;gap:12px;align-items:flex-start;overflow-x:auto;overflow-y:hidden;padding-bottom:6px;scroll-snap-type:x mandatory}
+.kanban{display:grid;grid-template-columns:repeat(4,minmax(220px,1fr));gap:12px;overflow:auto;padding-bottom:4px}
 @media(max-width:900px){.kanban{grid-template-columns:repeat(2,minmax(220px,1fr))}}
 @media(max-width:560px){.kanban{grid-template-columns:1fr}}
 .kcol{border:1px solid var(--line);background:var(--panel);border-radius:16px;min-height:280px;display:flex;flex-direction:column}
@@ -1141,47 +1141,3 @@ svg{ overflow: visible !important; }
 .iconbtn svg,.iconlink svg{width:18px;height:18px}
 svg{stroke:currentColor;fill:none;stroke-width:2;opacity:1}
 
-
-/* --- Kanban columns/cards --- */
-.kanbanCol{
-  flex:0 0 290px;
-  min-width:270px;
-  max-width:340px;
-  background:var(--panel-2);
-  border:1px solid var(--border);
-  border-radius:14px;
-  box-shadow:var(--shadow-1);
-  scroll-snap-align:start;
-  display:flex;
-  flex-direction:column;
-  max-height:calc(100vh - 240px);
-}
-.kanbanHdr{
-  padding:10px 12px;
-  font-weight:700;
-  font-size:12px;
-  letter-spacing:.04em;
-  text-transform:uppercase;
-  color:var(--text-2);
-  border-bottom:1px solid var(--border);
-  background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,0));
-  border-top-left-radius:14px;
-  border-top-right-radius:14px;
-}
-.kanbanList{
-  padding:10px;
-  overflow:auto;
-}
-.kanbanCard{
-  background:var(--panel-3);
-  border:1px solid rgba(255,255,255,.08);
-  border-radius:12px;
-  padding:10px;
-  margin-bottom:10px;
-}
-.kanbanTitle{font-weight:700;font-size:14px;line-height:1.2;margin-bottom:4px}
-.kanbanSub{font-size:12px;color:var(--text-2);margin-bottom:6px}
-.kanbanMeta{font-size:12px;color:var(--text-2);margin-bottom:8px}
-.kanbanActions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
-.moveMenu{display:grid;gap:6px}
-.moveSelect{width:100%}
