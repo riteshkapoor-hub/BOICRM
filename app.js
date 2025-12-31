@@ -71,6 +71,16 @@ const LS_SCRIPT_URL = "boi_crm_script_url";
 const LS_USER = "boi_crm_user";
 const LS_USERID = "boi_crm_userid";
 const LS_USEROBJ = "boi_crm_userobj";
+;
+
+// Safety polyfill (prevents iOS cache mismatch errors)
+if (typeof window.getCurrentUser_ !== 'function') {
+  window.getCurrentUser_ = function(){
+    try{ const obj = localStorage.getItem(LS_USEROBJ); if(obj) return JSON.parse(obj);}catch(e){}
+    const name = localStorage.getItem(LS_USER) || '';
+    return { Name: name };
+  };
+}
 const LS_DENSITY = "boi_crm_ui_density";
 
 let USERS = [];
@@ -570,6 +580,13 @@ function createCombo(containerId, options, placeholder){
   btn.className="combo__btn";
   btn.textContent="▾";
 
+  // Clear (X) button (enterprise UX): quick reset per filter
+  const clearBtn = document.createElement("button");
+  clearBtn.type = "button";
+  clearBtn.className = "combo__clear";
+  clearBtn.setAttribute("aria-label", "Clear");
+  clearBtn.textContent = "×";
+
   const list = document.createElement("div");
   list.className="combo__list";
 
@@ -591,6 +608,8 @@ function createCombo(containerId, options, placeholder){
   function set(v){
     value = v || "";
     input.value = v || "";
+    // show/hide clear X
+    clearBtn.style.display = (value || input.value.trim()) ? "" : "none";
     close();
   }
 
@@ -617,14 +636,32 @@ function createCombo(containerId, options, placeholder){
   }
 
   input.addEventListener("focus", open);
-  input.addEventListener("input", ()=>{ open(); render(input.value); });
+  input.addEventListener("input", ()=>{
+    clearBtn.style.display = input.value.trim() ? "" : "none";
+    open();
+    render(input.value);
+  });
   btn.addEventListener("click", ()=> root.classList.contains("open") ? close() : open());
+  clearBtn.addEventListener("click", (e)=>{
+    e.preventDefault();
+    e.stopPropagation();
+    value = "";
+    input.value = "";
+    clearBtn.style.display = "none";
+    close();
+    // notify listeners
+    try{ input.dispatchEvent(new Event("change", { bubbles:true })); }catch{}
+  });
   document.addEventListener("click",(e)=>{ if(!root.contains(e.target)) close(); });
 
   root.appendChild(input);
+  root.appendChild(clearBtn);
   root.appendChild(btn);
   root.appendChild(list);
   render("");
+
+  // initial state
+  clearBtn.style.display = "none";
 
   return {
     get value(){ return value || input.value.trim(); },
@@ -1435,14 +1472,17 @@ function renderKpis(k){
   const el = $("kpis");
   el.innerHTML = "";
   const items = [
-    ["Total leads", k.total||0],
-    ["Suppliers", k.suppliers||0],
-    ["Buyers", k.buyers||0],
-    ["Today", k.today||0]
+    ["Suppliers", k.suppliers||0, {type:"supplier"}],
+    ["Buyers", k.buyers||0, {type:"buyer"}],
+    ["Overdue", k.overdue||0, {due:"overdue"}],
+    ["Due Today", k.dueToday||0, {due:"today"}],
+    ["Next 7 Days", k.next7||0, {due:"next7"}],
+    ["Captured Today", k.capturedToday||0, {captured:"today"}]
   ];
-  items.forEach(([label,val])=>{
+  items.forEach(([label,val,flt])=>{
     const d=document.createElement("div");
     d.className="kpi";
+    if(flt){ d.classList.add("kpi--click"); d.onclick = ()=>{ applyKpiFilter_(flt); }; }
     d.innerHTML = `<div class="kpi__v">${esc(val)}</div><div class="kpi__l">${esc(label)}</div>`;
     el.appendChild(d);
   });
@@ -1762,70 +1802,13 @@ async function refreshPipeline_(){
   if(!execUrl){ setStatus("Missing /exec URL. Open Settings."); return; }
   try{
     setStatus("Loading pipeline…");
-    const [leads, fus] = await Promise.all([getLeadsAll_(), getFollowUpsAll_().catch(()=>[])]);
+    const [leads, fus] = await Promise.all([
+      getLeadsAll_(),
+      getFollowUpsAll_().catch(()=>[])
+    ]);
     computeNextFollowMap_(fus||[]);
-    const now = new Date();
-
-    const cols = [
-      { key:"overdue", title:"Overdue" },
-      { key:"today", title:"Due Today" },
-      { key:"next7", title:"Next 7 Days" },
-      { key:"none", title:"No Follow‑up" }
-    ];
-
-    const by = { overdue:[], today:[], next7:[], none:[] };
-
-    // newest first
-    const ordered = (leads||[]).slice().reverse();
-    ordered.forEach(l=>{
-      const b = dueBucket_(l, now);
-      if(b==="later") return;
-      if(!by[b]) by[b]=[];
-      by[b].push(l);
-    });
-
-    board.innerHTML = cols.map(c=>{
-      const arr = by[c.key] || [];
-      const cards = arr.slice(0, 80).map(l=>{
-        const nf = __leadNextFollow.get(String(l.leadId||""));
-        const when = nf ? (nf.label || "") : "";
-        const meta = [l.type, l.country, l.productType].filter(Boolean).join(" • ");
-        const wa = safeWa(l.phone);
-        return `
-          <div class="kcard">
-            <div class="kcard__title">${esc(l.company||l.contact||"—")}</div>
-            <div class="kcard__meta">
-              ${meta ? `<span>${esc(meta)}</span>` : ``}
-              ${when ? `<span>• ${esc(when)}</span>` : ``}
-            </div>
-            <div class="kcard__actions">
-              ${l.phone ? `<a class="btn btn--ghost btn--sm" href="tel:${esc(safeTel(l.phone))}">${svgPhone()}</a>` : ``}
-              ${wa ? `<a class="btn btn--ghost btn--sm" href="${esc(wa)}" target="_blank" rel="noopener">${svgWhatsApp()}</a>` : ``}
-              ${l.email ? `<a class="btn btn--ghost btn--sm" href="mailto:${esc(l.email)}">${svgMail()}</a>` : ``}
-              ${l.leadId ? `<button class="btn btn--ghost btn--sm" type="button" data-pedit="${esc(l.leadId)}">${svgEdit()}</button>` : ``}
-            </div>
-          </div>
-        `;
-      }).join("") || `<div class="hint">Nothing here.</div>`;
-      return `
-        <div class="kcol">
-          <div class="kcol__hdr">
-            <div class="kcol__title">${esc(c.title)}</div>
-            <div class="kcol__count">${arr.length}</div>
-          </div>
-          <div class="kcol__body">${cards}</div>
-        </div>
-      `;
-    }).join("");
-
-    board.querySelectorAll("[data-pedit]").forEach(btn=>{
-      btn.addEventListener("click", ()=>{
-        const id = btn.getAttribute("data-pedit");
-        const row = (leads||[]).find(x=>String(x.leadId)===String(id));
-        openEdit(id, row);
-      });
-    });
-
+    // render stage-based Kanban (Buyer/Supplier toggle)
+    renderPipeline_();
     setStatus("Ready");
   }catch(e){
     console.error(e);
@@ -1849,6 +1832,23 @@ function setDueFilter_(val){
   const root = $("leadsChips");
   setChipGroupActive_(root, "[data-due]", "data-due", val);
 }
+function applyKpiFilter_(flt){
+  // Reset
+  __leadsCapturedFilter = "all";
+  __leadsDueFilter = "all";
+  __leadsTypeFilter = "all";
+  try{
+    if(flt.type) __leadsTypeFilter = flt.type;
+    if(flt.captured) setCapturedFilter_(flt.captured);
+    if(flt.due) setDueFilter_(flt.due);
+    // Ensure chips reflect internal state
+    setCapturedFilter_(__leadsCapturedFilter);
+    setDueFilter_(__leadsDueFilter);
+  }catch(e){}
+  showTab("Leads");
+  refreshLeads_();
+}
+
 
 async function refreshDashboard(){
   const execUrl = getExecUrl();
@@ -1896,6 +1896,10 @@ async function refreshDashboard(){
     setStatus("Dashboard load failed.");
   }
 }
+
+// Alias for legacy init()
+async function refreshDashboard_(){ return refreshDashboard(); }
+
 
 function renderRecentLeads_(rows){
   const list = $("dashRecentList");
@@ -2315,7 +2319,12 @@ function monthRange(cursor){
 function setCalView(v){
   calView = v;
   ["Day","Week","Month"].forEach(x=>{
-    $("calView"+x).classList.toggle("isActive", v===x.toLowerCase());
+    const el = $("calView"+x);
+    if(!el) return;
+    const on = (v===x.toLowerCase());
+    // support both historical class names
+    el.classList.toggle("isActive", on);
+    el.classList.toggle("is-active", on);
   });
   renderCalendar();
 }
@@ -2845,6 +2854,15 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   $("calViewWeek").addEventListener("click", ()=>setCalView("week"));
   $("calViewMonth").addEventListener("click", ()=>setCalView("month"));
 
+  // Defensive: delegated handler for iOS home-screen PWAs where some taps
+  // can be eaten by overlays (keeps Day/Week/Month switching reliable).
+  document.addEventListener("click", (ev)=>{
+    const btn = ev.target && ev.target.closest ? ev.target.closest("[data-calview]") : null;
+    if(!btn) return;
+    const v = (btn.getAttribute("data-calview") || "").trim();
+    if(v) setCalView(v);
+  });
+
   $("calPrev").addEventListener("click", ()=>{
     if(calView==="month") calCursor = new Date(calCursor.getFullYear(), calCursor.getMonth()-1, 1);
     else if(calView==="week") calCursor = addDays(calCursor, -7);
@@ -2922,6 +2940,19 @@ document.addEventListener("DOMContentLoaded", async ()=>{
       await refreshDashboard_();
       await refreshLeads_();
     }
+  });
+
+  // Pipeline move (select)
+  document.addEventListener("change", async (ev)=>{
+    const sel = ev.target && ev.target.matches ? (ev.target.matches("select[data-stage-select]") ? ev.target : null) : null;
+    if(!sel) return;
+    const leadId = sel.getAttribute("data-stage-select");
+    const stage = sel.value;
+    if(!leadId || !stage) return;
+    await setLeadStage_(leadId, stage, "Moved in Pipeline");
+    await renderPipeline_();
+    try{ await refreshHome_(); }catch{}
+    try{ await refreshLeadsEnterprise_(); }catch{}
   });
 
 function fetchUsers_(){
@@ -3380,25 +3411,28 @@ function renderPipeline_(){
       introBtn.setAttribute("data-intro","1");
       introBtn.setAttribute("data-leadid", l.leadId);
 
+      // Compact move control (works well on iPhone/iPad)
       const moveSel = document.createElement("div");
       moveSel.className="moveMenu";
       const moveLabel = document.createElement("div");
       moveLabel.className="hint";
-      moveLabel.textContent="Move";
-      const moveButtons = document.createElement("div");
-      moveButtons.className="moveBtns";
+      moveLabel.textContent="Move stage";
+      const sel = document.createElement("select");
+      sel.className = "moveSelect";
+      sel.setAttribute("data-stage-select", String(l.leadId||""));
+      const curOpt = document.createElement("option");
+      curOpt.value = stage;
+      curOpt.textContent = stage;
+      sel.appendChild(curOpt);
       stages.forEach(st=>{
         if(st===stage) return;
-        const b=document.createElement("button");
-        b.className="btn btn--ghost";
-        b.type="button";
-        b.textContent=st;
-        b.setAttribute("data-movelead", l.leadId);
-        b.setAttribute("data-stage", st);
-        moveButtons.appendChild(b);
+        const o=document.createElement("option");
+        o.value = st;
+        o.textContent = st;
+        sel.appendChild(o);
       });
       moveSel.appendChild(moveLabel);
-      moveSel.appendChild(moveButtons);
+      moveSel.appendChild(sel);
 
       actions.appendChild(editBtn);
       actions.appendChild(introBtn);
