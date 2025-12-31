@@ -94,6 +94,26 @@ let __leadsAll = [];
 let __leadsAllFetchedAt = 0;
 let __followupsAll = [];
 let __usersProfiles = {};
+
+function getSelectedUserProfile_(){
+  // Returns the currently selected user (from Users overlay dropdown) in a consistent shape.
+  const sel = document.getElementById("userSelect");
+  const uid = (sel && sel.value) ? String(sel.value) : String(localStorage.getItem(LS_USER)||"");
+  if(__usersProfiles && __usersProfiles[uid]) return __usersProfiles[uid];
+
+  // Fallback: use <option data-*> if profiles not yet loaded
+  const opt = sel ? (sel.selectedOptions ? sel.selectedOptions[0] : null) : null;
+  if(opt){
+    return {
+      id: uid,
+      Name: String(opt.dataset.name||uid||"Unknown"),
+      Email: String(opt.dataset.email||""),
+      Phone1: String(opt.dataset.phone1||""),
+      Phone2: String(opt.dataset.phone2||"")
+    };
+  }
+  return { id: uid, Name: uid||"Unknown", Email:"", Phone1:"", Phone2:"" };
+}
 let __followupsFetchedAt = 0;
 
 let __leadsCapturedFilter = "all"; // all|today|week|month
@@ -173,6 +193,25 @@ function requireExecUrl(){
   if(!u.endsWith("/exec")) throw new Error("Apps Script URL must end with /exec.");
   return u;
 }
+
+
+async function fetchJSON_(url){
+  const res = await fetch(url, { method:"GET", credentials:"omit" });
+  if(!res.ok) throw new Error(`GET ${url} failed: ${res.status}`);
+  return await res.json();
+}
+
+async function postJSON_(url, payload){
+  const res = await fetch(url, {
+    method:"POST",
+    headers: { "Content-Type":"application/json" },
+    body: JSON.stringify(payload),
+    credentials:"omit"
+  });
+  if(!res.ok) throw new Error(`POST ${url} failed: ${res.status}`);
+  return await res.json();
+}
+
 
 function setStatus(msg) { $("status").textContent = msg || ""; }
 function updateSummary() { $("summary").textContent = `${sessionCount} leads this session`; }
@@ -2100,74 +2139,10 @@ async function refreshLeads(){
 /* ---------- Edit Lead ---------- */
 let currentEditRow = null;
 
-
-/* ---------- Edit: Existing Follow-ups (read-only) ---------- */
-function renderExistingFollowupsEdit_(rows){
-  const box = document.getElementById("editExistingFUs");
-  if(!box) return;
-  box.innerHTML = "";
-  const list = (rows||[]).slice().filter(r=>{
-    const st = String(r.status||"").toLowerCase();
-    return st !== "done" && st !== "completed" && st !== "cancelled" && st !== "canceled";
-  });
-  if(!list.length){
-    box.innerHTML = '<div class="hint">No pending follow-ups for this lead.</div>';
-    return;
-  }
-  // sort by scheduled time (ISO preferred)
-  list.sort((a,b)=>{
-    const ad = a.scheduledAtISO ? Date.parse(a.scheduledAtISO) : Date.parse(a.scheduledAtIST||"");
-    const bd = b.scheduledAtISO ? Date.parse(b.scheduledAtISO) : Date.parse(b.scheduledAtIST||"");
-    return (ad||0) - (bd||0);
-  });
-
-  list.slice(0, 12).forEach(f=>{
-    const el = document.createElement("div");
-    el.className = "fuItem";
-    const when = String(f.scheduledAtIST || "").trim() || "—";
-    const status = String(f.status || "open").trim() || "open";
-    const note = String(f.notes || "").trim();
-    el.innerHTML = `
-      <div class="fuItem__top">
-        <div class="fuItem__when">${esc(when)}</div>
-        <div class="fuItem__status">${esc(status)}</div>
-      </div>
-      ${note ? `<div class="fuItem__note">${esc(note)}</div>` : ``}
-    `;
-    box.appendChild(el);
-  });
-
-  if(list.length > 12){
-    const more = document.createElement("div");
-    more.className = "hint";
-    more.style.padding = "4px 2px 0 2px";
-    more.textContent = `Showing 12 of ${list.length} follow-ups.`;
-    box.appendChild(more);
-  }
-}
-
-async function loadEditExistingFUs_(leadId){
-  try{
-    const id = String(leadId||"").trim();
-    const box = document.getElementById("editExistingFUs");
-    if(box) box.innerHTML = '<div class="hint">Loading…</div>';
-    if(!id) { if(box) box.innerHTML = '<div class="hint">—</div>'; return; }
-    const all = await getFollowUpsAll_();
-    const rows = (all||[]).filter(r=> String(r.leadId||"").trim() === id);
-    renderExistingFollowupsEdit_(rows);
-  }catch(e){
-    const box = document.getElementById("editExistingFUs");
-    if(box) box.innerHTML = '<div class="hint">Could not load follow-ups.</div>';
-  }
-}
-
-
-
 function openEdit(leadId, row){
   currentEditRow = row || null;
   $("editLeadId").value = leadId || "";
   loadEditActivities_(leadId);
-  loadEditExistingFUs_(leadId);
   $("editType").value = row?.type || "";
   initEditStageNextStep_(row);
   $("editEnteredBy").value = row?.enteredBy || "";
@@ -2262,7 +2237,7 @@ async function saveEdit(){
 
     await refreshDashboard();
     await refreshLeadsEnterprise_();
-    if(newFollowUp) await refreshCalendar();
+    await refreshCalendar();
   } catch(e){
     console.error(e);
     $("editStatus").textContent = "Save failed: " + (e?.message || e);
@@ -2826,24 +2801,6 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   editMarket = createCombo("editMarketCombo", [], "Search markets…");
   editPT = createCombo("editPTCombo", [], "Search product type…");
 
-
-  /* --- AUTO FILTER (no refresh button needed) --- */
-  const dashAuto = debounce_(()=>refreshDashboard(), 180);
-  ["change","input"].forEach(evt=>{
-    try{ dashCountry._inputEl.addEventListener(evt, dashAuto); }catch{}
-    try{ dashMarket._inputEl.addEventListener(evt, dashAuto); }catch{}
-    try{ dashPT._inputEl.addEventListener(evt, dashAuto); }catch{}
-  });
-  try{ $("dashQ").addEventListener("input", dashAuto); }catch{}
-
-  const leadsAuto = debounce_(()=>{ __leadsPage = 1; refreshLeadsEnterprise_(); }, 180);
-  ["change","input"].forEach(evt=>{
-    try{ leadsCountry._inputEl.addEventListener(evt, leadsAuto); }catch{}
-    try{ leadsMarket._inputEl.addEventListener(evt, leadsAuto); }catch{}
-    try{ leadsPT._inputEl.addEventListener(evt, leadsAuto); }catch{}
-  });
-  try{ $("leadsQ").addEventListener("input", leadsAuto); }catch{}
-
   // Auto-prefill country code into phone fields
   supCountry._inputEl.addEventListener("blur", ()=> {
     applyCountryCodeToInput(supCountry.value, $("supPhone"));
@@ -3211,22 +3168,6 @@ function openVcardOverlay_(){
 
 
 
-function getSelectedUserProfile_(){
-  const sel = document.getElementById("userSelect");
-  const uid = (sel && sel.value) ? String(sel.value) : String(localStorage.getItem(LS_USER)||"");
-  if(__usersProfiles && __usersProfiles[uid]) return __usersProfiles[uid];
-  const opt = sel ? (sel.selectedOptions ? sel.selectedOptions[0] : null) : null;
-  if(opt){
-    return {
-      id: uid,
-      name: String(opt.dataset.name||uid||"Unknown"),
-      phone1: String(opt.dataset.phone1||""),
-      phone2: String(opt.dataset.phone2||""),
-      email: String(opt.dataset.email||"")
-    };
-  }
-  return { id: uid, name: uid||"Unknown", phone1:"", phone2:"", email:"" };
-}
 
 
 
@@ -3424,111 +3365,119 @@ function currentPipelineType_(){
 function renderPipeline_(){
   const board = $("pipelineBoard");
   if(!board) return;
+  board.classList.add("kanban");
+
   const type = currentPipelineType_();
   const stages = stagesForType_(type);
   const leads = (__leadsAll||[]).filter(l=>String(l.type||"buyer").toLowerCase()===type);
 
-  // group
   const byStage = {};
-  stages.forEach(s=>byStage[s]=[]);
-  leads.forEach(l=>{
+  for(const s of stages) byStage[s]=[];
+  for(const l of leads){
     const st = l.stage || defaultStageForType_(type);
-    if(!byStage[st]) byStage[st]=[];
-    byStage[st].push(l);
-  });
+    (byStage[st]||(byStage[st]=[])).push(l);
+  }
 
-  // sort within columns: follow-up soonest then newest timestamp
-  stages.forEach(s=>{
-    byStage[s].sort((a,b)=>{
+  for(const s of stages){
+    (byStage[s]||[]).sort((a,b)=>{
       const ad = __leadNextFollow.get(a.leadId)?._dt?.getTime() || 0;
       const bd = __leadNextFollow.get(b.leadId)?._dt?.getTime() || 0;
       if(ad && bd && ad!==bd) return ad - bd;
-      const at = Date.parse(a.timestamp||"") || 0;
-      const bt = Date.parse(b.timestamp||"") || 0;
+      if(ad && !bd) return -1;
+      if(!ad && bd) return 1;
+      const at = Date.parse(a.timestamp||a.timestampIST||"") || 0;
+      const bt = Date.parse(b.timestamp||b.timestampIST||"") || 0;
       return bt - at;
     });
-  });
+  }
 
-  // render columns
   board.innerHTML = "";
-  const wrap = document.createElement("div");
-  wrap.className = "kanban";
-  stages.forEach(stage=>{
+  for(const stage of stages){
     const col = document.createElement("div");
     col.className = "kanbanCol";
+
     const hdr = document.createElement("div");
     hdr.className = "kanbanHdr";
-    hdr.textContent = `${stage} • ${byStage[stage]?.length||0}`;
+    hdr.textContent = `${stage} (${(byStage[stage]||[]).length})`;
     col.appendChild(hdr);
 
     const list = document.createElement("div");
     list.className = "kanbanList";
-    (byStage[stage]||[]).forEach(l=>{
-      const card=document.createElement("div");
-      card.className="kanbanCard";
-      const title = document.createElement("div");
-      title.className="kanbanTitle";
-      title.textContent = (l.company||l.contact||"—").trim();
-      const sub = document.createElement("div");
-      sub.className="kanbanSub";
-      sub.textContent = [l.contact, l.country].filter(Boolean).join(" • ");
 
-      const fu = __leadNextFollow.get(l.leadId);
-      const fuText = fu ? `FU: ${fu.label||""}` : "FU: —";
-      const meta = document.createElement("div");
-      meta.className="kanbanMeta";
-      meta.textContent = fuText;
+    const items = byStage[stage]||[];
+    if(!items.length){
+      const empty = document.createElement("div");
+      empty.className = "hint";
+      empty.textContent = "No leads";
+      list.appendChild(empty);
+    } else {
+      for(const l of items){
+        const card = document.createElement("div");
+        card.className = "kanbanCard";
 
-      const actions = document.createElement("div");
-      actions.className="kanbanActions";
-      const editBtn = document.createElement("button");
-      editBtn.className="btn btn--ghost";
-      editBtn.type="button";
-      editBtn.textContent="Edit";
-      editBtn.addEventListener("click", ()=>openEdit(l.leadId, l));
-      const introBtn = document.createElement("button");
-      introBtn.className="btn btn--ghost";
-      introBtn.type="button";
-      introBtn.textContent="Intro";
-      introBtn.setAttribute("data-intro","1");
-      introBtn.setAttribute("data-leadid", l.leadId);
+        const title = document.createElement("div");
+        title.className = "kanbanTitle";
+        title.textContent = (l.company||l.contact||"—").trim();
 
-      // Compact move control (works well on iPhone/iPad)
-      const moveSel = document.createElement("div");
-      moveSel.className="moveMenu";
-      const moveLabel = document.createElement("div");
-      moveLabel.className="hint";
-      moveLabel.textContent="Move stage";
-      const sel = document.createElement("select");
-      sel.className = "moveSelect";
-      sel.setAttribute("data-stage-select", String(l.leadId||""));
-      const curOpt = document.createElement("option");
-      curOpt.value = stage;
-      curOpt.textContent = stage;
-      sel.appendChild(curOpt);
-      stages.forEach(st=>{
-        if(st===stage) return;
-        const o=document.createElement("option");
-        o.value = st;
-        o.textContent = st;
-        sel.appendChild(o);
-      });
-      moveSel.appendChild(moveLabel);
-      moveSel.appendChild(sel);
+        const sub = document.createElement("div");
+        sub.className = "kanbanSub";
+        sub.textContent = [l.contact,l.country,l.markets].filter(Boolean).join(" • ");
 
-      actions.appendChild(editBtn);
-      actions.appendChild(introBtn);
+        const fu = __leadNextFollow.get(l.leadId);
+        const meta = document.createElement("div");
+        meta.className = "kanbanMeta";
+        meta.textContent = fu ? `FU: ${fu.label||""}` : "FU: —";
 
-      card.appendChild(title);
-      card.appendChild(sub);
-      card.appendChild(meta);
-      card.appendChild(actions);
-      card.appendChild(moveSel);
-      list.appendChild(card);
-    });
+        const actions = document.createElement("div");
+        actions.className = "kanbanActions";
+
+        const editBtn = document.createElement("button");
+        editBtn.className = "btn btn--ghost btn--sm";
+        editBtn.type = "button";
+        editBtn.textContent = "Edit";
+        editBtn.addEventListener("click", ()=>openEdit(l.leadId, l));
+
+        const introBtn = document.createElement("button");
+        introBtn.className = "btn btn--ghost btn--sm";
+        introBtn.type = "button";
+        introBtn.textContent = "Intro";
+        introBtn.setAttribute("data-intro","1");
+        introBtn.setAttribute("data-leadid", String(l.leadId||""));
+
+        actions.appendChild(editBtn);
+        actions.appendChild(introBtn);
+
+        const moveMenu = document.createElement("div");
+        moveMenu.className = "moveMenu";
+        const moveLabel = document.createElement("div");
+        moveLabel.className = "hint";
+        moveLabel.textContent = "Move stage";
+        const sel = document.createElement("select");
+        sel.className = "moveSelect";
+        sel.setAttribute("data-stage-select", String(l.leadId||""));
+        for(const st of stages){
+          const o = document.createElement("option");
+          o.value = st;
+          o.textContent = st;
+          if(st===stage) o.selected = true;
+          sel.appendChild(o);
+        }
+        moveMenu.appendChild(moveLabel);
+        moveMenu.appendChild(sel);
+
+        card.appendChild(title);
+        card.appendChild(sub);
+        card.appendChild(meta);
+        card.appendChild(actions);
+        card.appendChild(moveMenu);
+
+        list.appendChild(card);
+      }
+    }
 
     col.appendChild(list);
-    wrap.appendChild(col);
-  });
-  board.appendChild(wrap);
+    board.appendChild(col);
+  }
 }
+
+
