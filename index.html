@@ -436,6 +436,7 @@ Item 3" rows="4"></textarea>
 <div class="card__hdr">
 <div class="card__title">Leads</div>
 <div class="card__sub">Call / Email / Edit saved leads</div>
+<div class="activeFilters" id="leadsActiveFilters" aria-label="Active filters"></div>
 </div>
 <div aria-label="Leads view" class="viewtoggle" role="group">
 <button class="btn btn--ghost isActive" id="btnLeadsViewCards" type="button">Cards</button>
@@ -784,7 +785,9 @@ Item 3" rows="4"></textarea>
 
 </div>
 <div class="follow">
-<div class="follow__hdr">Add a new follow-up (optional • IST)</div>
+<div class="follow__hdr">Existing follow-ups</div>
+<div class="existingFUs" id="editExistingFUs"></div>
+<div class="follow__hdr" style="margin-top:10px">Add a new follow-up (optional • IST)</div>
 <div class="quickfu">
 <button class="btn btn--ghost btn--sm" id="editQuickToday" type="button">Today @10am</button>
 <button class="btn btn--ghost btn--sm" id="editQuick7" type="button">+7 @10am</button>
