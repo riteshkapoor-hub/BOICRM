@@ -958,21 +958,6 @@ async function postPayload(obj){
   }
 }
 
-
-
-// Legacy helper (some modules call postJSON_ directly). 
-// Keeps requests form-encoded to avoid CORS preflight.
-async function postJSON_(url, payload){
-  const target = (url && String(url).trim()) || getScriptUrl_() || getExecUrl();
-  if(!target) throw new Error("Missing /exec URL");
-  const body = new URLSearchParams();
-  body.set("payload", JSON.stringify(payload || {}));
-  const res = await fetch(target, { method:"POST", body });
-  const t = await res.text();
-  try{ return JSON.parse(t); }
-  catch{ return { result:"error", message: t }; }
-}
-
 async function fetchJSON_(url){
   const res = await fetch(url, { method:"GET" });
   const text = await res.text();
@@ -996,6 +981,20 @@ async function getJson(params){
 
   if(json.result !== "success") throw new Error(json.message || "Request failed");
   return json;
+}
+
+async function postJSON_(url, obj){
+  const u = url || (typeof getScriptUrl_==="function" ? getScriptUrl_() : "") || (typeof getExecUrl==="function" ? getExecUrl() : "");
+  if(!u) throw new Error("Missing script URL");
+  const body = new URLSearchParams();
+  body.set("payload", JSON.stringify(obj||{}));
+  const r = await fetch(u, {
+    method: "POST",
+    headers: { "Content-Type":"application/x-www-form-urlencoded;charset=UTF-8" },
+    body: body.toString()
+  });
+  const text = await r.text();
+  try{ return JSON.parse(text); }catch(e){ return { result:"error", raw:text }; }
 }
 
 /* ---------- Duplicate detection (email/phone) ---------- */
@@ -3401,7 +3400,7 @@ async function setLeadFields_(leadId, patch){
   try{
     const payload = Object.assign({ action:"updateLead", leadId }, patch || {});
     const res = await postJSON_(getScriptUrl_(), payload);
-    if(res?.result !== "ok") console.warn("updateLead failed", res);
+    if(res && !["ok","success"].includes(String(res.result||"").toLowerCase())) console.warn("updateLead failed", res);
     // Update local cache
     const i = (__leadsAll||[]).findIndex(x=>String(x.leadId)===String(leadId));
     if(i>=0){
