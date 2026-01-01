@@ -1293,20 +1293,8 @@ async function saveSupplier(closeAfter){
 
     const res = await postPayload(payload);
 
-    // Add new follow-up (creates FollowUps row + optional Calendar)
-    if(newFollowUp){
-      try{
-        await postPayload({
-          action: "addFollowUp",
-          leadId,
-          pendingFollowUp: newFollowUp,
-          enteredBy: (localStorage.getItem(LS_USER)||"Unknown").trim() || "Unknown",
-          createCalendarEvent: false
-        });
-      }catch(e){
-        console.warn("addFollowUp failed", e);
-      }
-    }
+    // Follow-up is already handled via queuedSupplierFU in saveLeadFast.
+    // (Avoid duplicate follow-up creation and keep saveSupplier minimal.)
 
   const folderLine = res.folderUrl ? `Drive folder: <a target="_blank" rel="noopener" href="${esc(res.folderUrl)}">Open folder</a><br>` : "Drive folder: <i>not created yet (fast save)</i><br>";
   const itemsLine = res.itemsSheetUrl ? `Items sheet: <a target="_blank" rel="noopener" href="${esc(res.itemsSheetUrl)}">Open items</a>` : "Items sheet: <i>not created yet (fast save)</i>";
@@ -3337,7 +3325,7 @@ function initEditStageNextStep_(row){
   const type = row?.type || $("editType")?.value || "buyer";
   fillSelect_($("editStage"), stagesForType_(type));
   fillSelect_($("editNextStep"), NEXT_STEPS);
-  const st = normalizeStage_(type, (row?.stage || defaultStageForType_(type)));
+  const st = row?.stage || defaultStageForType_(type);
   if($("editStage")) $("editStage").value = st;
   if($("editNextStep")) $("editNextStep").value = row?.nextStep || "";
 }
@@ -3445,7 +3433,7 @@ async function openWhatsAppIntro_(leadId){
 
   // Auto stage advance rule (Buyer: New/Open -> Attempting; Supplier: New Supplier Request -> Vetting)
   const type = String(lead.type||"buyer").toLowerCase();
-  const curStage = normalizeStage_(type, (lead.stage || defaultStageForType_(type)));
+  const curStage = lead.stage || defaultStageForType_(type);
   let newStage = curStage;
   if(type==="buyer" && curStage===BUYER_STAGES[0]) newStage = BUYER_STAGES[1];
   if(type==="supplier" && curStage===SUPPLIER_STAGES[0]) newStage = SUPPLIER_STAGES[1];
@@ -3524,7 +3512,7 @@ function renderPipeline_(){
   const byStage = {};
   stages.forEach(s=>byStage[s]=[]);
   leads.forEach(l=>{
-    const st = normalizeStage_(type, (l.stage || defaultStageForType_(type)));
+    const st = l.stage || defaultStageForType_(type);
     if(!byStage[st]) byStage[st]=[];
     byStage[st].push(l);
   });
