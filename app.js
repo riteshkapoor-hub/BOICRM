@@ -3337,7 +3337,7 @@ function initEditStageNextStep_(row){
   const type = row?.type || $("editType")?.value || "buyer";
   fillSelect_($("editStage"), stagesForType_(type));
   fillSelect_($("editNextStep"), NEXT_STEPS);
-  const st = row?.stage || defaultStageForType_(type);
+  const st = normalizeStage_(type, (row?.stage || defaultStageForType_(type)));
   if($("editStage")) $("editStage").value = st;
   if($("editNextStep")) $("editNextStep").value = row?.nextStep || "";
 }
@@ -3445,7 +3445,7 @@ async function openWhatsAppIntro_(leadId){
 
   // Auto stage advance rule (Buyer: New/Open -> Attempting; Supplier: New Supplier Request -> Vetting)
   const type = String(lead.type||"buyer").toLowerCase();
-  const curStage = lead.stage || defaultStageForType_(type);
+  const curStage = normalizeStage_(type, (lead.stage || defaultStageForType_(type)));
   let newStage = curStage;
   if(type==="buyer" && curStage===BUYER_STAGES[0]) newStage = BUYER_STAGES[1];
   if(type==="supplier" && curStage===SUPPLIER_STAGES[0]) newStage = SUPPLIER_STAGES[1];
@@ -3524,7 +3524,7 @@ function renderPipeline_(){
   const byStage = {};
   stages.forEach(s=>byStage[s]=[]);
   leads.forEach(l=>{
-    const st = l.stage || defaultStageForType_(type);
+    const st = normalizeStage_(type, (l.stage || defaultStageForType_(type)));
     if(!byStage[st]) byStage[st]=[];
     byStage[st].push(l);
   });
