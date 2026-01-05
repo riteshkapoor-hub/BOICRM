@@ -955,8 +955,19 @@ function createCombo(containerId, options, placeholder){
   function render(filter){
     list.innerHTML = "";
     const f = (filter||"").trim().toLowerCase();
+    const isCountryCombo = /country/i.test(containerId) || /country/i.test(placeholder||"");
+    const alias = isCountryCombo && f ? (resolveCountryAlias_(f) || "") : "";
     let filtered = options;
-    if(f) filtered = options.filter(x=> x.toLowerCase().includes(f));
+    if(f){
+      filtered = options.filter(x=> x.toLowerCase().includes(f));
+      if(alias){
+        // Put exact alias match first (if present in options)
+        const hasAlias = optionsSet.has(String(alias).toLowerCase());
+        if(hasAlias){
+          filtered = [alias].concat(filtered.filter(x=> x !== alias));
+        }
+      }
+    }
 
     filtered.slice(0,200).forEach(opt=>{
       const it = document.createElement("div");
@@ -980,6 +991,28 @@ function createCombo(containerId, options, placeholder){
     open();
     render(input.value);
   });
+
+input.addEventListener("keydown", (e)=>{
+  if(e.key !== "Enter") return;
+  const f = (input.value||"").trim().toLowerCase();
+  const isCountryCombo = /country/i.test(containerId) || /country/i.test(placeholder||"");
+  if(isCountryCombo && f){
+    const alias = resolveCountryAlias_(f);
+    if(alias && optionsSet.has(String(alias).toLowerCase())){
+      e.preventDefault();
+      set(alias);
+      try{ input.dispatchEvent(new Event("change", { bubbles:true })); }catch{}
+      return;
+    }
+  }
+  // If exact match exists, select it
+  if(f && optionsSet.has(f)){
+    e.preventDefault();
+    const exact = options.find(x=>String(x).toLowerCase()===f);
+    if(exact){ set(exact); try{ input.dispatchEvent(new Event("change", { bubbles:true })); }catch{} }
+  }
+});
+
   btn.addEventListener("click", ()=> root.classList.contains("open") ? close() : open());
   clearBtn.addEventListener("click", (e)=>{
     e.preventDefault();
@@ -1094,6 +1127,63 @@ function dialCodeForCountry(country){
   return DIAL_CODES[c] || "";
 }
 
+
+/* ---------- Country alias resolver (UK/USA/UAE etc.) ---------- */
+function resolveCountryAlias_(raw){
+  const s0 = String(raw||"").trim();
+  if(!s0) return "";
+  // normalize: letters+digits only
+  const key = s0.toLowerCase().replace(/[^a-z0-9]/g,"");
+  const map = {
+    // United Kingdom
+    "uk":"United Kingdom",
+    "gb":"United Kingdom",
+    "gbr":"United Kingdom",
+    "greatbritain":"United Kingdom",
+    "britain":"United Kingdom",
+    "unitedkingdom":"United Kingdom",
+    "unitedkingdomofgreatbritainandnorthernireland":"United Kingdom",
+
+    // United States
+    "us":"United States",
+    "usa":"United States",
+    "unitedstates":"United States",
+    "unitedstatesofamerica":"United States",
+    "america":"United States",
+
+    // United Arab Emirates
+    "uae":"United Arab Emirates",
+    "unitedarabemirates":"United Arab Emirates",
+    "emirates":"United Arab Emirates",
+    "uAE":"United Arab Emirates", // just in case
+    "ae":"United Arab Emirates",
+
+    // Saudi Arabia
+    "ksa":"Saudi Arabia",
+    "saudi":"Saudi Arabia",
+    "saudiarabia":"Saudi Arabia",
+
+    // Qatar
+    "qa":"Qatar",
+    "qatar":"Qatar",
+
+    // Oman
+    "oman":"Oman",
+
+    // Kuwait
+    "kuwait":"Kuwait",
+
+    // Bahrain
+    "bahrain":"Bahrain",
+
+    // India
+    "in":"India",
+    "india":"India"
+  };
+  return map[key] || "";
+}
+
+
 function normalizePhone(country, raw){
   const s = String(raw||"").trim();
   if(!s) return "";
@@ -1106,7 +1196,8 @@ function normalizePhone(country, raw){
   const d = digitsOnly(s);
   if(!d) return "";
 
-  const cc = dialCodeForCountry(country);
+  const cNorm = resolveCountryAlias_(country) || country;
+  const cc = dialCodeForCountry(cNorm);
 
   if(cc){
     if(d.startsWith(cc)) return "+" + d;
@@ -1117,7 +1208,8 @@ function normalizePhone(country, raw){
 
 function applyCountryCodeToInput(country, inputEl){
   if(!inputEl) return;
-  const cc = dialCodeForCountry(country);
+  const cNorm = resolveCountryAlias_(country) || country;
+  const cc = dialCodeForCountry(cNorm);
   if(!cc) return;
 
   const v = String(inputEl.value||"").trim();
