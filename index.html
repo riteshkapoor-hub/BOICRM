@@ -610,6 +610,12 @@ Item 3" rows="4"></textarea>
 
       <form class="form" id="tsForm">
         <div class="field">
+          <label>Quick line (paste everything)</label>
+          <input id="tsQuickLine" type="text" placeholder="e.g., ABC Foods, John, +1 408..., United States" autocomplete="off" />
+          <div class="hint">Tip: paste a single line from a badge/card. We will auto-fill the fields below.</div>
+        </div>
+
+        <div class="field">
           <label>Name / Company <span class="req">*</span></label>
           <input id="tsNameCompany" type="text" placeholder="e.g., John / ABC Foods" autocomplete="off" />
         </div>
@@ -650,7 +656,7 @@ Item 3" rows="4"></textarea>
 
         <input id="tsCardFile" type="file" accept="image/*" capture="environment" style="display:none" />
 
-        <div class="btnrow">
+        <div class="btnrow ts__sticky">
           <button class="btn btn--primary" id="btnTsSave" type="button">Save</button>
           <button class="btn btn--ghost" id="btnTsSaveAdd" type="button">Save + Add Another</button>
         </div>
