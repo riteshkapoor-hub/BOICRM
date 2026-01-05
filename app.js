@@ -315,7 +315,7 @@ function parseTradeShowQuickLine_(raw){
   const line = String(raw||"").trim();
   if(!line) return { nameCompany:"", phone:"", email:"", country:"" };
 
-  // Split by common separators, but keep order.
+  // Split by common separators (preferred). If none, fall back to whitespace token parsing.
   const parts = line
     .split(/\s*(?:,|\||\/|\u2013|\u2014|\-|\t)\s*/)
     .map(s=>s.trim())
@@ -328,37 +328,98 @@ function parseTradeShowQuickLine_(raw){
   const countryMap = {
     "usa":"United States",
     "us":"United States",
+    "u.s":"United States",
+    "u.s.a":"United States",
+    "america":"United States",
     "uae":"United Arab Emirates",
+    "u.a.e":"United Arab Emirates",
+    "emirates":"United Arab Emirates",
     "uk":"United Kingdom",
+    "u.k":"United Kingdom",
+    "ksa":"Saudi Arabia",
+    "saudi":"Saudi Arabia",
     "korea":"South Korea",
     "rsa":"South Africa"
   };
 
-  const isEmail = (s)=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+  const isEmail = (s)=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s||"").trim());
+
+  // IMPORTANT: avoid treating an entire sentence as a phone number.
   const isPhone = (s)=>{
-    const d = (s.match(/[0-9]/g)||[]).length;
-    return d >= 7;
+    const raw = String(s||"").trim();
+    if(!raw) return false;
+    // must look like a phone-ish token (mostly digits/+, not many letters)
+    if(/[a-z]/i.test(raw)) return false;
+    const d = (raw.match(/[0-9]/g)||[]).length;
+    return d >= 7 && raw.length <= 22;
   };
 
   // Country matching: exact match against COUNTRIES, or common code mapping.
   const findCountry = (s)=>{
     const key = String(s||"").trim();
     if(!key) return "";
-    const mapped = countryMap[key.toLowerCase()];
+    const mapped = countryMap[key.toLowerCase().replace(/\.+$/,"")];
     if(mapped && COUNTRIES.includes(mapped)) return mapped;
     const hit = COUNTRIES.find(c=>c.toLowerCase() === key.toLowerCase());
     return hit || "";
   };
 
   const remaining = [];
-  for(const p of parts){
-    if(!email && isEmail(p)) { email = p; continue; }
-    if(!phone && isPhone(p)) { phone = p; continue; }
-    if(!country){
-      const c = findCountry(p);
-      if(c){ country = c; continue; }
+
+  // If we didn't actually split (single part) and there are spaces, do token parsing.
+  const tokenParse = (parts.length === 1 && parts[0] === line && /\s/.test(line));
+  if(tokenParse){
+    const toks = line.split(/\s+/).map(t=>t.trim()).filter(Boolean);
+
+    // email: first token that looks like email
+    for(const t of toks){
+      if(!email && isEmail(t)) email = t;
     }
-    remaining.push(p);
+
+    // country: try from the end using 1..4 tokens joined
+    for(let span=1; span<=4 && !country; span++){
+      const seg = toks.slice(-span).join(" ");
+      const c = findCountry(seg);
+      if(c){
+        country = c;
+        // remove those tokens
+        toks.splice(toks.length-span, span);
+      }else{
+        // also allow alias on the last token only
+        if(span === 1){
+          const c2 = findCountry(toks[toks.length-1] || "");
+          if(c2){
+            country = c2;
+            toks.pop();
+          }
+        }
+      }
+    }
+
+    // phone: pick the first phone-ish token (digits only / +digits)
+    for(let i=0; i<toks.length && !phone; i++){
+      const t = toks[i];
+      const raw = String(t||"").trim();
+      const digits = (raw.match(/[0-9]/g)||[]).length;
+      if(digits >= 7 && !/[a-z]/i.test(raw)){
+        phone = raw;
+        toks.splice(i,1);
+        break;
+      }
+    }
+
+    // remaining becomes nameCompany
+    remaining.push(toks.join(" ").trim());
+  } else {
+    for(const p of parts){
+      if(!email && isEmail(p)) { email = p; continue; }
+      if(!phone && isPhone(p)) { phone = p; continue; }
+      if(!country){
+        const c = findCountry(p);
+        if(c){ country = c; continue; }
+      }
+      remaining.push(p);
+    }
   }
 
   const nameCompany = remaining.join(" ").trim();
