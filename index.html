@@ -26,6 +26,7 @@
     <div class="gsearch__results" id="globalSearchResults" style="display:none"></div>
   </div>
 <div class="pill" id="userPill">User: —</div>
+<button class="btn btn--ghost" id="btnTradeShowMode" type="button" title="Toggle trade-show fast entry">Trade Show: Off</button>
 <button class="btn btn--ghost" id="btnShareVcard" type="button" title="Show your vCard QR">My QR</button>
 <button class="btn btn--ghost" id="btnSwitchUser" type="button">Switch User</button>
 <button class="btn btn--ghost" id="btnSettings" type="button">Settings</button>
@@ -583,6 +584,88 @@ Item 3" rows="4"></textarea>
 <div class="callist" id="calList"></div>
 </div>
 </div>
+</div>
+
+<!-- Trade-show fast entry -->
+<button class="fab fab--ts" id="btnTradeShowFab" type="button" aria-label="Trade-show fast entry" title="Trade-show fast entry">⚡</button>
+
+<div aria-hidden="true" class="overlay" id="tsOverlay">
+  <div class="modal modal--ts">
+    <div class="modal__hdr">
+      <div>
+        <div class="modal__title">Trade-show fast entry</div>
+        <div class="modal__sub">30-second capture • everything else editable later</div>
+      </div>
+      <button class="btn btn--ghost" id="btnCloseTs" type="button">Close</button>
+    </div>
+
+    <div class="ts">
+      <div class="ts__bar">
+        <div class="seg seg--sm">
+          <button class="seg__btn isActive" id="tsTypeBuyer" type="button">Buyer</button>
+          <button class="seg__btn" id="tsTypeSupplier" type="button">Supplier</button>
+        </div>
+        <div class="hint">Stage auto-set to <b>New</b>. Source auto-set to <b>Trade Show</b>.</div>
+      </div>
+
+      <form class="form" id="tsForm">
+        <div class="field">
+          <label>Name / Company <span class="req">*</span></label>
+          <input id="tsNameCompany" type="text" placeholder="e.g., John / ABC Foods" autocomplete="off" />
+        </div>
+
+        <div class="row2">
+          <div class="field">
+            <label>Country <span class="req">*</span></label>
+            <select id="tsCountry"></select>
+          </div>
+          <div class="field">
+            <label>Phone</label>
+            <input id="tsPhone" type="tel" placeholder="Phone" autocomplete="tel" />
+          </div>
+        </div>
+
+        <div class="row2">
+          <div class="field">
+            <label>Email</label>
+            <input id="tsEmail" type="email" placeholder="Email" autocomplete="email" />
+          </div>
+          <div class="field">
+            <label>Interest</label>
+            <select id="tsInterest">
+              <option value="">Select…</option>
+              <option value="Chips">Chips</option>
+              <option value="Powders">Powders</option>
+              <option value="Sweeteners">Sweeteners</option>
+              <option value="Private Label">Private Label</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Quick note</label>
+          <input id="tsNote" type="text" placeholder="MOQ? Price? Catalog? Call later…" autocomplete="off" />
+        </div>
+
+        <input id="tsCardFile" type="file" accept="image/*" capture="environment" style="display:none" />
+
+        <div class="btnrow">
+          <button class="btn btn--primary" id="btnTsSave" type="button">Save</button>
+          <button class="btn btn--ghost" id="btnTsSaveAdd" type="button">Save + Add Another</button>
+        </div>
+
+        <div class="ts__after" id="tsAfter" style="display:none">
+          <div class="hint" id="tsSavedMsg"></div>
+          <div class="btnrow">
+            <button class="btn btn--ghost" id="btnTsAddPhoto" type="button">📸 Add Photo</button>
+            <button class="btn btn--ghost" id="btnTsWhatsApp" type="button">💬 WhatsApp Intro</button>
+            <button class="btn btn--primary" id="btnTsAddNext" type="button">➕ Add Next Lead</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
 </section>
 </main>
