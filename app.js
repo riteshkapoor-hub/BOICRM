@@ -222,7 +222,7 @@ function openTradeShow_(){
   updateTradeShowToggleLabel_();
   resetTradeShowAfter_();
   openOverlay("tsOverlay");
-  setTimeout(()=>{ const el=$("tsNameCompany"); if(el) el.focus(); }, 50);
+  setTimeout(()=>{ const el=$("tsQuickLine") || $("tsNameCompany"); if(el) el.focus(); }, 50);
 }
 
 function closeTradeShow_(){
@@ -236,6 +236,7 @@ function resetTradeShowAfter_(){
 }
 
 function clearTradeShowForm_(){
+  const q = $("tsQuickLine"); if(q) q.value = "";
   $("tsNameCompany").value = "";
   $("tsPhone").value = "";
   $("tsEmail").value = "";
@@ -306,6 +307,64 @@ function parseNameCompany_(raw){
   return { contact:s, company:s };
 }
 
+// Parse a single "quick line" that may contain company/contact/phone/email/country.
+// Examples:
+//  - "ABC Foods, John, +1 408..., United States"
+//  - "John - ABC Foods - john@abc.com - UAE"
+function parseTradeShowQuickLine_(raw){
+  const line = String(raw||"").trim();
+  if(!line) return { nameCompany:"", phone:"", email:"", country:"" };
+
+  // Split by common separators, but keep order.
+  const parts = line
+    .split(/\s*(?:,|\||\/|\u2013|\u2014|\-|\t)\s*/)
+    .map(s=>s.trim())
+    .filter(Boolean);
+
+  let email = "";
+  let phone = "";
+  let country = "";
+
+  const countryMap = {
+    "usa":"United States",
+    "us":"United States",
+    "uae":"United Arab Emirates",
+    "uk":"United Kingdom",
+    "korea":"South Korea",
+    "rsa":"South Africa"
+  };
+
+  const isEmail = (s)=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+  const isPhone = (s)=>{
+    const d = (s.match(/[0-9]/g)||[]).length;
+    return d >= 7;
+  };
+
+  // Country matching: exact match against COUNTRIES, or common code mapping.
+  const findCountry = (s)=>{
+    const key = String(s||"").trim();
+    if(!key) return "";
+    const mapped = countryMap[key.toLowerCase()];
+    if(mapped && COUNTRIES.includes(mapped)) return mapped;
+    const hit = COUNTRIES.find(c=>c.toLowerCase() === key.toLowerCase());
+    return hit || "";
+  };
+
+  const remaining = [];
+  for(const p of parts){
+    if(!email && isEmail(p)) { email = p; continue; }
+    if(!phone && isPhone(p)) { phone = p; continue; }
+    if(!country){
+      const c = findCountry(p);
+      if(c){ country = c; continue; }
+    }
+    remaining.push(p);
+  }
+
+  const nameCompany = remaining.join(" ").trim();
+  return { nameCompany, phone, email, country };
+}
+
 function fillCountrySelect_(id){
   const sel = $(id);
   if(!sel) return;
@@ -344,6 +403,15 @@ async function saveTradeShow_(closeAfter){
   TS_SAVE_IN_FLIGHT = true;
   try{
     resetTradeShowAfter_();
+    // If user pasted a one-line entry, auto-fill fields before validating.
+    const q = $("tsQuickLine");
+    if(q && q.value){
+      const parsed = parseTradeShowQuickLine_(q.value);
+      if(parsed.country && $("tsCountry") && !$("tsCountry").value) $("tsCountry").value = parsed.country;
+      if(parsed.phone && $("tsPhone") && !$("tsPhone").value) $("tsPhone").value = parsed.phone;
+      if(parsed.email && $("tsEmail") && !$("tsEmail").value) $("tsEmail").value = parsed.email;
+      if(parsed.nameCompany && $("tsNameCompany") && !$("tsNameCompany").value) $("tsNameCompany").value = parsed.nameCompany;
+    }
     const type = getTradeShowType_();
     const nc = parseNameCompany_($("tsNameCompany").value);
     const country = String($("tsCountry").value||"").trim();
@@ -1564,20 +1632,8 @@ async function saveSupplier(closeAfter){
 
     const res = await postPayload(payload);
 
-    // Add new follow-up (creates FollowUps row + optional Calendar)
-    if(newFollowUp){
-      try{
-        await postPayload({
-          action: "addFollowUp",
-          leadId,
-          pendingFollowUp: newFollowUp,
-          enteredBy: (localStorage.getItem(LS_USER)||"Unknown").trim() || "Unknown",
-          createCalendarEvent: false
-        });
-      }catch(e){
-        console.warn("addFollowUp failed", e);
-      }
-    }
+    // Follow-up for suppliers is handled via payload.pendingFollowUp (queuedSupplierFU).
+    // Do not reference newFollowUp here (it belongs to edit flow only).
 
   const folderLine = res.folderUrl ? `Drive folder: <a target="_blank" rel="noopener" href="${esc(res.folderUrl)}">Open folder</a><br>` : "Drive folder: <i>not created yet (fast save)</i><br>";
   const itemsLine = res.itemsSheetUrl ? `Items sheet: <a target="_blank" rel="noopener" href="${esc(res.itemsSheetUrl)}">Open items</a>` : "Items sheet: <i>not created yet (fast save)</i>";
@@ -3108,6 +3164,24 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   if(tsCountry) tsCountry.addEventListener("change", ()=>{ localStorage.setItem(LS_TRADESHOW_COUNTRY, tsCountry.value||""); });
   const tsInterest = $("tsInterest");
   if(tsInterest) tsInterest.addEventListener("change", ()=>{ localStorage.setItem(LS_TRADESHOW_INTEREST, tsInterest.value||""); });
+  const tsQuick = $("tsQuickLine");
+  if(tsQuick){
+    const applyQuick = ()=>{
+      const parsed = parseTradeShowQuickLine_(tsQuick.value);
+      if(parsed.country && $("tsCountry")) $("tsCountry").value = parsed.country;
+      if(parsed.phone && $("tsPhone")) $("tsPhone").value = parsed.phone;
+      if(parsed.email && $("tsEmail")) $("tsEmail").value = parsed.email;
+      if(parsed.nameCompany && $("tsNameCompany")) $("tsNameCompany").value = parsed.nameCompany;
+    };
+    tsQuick.addEventListener("blur", applyQuick);
+    tsQuick.addEventListener("keydown", (e)=>{
+      if(e.key === "Enter"){
+        e.preventDefault();
+        applyQuick();
+        const nc = $("tsNameCompany"); if(nc) nc.focus();
+      }
+    });
+  }
   const tsSave = $("btnTsSave");
   if(tsSave) tsSave.addEventListener("click", ()=>saveTradeShow_(false));
   const tsSaveAdd = $("btnTsSaveAdd");
