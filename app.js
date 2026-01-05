@@ -71,6 +71,10 @@ const LS_SCRIPT_URL = "boi_crm_script_url";
 const LS_USER = "boi_crm_user";
 const LS_USERID = "boi_crm_userid";
 const LS_USEROBJ = "boi_crm_userobj";
+const LS_TRADESHOW_MODE = "boi_crm_tradeshow_mode";
+const LS_TRADESHOW_TYPE = "boi_crm_tradeshow_type";
+const LS_TRADESHOW_COUNTRY = "boi_crm_tradeshow_country";
+const LS_TRADESHOW_INTEREST = "boi_crm_tradeshow_interest";
 ;
 
 // Safety polyfill (prevents iOS cache mismatch errors)
@@ -184,6 +188,273 @@ function setUserPill() {
 
 function openOverlay(id) { $(id).classList.add("open"); $(id).setAttribute("aria-hidden","false"); }
 function closeOverlay(id) { $(id).classList.remove("open"); $(id).setAttribute("aria-hidden","true"); }
+
+/* ---------- Trade-show fast entry ---------- */
+let TS_LAST_SAVED_LEAD_ID = "";
+let TS_SAVE_IN_FLIGHT = false;
+
+function isTradeShowMode_(){ return localStorage.getItem(LS_TRADESHOW_MODE) === "1"; }
+function setTradeShowMode_(on){ localStorage.setItem(LS_TRADESHOW_MODE, on ? "1" : "0"); }
+
+function setTradeShowType_(type){ localStorage.setItem(LS_TRADESHOW_TYPE, type);
+  const b = $("tsTypeBuyer"); const s = $("tsTypeSupplier");
+  if(b && s){ b.classList.toggle("isActive", type==="buyer"); s.classList.toggle("isActive", type==="supplier"); }
+}
+
+function getTradeShowType_(){
+  const t = String(localStorage.getItem(LS_TRADESHOW_TYPE)||"").trim();
+  return (t === "supplier" || t === "buyer") ? t : "buyer";
+}
+
+function updateTradeShowToggleLabel_(){
+  const btn = $("btnTradeShowMode");
+  if(!btn) return;
+  const on = isTradeShowMode_();
+  btn.textContent = on ? "Trade Show: On" : "Trade Show: Off";
+  btn.classList.toggle("btn--primary", on);
+
+  const fab = $("btnTradeShowFab");
+  if(fab) fab.style.display = on ? "" : "none";
+}
+
+function openTradeShow_(){
+  setTradeShowMode_(true);
+  updateTradeShowToggleLabel_();
+  resetTradeShowAfter_();
+  openOverlay("tsOverlay");
+  setTimeout(()=>{ const el=$("tsNameCompany"); if(el) el.focus(); }, 50);
+}
+
+function closeTradeShow_(){
+  closeOverlay("tsOverlay");
+}
+
+function resetTradeShowAfter_(){
+  const after = $("tsAfter");
+  if(after) after.style.display = "none";
+  TS_LAST_SAVED_LEAD_ID = "";
+}
+
+function clearTradeShowForm_(){
+  $("tsNameCompany").value = "";
+  $("tsPhone").value = "";
+  $("tsEmail").value = "";
+  $("tsNote").value = "";
+  const f = $("tsCardFile"); if(f) f.value = "";
+  // Remember last country/interest
+  const c = $("tsCountry"); if(c && c.value) localStorage.setItem(LS_TRADESHOW_COUNTRY, c.value);
+  const i = $("tsInterest"); if(i && i.value) localStorage.setItem(LS_TRADESHOW_INTEREST, i.value);
+}
+
+function parseNameCompany_(raw){
+  const s = String(raw||"").trim();
+  if(!s) return { contact:"", company:"" };
+
+  // Lightweight heuristics to guess person vs company.
+  // (Trade-show fast entry: people often type "John, ABC Foods" or "ABC Foods - John".)
+  const looksCompany = (txt)=>{
+    const t = String(txt||"").trim();
+    if(!t) return false;
+    if(/\b(inc\.?|llc|ltd\.?|limited|corp\.?|co\.?|company|trading|exports?|import|international|foods?|food|f&b|ingredients?|manufactur|factory|supplier|distributor|wholesale|retail)\b/i.test(t)) return true;
+    // lots of digits/symbols tends to be company-ish (booth codes, etc.)
+    if((t.match(/[0-9]/g)||[]).length >= 2) return true;
+    return false;
+  };
+  const looksPerson = (txt)=>{
+    const t = String(txt||"").trim();
+    if(!t) return false;
+    // Two words is common for names; avoid obvious company terms.
+    if(looksCompany(t)) return false;
+    const parts = t.split(/\s+/).filter(Boolean);
+    if(parts.length === 2 || parts.length === 3) return true;
+    return false;
+  };
+
+  // Preferred separators (in order): "/", ",", " - ", "|"
+  const sepCandidates = [
+    { sep: "/", re: /\s*\/\s*/ },
+    { sep: ",", re: /\s*,\s*/ },
+    { sep: "-", re: /\s*[\u2013\u2014\-]\s*/ }, // –, —, -
+    { sep: "|", re: /\s*\|\s*/ }
+  ];
+
+  for(const cand of sepCandidates){
+    if(!cand.re.test(s)) continue;
+    const parts = s.split(cand.re).map(x=>x.trim()).filter(Boolean);
+    if(parts.length < 2) continue;
+
+    const a = parts[0];
+    const b = parts.slice(1).join(" "+cand.sep+" ").trim();
+
+    // Decide mapping.
+    const aIsPerson = looksPerson(a);
+    const bIsPerson = looksPerson(b);
+    const aIsCompany = looksCompany(a);
+    const bIsCompany = looksCompany(b);
+
+    // Strong cases.
+    if(aIsPerson && !bIsPerson) return { contact:a, company:b };
+    if(bIsPerson && !aIsPerson) return { contact:b, company:a };
+    if(aIsCompany && !bIsCompany) return { contact:b, company:a };
+    if(bIsCompany && !aIsCompany) return { contact:a, company:b };
+
+    // Default: assume "Contact, Company" (common at trade shows).
+    return { contact:a, company:b };
+  }
+
+  // Fallback: treat input as company; set contact same (editable later)
+  return { contact:s, company:s };
+}
+
+function fillCountrySelect_(id){
+  const sel = $(id);
+  if(!sel) return;
+  sel.innerHTML = "";
+  const opt0 = document.createElement("option");
+  opt0.value = "";
+  opt0.textContent = "Select…";
+  sel.appendChild(opt0);
+  COUNTRIES.forEach(c=>{
+    const o = document.createElement("option");
+    o.value = c;
+    o.textContent = c;
+    sel.appendChild(o);
+  });
+  const last = String(localStorage.getItem(LS_TRADESHOW_COUNTRY)||"").trim();
+  if(last) sel.value = last;
+}
+
+function applyTradeShowDefaults_(){
+  setTradeShowType_(getTradeShowType_());
+  const i = $("tsInterest");
+  const lastI = String(localStorage.getItem(LS_TRADESHOW_INTEREST)||"").trim();
+  if(i && lastI) i.value = lastI;
+}
+
+async function collectTradeShowCard_(){
+  const f = $("tsCardFile");
+  if(!f || !f.files || !f.files.length) return null;
+  const file = f.files[0];
+  const dataBase64 = await fileToBase64_(file);
+  return { name: file.name, mimeType: file.type || "image/jpeg", dataBase64 };
+}
+
+async function saveTradeShow_(closeAfter){
+  if(TS_SAVE_IN_FLIGHT) return;
+  TS_SAVE_IN_FLIGHT = true;
+  try{
+    resetTradeShowAfter_();
+    const type = getTradeShowType_();
+    const nc = parseNameCompany_($("tsNameCompany").value);
+    const country = String($("tsCountry").value||"").trim();
+    if(!nc.company || !country){ alert("Please fill Name/Company and Country."); return; }
+
+    const phoneRaw = $("tsPhone").value;
+    const phone = normalizePhone(country, phoneRaw);
+    const email = $("tsEmail").value.trim();
+    if(!email && !digitsOnly(phone)){
+      alert("Please provide at least Phone or Email.");
+      return;
+    }
+
+    const ok = await checkDuplicatesBeforeSave({ email, phone, phone2:"" });
+    if(!ok) return;
+
+    const enteredBy = (localStorage.getItem(LS_USER)||"Unknown").trim() || "Unknown";
+    const interest = String($("tsInterest").value||"").trim();
+    const note = String($("tsNote").value||"").trim();
+    const notesCombined = [
+      "Source: Trade Show",
+      interest ? ("Interest: " + interest) : "",
+      note ? ("Note: " + note) : ""
+    ].filter(Boolean).join(" • ");
+
+    const cardFile = await collectTradeShowCard_();
+
+    const payload = {
+      action: "saveLeadFast",
+      fastMode: true,
+      type,
+      submissionId: makeSubmissionId("ts"),
+      enteredBy,
+      company: nc.company,
+      contact: nc.contact || nc.company,
+      email,
+      phone,
+      phone2: "",
+      country,
+      productsOrNeeds: interest || "",
+      notes: notesCombined,
+      stage: (type === "buyer" ? BUYER_STAGES[0] : SUPPLIER_STAGES[0]),
+      nextStep: "Trade Show",
+      cardFile,
+      catalogFiles: [],
+      createCalendarEvent: false
+    };
+
+    const res = await postPayload(payload);
+    TS_LAST_SAVED_LEAD_ID = String(res.leadId||"").trim();
+
+    // Update UI
+    const msg = $("tsSavedMsg");
+    if(msg){
+      msg.innerHTML = TS_LAST_SAVED_LEAD_ID
+        ? `Saved. Lead ID: <b>${esc(TS_LAST_SAVED_LEAD_ID)}</b>`
+        : "Saved.";
+    }
+    const after = $("tsAfter");
+    if(after) after.style.display = "";
+
+    sessionCount++; updateSummary();
+    addSessionRow(type === "buyer" ? "Buyer" : "Supplier", `${payload.contact} / ${payload.company}`, payload.country);
+
+    if(closeAfter){
+      clearTradeShowForm_();
+      openTradeShow_();
+    }
+  } finally {
+    TS_SAVE_IN_FLIGHT = false;
+  }
+}
+
+async function addTradeShowPhoto_(){
+  if(!TS_LAST_SAVED_LEAD_ID){ alert("Save the lead first."); return; }
+  const f = $("tsCardFile");
+  if(!f) return;
+  f.click();
+}
+
+async function uploadTradeShowPhotoIfAny_(){
+  if(!TS_LAST_SAVED_LEAD_ID) return;
+  const cardFile = await collectTradeShowCard_();
+  if(!cardFile) return;
+  try{
+    await postPayload({
+      action: "updateLead",
+      leadId: TS_LAST_SAVED_LEAD_ID,
+      updatedBy: (localStorage.getItem(LS_USER)||"Unknown").trim() || "Unknown",
+      cardFile
+    });
+    $("tsCardFile").value = "";
+    const msg = $("tsSavedMsg");
+    if(msg) msg.innerHTML = `Photo uploaded • Lead ID: <b>${esc(TS_LAST_SAVED_LEAD_ID)}</b>`;
+  }catch(e){
+    console.warn("Trade-show photo upload failed", e);
+    alert("Photo upload failed. You can add it later from the lead record.");
+  }
+}
+
+async function tradeShowWhatsAppIntro_(){
+  if(!TS_LAST_SAVED_LEAD_ID){ alert("Save the lead first."); return; }
+  try{ await openWhatsAppIntro_(TS_LAST_SAVED_LEAD_ID); }
+  catch(e){ console.warn(e); }
+}
+
+function tradeShowAddNext_(){
+  clearTradeShowForm_();
+  resetTradeShowAfter_();
+  const el = $("tsNameCompany"); if(el) el.focus();
+}
 
 function ensureUser() {
   const u = (localStorage.getItem(LS_USER) || "").trim();
@@ -1293,8 +1564,20 @@ async function saveSupplier(closeAfter){
 
     const res = await postPayload(payload);
 
-    // Follow-up is already handled via queuedSupplierFU in saveLeadFast.
-    // (Avoid duplicate follow-up creation and keep saveSupplier minimal.)
+    // Add new follow-up (creates FollowUps row + optional Calendar)
+    if(newFollowUp){
+      try{
+        await postPayload({
+          action: "addFollowUp",
+          leadId,
+          pendingFollowUp: newFollowUp,
+          enteredBy: (localStorage.getItem(LS_USER)||"Unknown").trim() || "Unknown",
+          createCalendarEvent: false
+        });
+      }catch(e){
+        console.warn("addFollowUp failed", e);
+      }
+    }
 
   const folderLine = res.folderUrl ? `Drive folder: <a target="_blank" rel="noopener" href="${esc(res.folderUrl)}">Open folder</a><br>` : "Drive folder: <i>not created yet (fast save)</i><br>";
   const itemsLine = res.itemsSheetUrl ? `Items sheet: <a target="_blank" rel="noopener" href="${esc(res.itemsSheetUrl)}">Open items</a>` : "Items sheet: <i>not created yet (fast save)</i>";
@@ -2795,9 +3078,48 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   setMode("supplier");
 
   // overlays close on backdrop click
-  ["qrOverlay","settingsOverlay","userOverlay","vcardOverlay","editOverlay"].forEach(id=>{
+  ["qrOverlay","settingsOverlay","userOverlay","vcardOverlay","editOverlay","tsOverlay"].forEach(id=>{
     $(id).addEventListener("click",(e)=>{ if(e.target.id===id) closeOverlay(id); });
   });
+
+  // Trade-show fast entry
+  fillCountrySelect_("tsCountry");
+  applyTradeShowDefaults_();
+  updateTradeShowToggleLabel_();
+  const tsBtn = $("btnTradeShowMode");
+  if(tsBtn){
+    tsBtn.addEventListener("click", ()=>{
+      const on = !isTradeShowMode_();
+      setTradeShowMode_(on);
+      updateTradeShowToggleLabel_();
+      if(on) openTradeShow_();
+      else closeTradeShow_();
+    });
+  }
+  const tsFab = $("btnTradeShowFab");
+  if(tsFab){ tsFab.addEventListener("click", openTradeShow_); }
+  const tsClose = $("btnCloseTs");
+  if(tsClose){ tsClose.addEventListener("click", closeTradeShow_); }
+  const tsBuyer = $("tsTypeBuyer");
+  const tsSupplier = $("tsTypeSupplier");
+  if(tsBuyer) tsBuyer.addEventListener("click", ()=>{ setTradeShowType_("buyer"); localStorage.setItem(LS_TRADESHOW_TYPE,"buyer"); });
+  if(tsSupplier) tsSupplier.addEventListener("click", ()=>{ setTradeShowType_("supplier"); localStorage.setItem(LS_TRADESHOW_TYPE,"supplier"); });
+  const tsCountry = $("tsCountry");
+  if(tsCountry) tsCountry.addEventListener("change", ()=>{ localStorage.setItem(LS_TRADESHOW_COUNTRY, tsCountry.value||""); });
+  const tsInterest = $("tsInterest");
+  if(tsInterest) tsInterest.addEventListener("change", ()=>{ localStorage.setItem(LS_TRADESHOW_INTEREST, tsInterest.value||""); });
+  const tsSave = $("btnTsSave");
+  if(tsSave) tsSave.addEventListener("click", ()=>saveTradeShow_(false));
+  const tsSaveAdd = $("btnTsSaveAdd");
+  if(tsSaveAdd) tsSaveAdd.addEventListener("click", ()=>saveTradeShow_(true));
+  const tsAddPhoto = $("btnTsAddPhoto");
+  if(tsAddPhoto) tsAddPhoto.addEventListener("click", addTradeShowPhoto_);
+  const tsWhatsApp = $("btnTsWhatsApp");
+  if(tsWhatsApp) tsWhatsApp.addEventListener("click", tradeShowWhatsAppIntro_);
+  const tsAddNext = $("btnTsAddNext");
+  if(tsAddNext) tsAddNext.addEventListener("click", tradeShowAddNext_);
+  const tsCard = $("tsCardFile");
+  if(tsCard) tsCard.addEventListener("change", ()=>{ uploadTradeShowPhotoIfAny_(); });
 
   // edit overlay
   $("btnCloseEdit").addEventListener("click", ()=>closeOverlay("editOverlay"));
