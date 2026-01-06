@@ -179,6 +179,191 @@ function requireExecUrl(){
 }
 
 function setStatus(msg) { $("status").textContent = msg || ""; }
+
+/* ---------- Save Queue + Network Indicator (Branch D) ---------- */
+const __SAVE_QUEUE_KEY = "boicrm_save_queue_v1";
+const __SYNC_STATE_KEY = "boicrm_sync_state_v1";
+const __WRITE_ACTIONS = new Set([
+  "saveLeadFast","updateLead","addFollowUp","addActivity","addListItem"
+]);
+const __SAVE_TIMEOUT_MS = 12000;
+
+function __loadQueue_(){
+  try{ return JSON.parse(localStorage.getItem(__SAVE_QUEUE_KEY) || "[]") || []; }catch(_){ return []; }
+}
+function __saveQueue_(q){
+  try{ localStorage.setItem(__SAVE_QUEUE_KEY, JSON.stringify(q||[])); }catch(_){}
+  __updateNetIndicator_();
+}
+function __enqueue_(obj, errMsg){
+  const q = __loadQueue_();
+  q.push({ ts: Date.now(), obj, err: String(errMsg||"") });
+  __saveQueue_(q);
+}
+function __getSyncState_(){
+  try{ return JSON.parse(localStorage.getItem(__SYNC_STATE_KEY) || "{}") || {}; }catch(_){ return {}; }
+}
+function __setSyncState_(patch){
+  const s = Object.assign(__getSyncState_(), patch||{});
+  try{ localStorage.setItem(__SYNC_STATE_KEY, JSON.stringify(s)); }catch(_){}
+  __updateNetIndicator_();
+}
+function __formatAgo_(ms){
+  if(!ms) return "—";
+  const sec = Math.max(0, Math.floor(ms/1000));
+  if(sec < 60) return sec + "s ago";
+  const min = Math.floor(sec/60);
+  if(min < 60) return min + "m ago";
+  const hr = Math.floor(min/60);
+  return hr + "h ago";
+}
+function __ensureNetIndicator_(){
+  if($("netIndicator")) return;
+  const topbar = document.querySelector(".topbar");
+  const statusEl = $("status");
+  if(!topbar || !statusEl) return;
+
+  const wrap = document.createElement("span");
+  wrap.id = "netIndicator";
+  wrap.style.display = "inline-flex";
+  wrap.style.alignItems = "center";
+  wrap.style.gap = "6px";
+  wrap.style.marginLeft = "10px";
+  wrap.style.fontSize = "12px";
+  wrap.style.opacity = "0.95";
+  wrap.style.cursor = "default";
+
+  const dot = document.createElement("span");
+  dot.id = "netDot";
+  dot.style.width = "10px";
+  dot.style.height = "10px";
+  dot.style.borderRadius = "50%";
+  dot.style.display = "inline-block";
+
+  const label = document.createElement("span");
+  label.id = "netLabel";
+  label.textContent = "";
+
+  wrap.appendChild(dot);
+  wrap.appendChild(label);
+
+  // place right after status
+  statusEl.parentNode.insertBefore(wrap, statusEl.nextSibling);
+  __updateNetIndicator_();
+}
+
+function __showToast_(msg){
+  try{
+    let t = $("toast");
+    if(!t){
+      t = document.createElement("div");
+      t.id = "toast";
+      t.style.position = "fixed";
+      t.style.left = "50%";
+      t.style.bottom = "18px";
+      t.style.transform = "translateX(-50%)";
+      t.style.padding = "8px 12px";
+      t.style.borderRadius = "999px";
+      t.style.background = "rgba(0,0,0,0.75)";
+      t.style.color = "#fff";
+      t.style.fontSize = "13px";
+      t.style.zIndex = "9999";
+      t.style.maxWidth = "90vw";
+      t.style.whiteSpace = "nowrap";
+      t.style.pointerEvents = "none";
+      t.style.transition = "opacity .2s ease";
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.opacity = "1";
+    clearTimeout(window.__toastTimer);
+    window.__toastTimer = setTimeout(()=>{ t.style.opacity="0"; }, 1200);
+  }catch(_){}
+}
+
+function __updateNetIndicator_(){
+  const q = __loadQueue_();
+  const pending = q.length;
+  const online = navigator.onLine !== false;
+
+  const st = __getSyncState_();
+  const lastOk = st.lastOkTs || 0;
+  const lastTry = st.lastTryTs || 0;
+  const lastErr = st.lastErr || "";
+  const now = Date.now();
+
+  let color = "#22c55e"; // green
+  let text = "Synced";
+
+  if(!online){
+    color = "#ef4444"; // red
+    text = "Offline";
+  }else if(pending > 0){
+    color = "#f59e0b"; // yellow
+    text = "Pending: " + pending;
+  }else if(lastTry && !lastOk && lastErr){
+    color = "#f59e0b";
+    text = "Unstable";
+  }else if(lastOk && (now - lastOk) > (5*60*1000)){
+    color = "#f59e0b";
+    text = "Stale";
+  }
+
+  const dot = $("netDot");
+  const label = $("netLabel");
+  const wrap = $("netIndicator");
+  if(dot) dot.style.background = color;
+  if(label) label.textContent = " " + text;
+
+  if(wrap){
+    const ago = __formatAgo_(now - lastOk);
+    const lastOkStr = lastOk ? new Date(lastOk).toLocaleTimeString() : "—";
+    const lastTryStr = lastTry ? new Date(lastTry).toLocaleTimeString() : "—";
+    wrap.title =
+      `Status: ${text}
+` +
+      `Pending: ${pending}
+` +
+      `Last sync: ${ago} (${lastOkStr})
+` +
+      `Last try: ${lastTryStr}` +
+      (lastErr ? `
+Last error: ${String(lastErr).slice(0,120)}` : "");
+  }
+}
+
+async function __flushQueue_(opts){
+  const { silent=false } = opts || {};
+  if(navigator.onLine === false) { __updateNetIndicator_(); return; }
+
+  let q = __loadQueue_();
+  if(!q.length) { __updateNetIndicator_(); return; }
+
+  __setSyncState_({ lastTryTs: Date.now(), lastErr: "" });
+
+  while(q.length){
+    const item = q[0];
+    try{
+      await __postPayloadNetwork_(item.obj, { silent:true });
+      q.shift();
+      __saveQueue_(q);
+      __setSyncState_({ lastOkTs: Date.now(), lastErr: "" });
+    }catch(err){
+      __setSyncState_({ lastErr: String(err?.message || err) });
+      break;
+    }
+  }
+
+  if(!__loadQueue_().length){
+    if(!silent) __showToast_("Synced ✓");
+  }
+  __updateNetIndicator_();
+}
+
+/* attempt flush periodically + when online */
+window.addEventListener("online", ()=>__flushQueue_({silent:false}));
+setInterval(()=>__flushQueue_({silent:true}), 15000);
+
 function updateSummary() { $("summary").textContent = `${sessionCount} leads this session`; }
 function setUserPill() {
   const u = getCurrentUser_();
@@ -1416,36 +1601,69 @@ async function collectUploads(catalogInputId, cardInputId){
 }
 
 /* ---------- Backend calls ---------- */
-async function postPayload(obj){
-  setStatus("Saving…");
+async function __postPayloadNetwork_(obj, opts){
+  const { silent=false } = opts || {};
+  if(!silent) setStatus("Saving…");
   const execUrl = requireExecUrl();
 
-  // Simple form-encoded request (no custom headers) to avoid CORS preflight
   const body = new URLSearchParams();
   body.set("payload", JSON.stringify(obj));
 
-  // Preferred path: fetch and read JSON response
+  const controller = (typeof AbortController !== "undefined") ? new AbortController() : null;
+  const timer = controller ? setTimeout(()=>{ try{ controller.abort(); }catch(_){} }, __SAVE_TIMEOUT_MS) : null;
+
   try{
-    const res = await fetch(execUrl, { method: "POST", body });
+    const res = await fetch(execUrl, { method:"POST", body, signal: controller ? controller.signal : undefined });
     const text = await res.text();
     let json;
     try{ json = JSON.parse(text); }
     catch{ throw new Error(`Server did not return JSON: ${text.slice(0,140)}`); }
     if(json?.result !== "success") throw new Error(json?.message || "Save failed");
-    setStatus("Saved ✓");
+    if(!silent) setStatus("Saved ✓");
+    __setSyncState_({ lastOkTs: Date.now(), lastErr: "" });
+    return json;
+  }finally{
+    if(timer) clearTimeout(timer);
+  }
+}
+
+async function postPayload(obj){
+  __ensureNetIndicator_();
+
+  // Only queue "write" actions; reads should still throw.
+  const isWrite = __WRITE_ACTIONS.has(String(obj?.action||""));
+
+  try{
+    const json = await __postPayloadNetwork_(obj, { silent:false });
+    // after any successful write, try flush pending queue in background
+    if(isWrite) __flushQueue_({silent:true});
     return json;
   }catch(err){
-    // Fallback: sendBeacon (fire-and-forget). Useful when POST response is blocked by CORS.
-    try{
-      if(navigator && typeof navigator.sendBeacon === "function"){
-        const blob = new Blob([body.toString()], { type: "application/x-www-form-urlencoded;charset=UTF-8" });
-        const ok = navigator.sendBeacon(execUrl, blob);
-        if(ok){
-          setStatus("Saved ✓");
-          return { result:"success", beacon:true };
+    // Fallback: sendBeacon (fire-and-forget) if supported.
+    if(isWrite){
+      try{
+        if(navigator && typeof navigator.sendBeacon === "function"){
+          const execUrl = requireExecUrl();
+          const body = new URLSearchParams();
+          body.set("payload", JSON.stringify(obj));
+          const blob = new Blob([body.toString()], { type: "application/x-www-form-urlencoded;charset=UTF-8" });
+          const ok = navigator.sendBeacon(execUrl, blob);
+          if(ok){
+            setStatus("Saved ✓");
+            __setSyncState_({ lastTryTs: Date.now(), lastErr: "" });
+            return { result:"success", beacon:true };
+          }
         }
-      }
-    }catch(_){ }
+      }catch(_){}
+
+      // Queue locally on failure (slow internet / timeout / offline)
+      __enqueue_(obj, err?.message || err);
+      __setSyncState_({ lastTryTs: Date.now(), lastErr: String(err?.message || err) });
+      setStatus("Saved (queued) ✓");
+      __updateNetIndicator_();
+      return { result:"success", queued:true };
+    }
+
     throw err;
   }
 }
