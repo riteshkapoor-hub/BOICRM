@@ -217,12 +217,58 @@ function __formatAgo_(ms){
   const hr = Math.floor(min/60);
   return hr + "h ago";
 }
+
+function __ensureNetPillOnly_(){
+  if($("netPill")) return;
+  const pill = document.createElement("button");
+  pill.id = "netPill";
+  pill.type = "button";
+  pill.style.position = "fixed";
+  pill.style.right = "12px";
+  pill.style.top = "64px";
+  pill.style.zIndex = "9999";
+  pill.style.display = "inline-flex";
+  pill.style.alignItems = "center";
+  pill.style.gap = "8px";
+  pill.style.padding = "8px 10px";
+  pill.style.borderRadius = "999px";
+  pill.style.border = "1px solid rgba(255,255,255,0.14)";
+  pill.style.background = "rgba(10,16,28,0.9)";
+  pill.style.color = "#fff";
+  pill.style.fontSize = "12px";
+  pill.style.boxShadow = "0 10px 30px rgba(0,0,0,0.35)";
+  pill.style.backdropFilter = "blur(10px)";
+  pill.style.cursor = "pointer";
+
+  const pDot = document.createElement("span");
+  pDot.id = "netPillDot";
+  pDot.style.width = "10px";
+  pDot.style.height = "10px";
+  pDot.style.borderRadius = "50%";
+  pDot.style.display = "inline-block";
+  pDot.style.background = "#9aa4b2";
+
+  const pText = document.createElement("span");
+  pText.id = "netPillText";
+  pText.textContent = "Sync";
+
+  pill.appendChild(pDot);
+  pill.appendChild(pText);
+  document.body.appendChild(pill);
+}
+
 function __ensureNetIndicator_(){
   if($("netIndicator")) return;
 
   const topbar = document.querySelector(".topbar");
-  const right = topbar ? topbar.querySelector(".topbar__right") : null;
-  if(!topbar || !right) return;
+  const right = topbar ? (topbar.querySelector(".topbar__right") || topbar) : null;
+
+  // Even if topbar isn't found for some reason, we still show the floating pill
+  // so you always have an at-a-glance sync status.
+  if(!topbar || !right){
+    __ensureNetPillOnly_();
+    return;
+  }
 
   // ---- Inline dot inside the topbar (always visible) ----
   const wrap = document.createElement("span");
@@ -254,8 +300,15 @@ function __ensureNetIndicator_(){
   wrap.appendChild(dot);
   wrap.appendChild(label);
 
-  // Prefer placing near the right controls (next to Trade Show / user pill)
-  right.appendChild(wrap);
+  // Prefer placing near the right controls (before Settings if present)
+  const settingsBtn = right.querySelector ? right.querySelector("#btnSettings") : null;
+  if(settingsBtn && settingsBtn.parentNode === right){
+    right.insertBefore(wrap, settingsBtn);
+  } else if(right.firstChild){
+    right.insertBefore(wrap, right.firstChild);
+  } else {
+    right.appendChild(wrap);
+  }
 
   // ---- Floating status pill (mobile-friendly) ----
   const pill = document.createElement("button");
@@ -399,7 +452,7 @@ Last error: ${String(lastErr).slice(0,120)}` : "");
 
     const isMobile = window.innerWidth < 720;
     const needsAttention = (!online) || (pending > 0) || (text === "Unstable") || (text === "Stale");
-    pill.style.display = (isMobile || needsAttention) ? "inline-flex" : "none";
+    pill.style.display = "inline-flex";
 
     const ago = lastOk ? __fmtAgo_(now - lastOk) : "—";
     const lastOkStr = lastOk ? new Date(lastOk).toLocaleTimeString() : "—";
