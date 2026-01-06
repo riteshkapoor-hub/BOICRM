@@ -1243,3 +1243,9 @@ svg{stroke:currentColor;fill:none;stroke-width:2;opacity:1}
 @media (max-width: 700px){
   .modal--ts{ max-width: 94vw; }
 }
+
+
+/* --- Deal Value / Currency fields --- */
+.currencySelect{
+  min-width: 120px;
+}
