@@ -219,19 +219,26 @@ function __formatAgo_(ms){
 }
 function __ensureNetIndicator_(){
   if($("netIndicator")) return;
-  const topbar = document.querySelector(".topbar");
-  const statusEl = $("status");
-  if(!topbar || !statusEl) return;
 
+  const topbar = document.querySelector(".topbar");
+  const right = topbar ? topbar.querySelector(".topbar__right") : null;
+  if(!topbar || !right) return;
+
+  // ---- Inline dot inside the topbar (always visible) ----
   const wrap = document.createElement("span");
   wrap.id = "netIndicator";
   wrap.style.display = "inline-flex";
   wrap.style.alignItems = "center";
   wrap.style.gap = "6px";
   wrap.style.marginLeft = "10px";
+  wrap.style.padding = "2px 6px";
+  wrap.style.borderRadius = "999px";
+  wrap.style.border = "1px solid rgba(255,255,255,0.14)";
+  wrap.style.background = "rgba(0,0,0,0.15)";
   wrap.style.fontSize = "12px";
   wrap.style.opacity = "0.95";
   wrap.style.cursor = "default";
+  wrap.style.userSelect = "none";
 
   const dot = document.createElement("span");
   dot.id = "netDot";
@@ -247,10 +254,55 @@ function __ensureNetIndicator_(){
   wrap.appendChild(dot);
   wrap.appendChild(label);
 
-  // place right after status
-  statusEl.parentNode.insertBefore(wrap, statusEl.nextSibling);
+  // Prefer placing near the right controls (next to Trade Show / user pill)
+  right.appendChild(wrap);
+
+  // ---- Floating status pill (mobile-friendly) ----
+  const pill = document.createElement("button");
+  pill.id = "netPill";
+  pill.type = "button";
+  pill.style.position = "fixed";
+  pill.style.right = "12px";
+  pill.style.top = "64px";
+  pill.style.zIndex = "9999";
+  pill.style.display = "none"; // shown by updater
+  pill.style.alignItems = "center";
+  pill.style.gap = "8px";
+  pill.style.padding = "8px 10px";
+  pill.style.borderRadius = "999px";
+  pill.style.border = "1px solid rgba(255,255,255,0.18)";
+  pill.style.background = "rgba(10,12,16,0.92)";
+  pill.style.color = "inherit";
+  pill.style.boxShadow = "0 8px 28px rgba(0,0,0,0.35)";
+  pill.style.fontSize = "12px";
+  pill.style.lineHeight = "1";
+  pill.style.cursor = "default";
+  pill.style.userSelect = "none";
+
+  const pDot = document.createElement("span");
+  pDot.id = "netPillDot";
+  pDot.style.width = "10px";
+  pDot.style.height = "10px";
+  pDot.style.borderRadius = "50%";
+  pDot.style.display = "inline-block";
+
+  const pText = document.createElement("span");
+  pText.id = "netPillText";
+  pText.textContent = "";
+
+  pill.appendChild(pDot);
+  pill.appendChild(pText);
+
+  // Click forces a sync attempt (safe) and also re-shows tooltip via title
+  pill.addEventListener("click", () => {
+    try { __flushQueue_({force:true, quiet:false}); } catch(e){}
+  });
+
+  document.body.appendChild(pill);
+
   __updateNetIndicator_();
 }
+
 
 function __showToast_(msg){
   try{
@@ -298,25 +350,26 @@ function __updateNetIndicator_(){
   if(!online){
     color = "#ef4444"; // red
     text = "Offline";
-  }else if(pending > 0){
+  } else if(pending > 0){
     color = "#f59e0b"; // yellow
-    text = "Pending: " + pending;
-  }else if(lastTry && !lastOk && lastErr){
+    text = "Pending";
+  } else if(lastTry && !lastOk && (now - lastTry) < 300000){
     color = "#f59e0b";
     text = "Unstable";
-  }else if(lastOk && (now - lastOk) > (5*60*1000)){
+  } else if(lastOk && (now - lastOk) > 5*60*1000){
     color = "#f59e0b";
     text = "Stale";
   }
 
+  // Inline dot in topbar
+  const wrap = $("netIndicator");
   const dot = $("netDot");
   const label = $("netLabel");
-  const wrap = $("netIndicator");
-  if(dot) dot.style.background = color;
-  if(label) label.textContent = " " + text;
+  if(wrap && dot && label){
+    dot.style.background = color;
+    label.textContent = (pending > 0) ? `${text} (${pending})` : text;
 
-  if(wrap){
-    const ago = __formatAgo_(now - lastOk);
+    const ago = lastOk ? __fmtAgo_(now - lastOk) : "—";
     const lastOkStr = lastOk ? new Date(lastOk).toLocaleTimeString() : "—";
     const lastTryStr = lastTry ? new Date(lastTry).toLocaleTimeString() : "—";
     wrap.title =
@@ -330,7 +383,40 @@ function __updateNetIndicator_(){
       (lastErr ? `
 Last error: ${String(lastErr).slice(0,120)}` : "");
   }
+
+  // Floating pill (always visible on mobile; desktop only when attention needed)
+  const pill = $("netPill");
+  const pDot = $("netPillDot");
+  const pText = $("netPillText");
+  if(pill && pDot && pText){
+    pDot.style.background = color;
+    pText.textContent = (pending > 0) ? `${text} • ${pending}` : text;
+
+    // Position just below topbar (works for desktop + mobile)
+    const topbar = document.querySelector(".topbar");
+    const topH = topbar ? Math.round(topbar.getBoundingClientRect().height) : 56;
+    pill.style.top = (topH + 10) + "px";
+
+    const isMobile = window.innerWidth < 720;
+    const needsAttention = (!online) || (pending > 0) || (text === "Unstable") || (text === "Stale");
+    pill.style.display = (isMobile || needsAttention) ? "inline-flex" : "none";
+
+    const ago = lastOk ? __fmtAgo_(now - lastOk) : "—";
+    const lastOkStr = lastOk ? new Date(lastOk).toLocaleTimeString() : "—";
+    const lastTryStr = lastTry ? new Date(lastTry).toLocaleTimeString() : "—";
+    pill.title =
+      `Status: ${text}
+` +
+      `Pending: ${pending}
+` +
+      `Last sync: ${ago} (${lastOkStr})
+` +
+      `Last try: ${lastTryStr}` +
+      (lastErr ? `
+Last error: ${String(lastErr).slice(0,120)}` : "");
+  }
 }
+
 
 async function __flushQueue_(opts){
   const { silent=false } = opts || {};
@@ -362,6 +448,8 @@ async function __flushQueue_(opts){
 
 /* attempt flush periodically + when online */
 window.addEventListener("online", ()=>__flushQueue_({silent:false}));
+window.addEventListener("resize", ()=>__updateNetIndicator_());
+window.addEventListener("orientationchange", ()=>__updateNetIndicator_());
 setInterval(()=>__flushQueue_({silent:true}), 15000);
 
 function updateSummary() { $("summary").textContent = `${sessionCount} leads this session`; }
