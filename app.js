@@ -3125,6 +3125,8 @@ function openEdit(leadId, row){
   $("editPL").value = row?.privateLabel || "";
   $("editExFactory").value = row?.exFactory || "";
   $("editFOB").value = row?.fob || "";
+  if($("editDealValue")) $("editDealValue").value = row?.dealValue || "";
+  if($("editDealCurrency")) $("editDealCurrency").value = row?.dealCurrency || "USD";
   $("editProducts").value = row?.productsOrNeeds || "";
   $("editNotes").value = row?.notes || "";
 
@@ -4436,6 +4438,67 @@ function currentPipelineType_(){
 }
 
 
+
+function parseDealValue_(v){
+  if(v===null || v===undefined) return 0;
+  const s = String(v).replace(/[, ]+/g,"").trim();
+  const n = parseFloat(s);
+  return isFinite(n) ? n : 0;
+}
+function formatCompactNumber_(n){
+  if(!isFinite(n) || n===0) return "0";
+  const abs = Math.abs(n);
+  if(abs >= 1e9) return (n/1e9).toFixed(1).replace(/\.0$/,"")+"B";
+  if(abs >= 1e6) return (n/1e6).toFixed(1).replace(/\.0$/,"")+"M";
+  if(abs >= 1e3) return (n/1e3).toFixed(1).replace(/\.0$/,"")+"K";
+  return String(Math.round(n));
+}
+function stageProbability_(type, stage){
+  // Conservative default probabilities for trading pipelines (can be tuned later).
+  const t = String(type||"buyer").toLowerCase();
+  const s = String(stage||"").toLowerCase();
+  if(t==="buyer"){
+    if(s.includes("new")) return 0.05;
+    if(s.includes("attempt")) return 0.10;
+    if(s.includes("engaged") || s.includes("connected")) return 0.20;
+    if(s.includes("quote") || s.includes("rfq") || s.includes("sample")) return 0.35;
+    if(s.includes("negoti")) return 0.55;
+    if(s.includes("po") || s.includes("order")) return 0.80;
+    if(s.includes("shipped") || s.includes("closed")) return 1.00;
+    if(s.includes("lost") || s.includes("no fit")) return 0.00;
+    return 0.10;
+  }
+  // supplier
+  if(s.includes("new")) return 0.10;
+  if(s.includes("vet") || s.includes("qualif")) return 0.25;
+  if(s.includes("sample") || s.includes("spec")) return 0.35;
+  if(s.includes("quote") || s.includes("price")) return 0.45;
+  if(s.includes("approve") || s.includes("onboard")) return 0.70;
+  if(s.includes("active") || s.includes("reorder")) return 1.00;
+  if(s.includes("hold") || s.includes("lost")) return 0.00;
+  return 0.20;
+}
+function summarizeStageValue_(type, leads){
+  let total = 0;
+  let weighted = 0;
+  let currency = "";
+  let multi = false;
+  for(const l of (leads||[])){
+    const v = parseDealValue_(l.dealValue);
+    if(v<=0) continue;
+    const c = String(l.dealCurrency||"").trim().toUpperCase() || "USD";
+    if(!currency) currency = c;
+    else if(currency !== c) multi = true;
+    total += v;
+    weighted += v * stageProbability_(type, l.stage);
+  }
+  if(total<=0) return { totalStr:"", weightedStr:"" };
+  const cLabel = multi ? "MULTI" : currency;
+  return {
+    totalStr: `${cLabel} ${formatCompactNumber_(total)}`,
+    weightedStr: `${cLabel} ${formatCompactNumber_(weighted)}`
+  };
+}
 function renderPipelineKpis_(stages, byStage){
   const board = document.getElementById("pipelineBoard");
   if(!board) return;
@@ -4447,12 +4510,16 @@ function renderPipelineKpis_(stages, byStage){
     board.parentNode.insertBefore(host, board);
   }
   host.innerHTML = "";
+  const pType = currentPipelineType_();
   stages.forEach(stage=>{
     const count = (byStage[stage]||[]).length;
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "kpiTile";
-    btn.innerHTML = `<div class="kpiNum">${count}</div><div class="kpiLbl">${esc(stage)}</div>`;
+    const sums = summarizeStageValue_(pType, byStage[stage]||[]);
+    const sub = sums.totalStr ? `<div class="kpiSub">${esc(sums.totalStr)}</div>` : ``;
+    btn.innerHTML = `<div class="kpiNum">${count}</div><div class="kpiLbl">${esc(stage)}</div>${sub}`;
+    if(sums.weightedStr){ btn.title = `Weighted: ${sums.weightedStr}`; }
     btn.addEventListener("click", ()=>{
       const col = document.querySelector(`.kanbanCol[data-stage="${CSS.escape(stage)}"]`);
       if(col) col.scrollIntoView({behavior:"smooth", inline:"start", block:"nearest"});
