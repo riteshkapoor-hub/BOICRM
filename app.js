@@ -1,3 +1,4 @@
+const BUILD_ID = "BRANCH_D_VOICE_NET_v6";
 const BUYER_STAGES = [
   "New/Open",
   "Attempting Contact/Working",
@@ -225,8 +226,8 @@ function __ensureNetPillOnly_(){
   pill.type = "button";
   pill.style.position = "fixed";
   pill.style.right = "12px";
-  pill.style.top = "64px";
-  pill.style.zIndex = "9999";
+  pill.style.top = "70px";
+  pill.style.zIndex = "2147483647";
   pill.style.display = "inline-flex";
   pill.style.alignItems = "center";
   pill.style.gap = "8px";
@@ -259,6 +260,8 @@ function __ensureNetPillOnly_(){
 
 function __ensureNetIndicator_(){
   if($("netIndicator")) return;
+  // Always show floating pill (visible even inside overlays)
+  __ensureNetPillOnly_();
 
   const topbar = document.querySelector(".topbar");
   const right = topbar ? (topbar.querySelector(".topbar__right") || topbar) : null;
@@ -277,6 +280,7 @@ function __ensureNetIndicator_(){
   wrap.style.alignItems = "center";
   wrap.style.gap = "6px";
   wrap.style.marginLeft = "10px";
+  wrap.style.zIndex = "2147483647";
   wrap.style.padding = "2px 6px";
   wrap.style.borderRadius = "999px";
   wrap.style.border = "1px solid rgba(255,255,255,0.14)";
@@ -316,8 +320,8 @@ function __ensureNetIndicator_(){
   pill.type = "button";
   pill.style.position = "fixed";
   pill.style.right = "12px";
-  pill.style.top = "64px";
-  pill.style.zIndex = "9999";
+  pill.style.top = "70px";
+  pill.style.zIndex = "2147483647";
   pill.style.display = "none"; // shown by updater
   pill.style.alignItems = "center";
   pill.style.gap = "8px";
@@ -548,6 +552,8 @@ function openTradeShow_(){
   updateTradeShowToggleLabel_();
   resetTradeShowAfter_();
   openOverlay("tsOverlay");
+  // Ensure voice-to-text controls inside the fast-entry overlay
+  try{ __ensureTradeShowVoice_(); }catch(e){}
   setTimeout(()=>{ const el=$("tsQuickLine") || $("tsNameCompany"); if(el) el.focus(); }, 50);
 }
 
@@ -1248,6 +1254,48 @@ function initVoiceNotes(textareaId, btnId, statusId){
     try{ rec.start(); }catch(e){ console.error(e); }
   });
 }
+
+
+function __ensureTradeShowVoice_(){
+  const overlay = $("tsOverlay");
+  const note = $("tsNote");
+  if(!overlay || !note) return;
+
+  // If we already injected, bail
+  if($("tsNoteMic")) return;
+
+  // Find a place to put controls: try note's parent, or above note
+  const row = note.closest(".row") || note.parentElement;
+  const wrap = document.createElement("div");
+  wrap.style.display = "flex";
+  wrap.style.alignItems = "center";
+  wrap.style.gap = "8px";
+  wrap.style.marginTop = "6px";
+
+  const btn = document.createElement("button");
+  btn.className = "btn btn--ghost btn--sm";
+  btn.type = "button";
+  btn.id = "tsNoteMic";
+  btn.title = "Voice to text";
+  btn.textContent = "🎙️ Dictate";
+
+  const st = document.createElement("span");
+  st.className = "hint";
+  st.id = "tsNoteMicStatus";
+  st.textContent = "";
+
+  wrap.appendChild(btn);
+  wrap.appendChild(st);
+
+  // Insert right after the note field
+  note.insertAdjacentElement("afterend", wrap);
+
+  // Activate recognition
+  initVoiceNotes("tsNote","tsNoteMic","tsNoteMicStatus");
+}
+
+
+
 
 // ---------- Drive preview helper ----------
 function drivePreviewUrl(fileId){
@@ -3624,6 +3672,9 @@ function applyAutoDensity_(){
 
 /* ---------- BOOT (FULL) ---------- */
 document.addEventListener("DOMContentLoaded", async ()=>{
+  // Init network indicator ASAP so it is visible even before first save
+  try{ __ensureNetIndicator_(); }catch(e){}
+
   // density (auto by device; no user toggle)
   applyAutoDensity_();
   window.addEventListener('resize', debounce_(applyAutoDensity_, 120));
