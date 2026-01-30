@@ -69,6 +69,8 @@ function isValidExecUrl(u){
 }
 
 const LS_SCRIPT_URL = "boi_crm_script_url";
+
+const LS_API_KEY = "boi_crm_api_key";
 const LS_USER = "boi_crm_user";
 const LS_USERID = "boi_crm_userid";
 const LS_USEROBJ = "boi_crm_userobj";
@@ -159,6 +161,10 @@ const debounce = debounce_;
 
 function getScriptUrl() {
   return (localStorage.getItem(LS_SCRIPT_URL) || DEFAULT_SCRIPT_URL).trim();
+}
+
+function getApiKey(){
+  return String(localStorage.getItem(LS_API_KEY)||"").trim();
 }
 
 function getExecUrl(){
@@ -1864,6 +1870,8 @@ async function fetchJSON_(url){
 }
 
 async function getJson(params){
+  const apiKey = getApiKey();
+  if(apiKey) params = Object.assign({}, params||{}, { apiKey });
   const execUrl = requireExecUrl();
 
   const url = new URL(execUrl);
@@ -1883,6 +1891,8 @@ async function getJson(params){
 }
 
 async function postJSON_(url, obj){
+  const apiKey = getApiKey();
+  if(apiKey) obj = Object.assign({}, obj||{}, { apiKey });
   const u = url || (typeof getScriptUrl_==="function" ? getScriptUrl_() : "") || (typeof getExecUrl==="function" ? getExecUrl() : "");
   if(!u) throw new Error("Missing script URL");
   const body = new URLSearchParams();
@@ -3772,6 +3782,7 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   // settings
   $("btnSettings").addEventListener("click", ()=>{
     $("scriptUrlInput").value = getScriptUrl();
+    const akEl = $("apiKeyInput"); if(akEl) akEl.value = getApiKey();
     openOverlay("settingsOverlay");
   });
   $("btnCloseSettings").addEventListener("click", ()=>closeOverlay("settingsOverlay"));
@@ -3779,6 +3790,12 @@ document.addEventListener("DOMContentLoaded", async ()=>{
     const v = $("scriptUrlInput").value.trim();
     if(!v.endsWith("/exec")) { alert("URL must end with /exec"); return; }
     localStorage.setItem(LS_SCRIPT_URL, v);
+    const akEl = $("apiKeyInput");
+    if(akEl){
+      const ak = String(akEl.value||"").trim();
+      if(ak) localStorage.setItem(LS_API_KEY, ak);
+      else localStorage.removeItem(LS_API_KEY);
+    }
     closeOverlay("settingsOverlay");
     setStatus("Settings saved.");
   });
