@@ -526,7 +526,7 @@ Item 3" rows="4"></textarea>
 <table class="table" id="leadsTable">
 <thead>
 <tr>
-<th>Time (IST)</th><th>Type</th><th>Company</th><th>Contact</th>
+<th>Time (IST)</th><th>Type</th><th>Stage</th><th>Company</th><th>Contact</th>
 <th>Email</th><th>Phone</th><th>Country</th><th>Markets</th><th>Product Type</th>
 <th>Entered By</th><th>Drive / Edit</th>
 </tr>
@@ -579,7 +579,7 @@ Item 3" rows="4"></textarea>
       <table class="table dashTable" id="dashTable">
 <thead>
 <tr>
-<th>Time (IST)</th><th>Type</th><th>Company</th><th>Contact</th>
+<th>Time (IST)</th><th>Type</th><th>Stage</th><th>Company</th><th>Contact</th>
 <th>Country</th><th>Markets</th><th>Product Type</th><th>Entered By</th><th>Drive</th>
 </tr>
 </thead>
@@ -742,10 +742,12 @@ Item 3" rows="4"></textarea>
 <label>Apps Script Web App URL (ends with /exec)</label>
 <input id="scriptUrlInput" type="url"/>
 </div>
+
 <div class="field">
-<label>API Key (optional — enable security in Apps Script)</label>
+<label>API Key (optional — enable by setting Script Property BOI_API_KEY)</label>
 <input id="apiKeyInput" type="password" autocomplete="off"/>
 </div>
+
 <button class="btn btn--primary" id="btnSaveSettings" type="button">Save</button>
 <div class="hint">Tip: after updating Apps Script, deploy a new version and keep this URL updated.</div>
 </div>
