@@ -69,8 +69,6 @@ function isValidExecUrl(u){
 }
 
 const LS_SCRIPT_URL = "boi_crm_script_url";
-
-const LS_API_KEY = "boi_crm_api_key";
 const LS_USER = "boi_crm_user";
 const LS_USERID = "boi_crm_userid";
 const LS_USEROBJ = "boi_crm_userobj";
@@ -163,10 +161,6 @@ function getScriptUrl() {
   return (localStorage.getItem(LS_SCRIPT_URL) || DEFAULT_SCRIPT_URL).trim();
 }
 
-function getApiKey(){
-  return String(localStorage.getItem(LS_API_KEY)||"").trim();
-}
-
 function getExecUrl(){
   // Backward-compat alias (older code used getExecUrl()).
   return getScriptUrl();
@@ -191,7 +185,7 @@ function setStatus(msg) { $("status").textContent = msg || ""; }
 const __SAVE_QUEUE_KEY = "boicrm_save_queue_v1";
 const __SYNC_STATE_KEY = "boicrm_sync_state_v1";
 const __WRITE_ACTIONS = new Set([
-  "saveLeadFast","updateLead","addFollowUp","addActivity","addListItem"
+  "saveLeadFast","updateLead","addFollowUp","addActivityNote","addListItem"
 ]);
 const __SAVE_TIMEOUT_MS = 12000;
 
@@ -1870,8 +1864,6 @@ async function fetchJSON_(url){
 }
 
 async function getJson(params){
-  const apiKey = getApiKey();
-  if(apiKey) params = Object.assign({}, params||{}, { apiKey });
   const execUrl = requireExecUrl();
 
   const url = new URL(execUrl);
@@ -1891,12 +1883,12 @@ async function getJson(params){
 }
 
 async function postJSON_(url, obj){
-  const apiKey = getApiKey();
-  if(apiKey) obj = Object.assign({}, obj||{}, { apiKey });
   const u = url || (typeof getScriptUrl_==="function" ? getScriptUrl_() : "") || (typeof getExecUrl==="function" ? getExecUrl() : "");
   if(!u) throw new Error("Missing script URL");
   const body = new URLSearchParams();
-  body.set("payload", JSON.stringify(obj||{}));
+  const o = Object.assign({}, obj||{});
+  try{ const k = localStorage.getItem("boicrm_apiKey") || ""; if(k && !o.apiKey) o.apiKey = k; }catch(_){ }
+  body.set("payload", JSON.stringify(o));
   const r = await fetch(u, {
     method: "POST",
     headers: { "Content-Type":"application/x-www-form-urlencoded;charset=UTF-8" },
@@ -2402,6 +2394,8 @@ function renderLeadCard(r){
         ${r.contact ? `<div class="leadcard__row"><span class="muted">Contact</span> <span>${esc(r.contact)}</span></div>` : ``}
         ${r.email ? `<div class="leadcard__row"><span class="muted">Email</span> <a href="mailto:${esc(r.email)}">${esc(r.email)}</a></div>` : ``}
         ${r.phone ? `<div class="leadcard__row"><span class="muted">Phone</span> <a href="tel:${esc(safeTel(r.phone))}">${esc(r.phone)}</a></div>` : ``}
+        ${r.stage ? `<div class="leadcard__row"><span class="muted">Stage</span> <span>${esc(r.stage)}</span></div>` : ``}
+        ${r.nextStep ? `<div class="leadcard__row"><span class="muted">Next</span> <span>${esc(r.nextStep)}</span></div>` : ``}
       </div>
 
       <div class="leadcard__actions">
@@ -2601,6 +2595,7 @@ function renderLeadsPage_(){
       tr.innerHTML = `
         <td>${esc(r.timestampIST||"")}</td>
         <td>${esc(r.type||"")}</td>
+        <td>${esc(r.stage||"")}</td>
         <td>${esc(r.company||"")}</td>
         <td>${esc(r.contact||"")}</td>
         <td>
@@ -2826,6 +2821,7 @@ async function refreshDashboard(){
       tr.innerHTML = `
         <td>${esc(r.timestampIST||"")}</td>
         <td>${esc(r.type||"")}</td>
+        <td>${esc(r.stage||"")}</td>
         <td>${esc(r.company||"")}</td>
         <td>${esc(r.contact||"")}</td>
         <td>${esc(r.country||"")}</td>
@@ -3007,6 +3003,7 @@ async function refreshLeads(){
       tr.innerHTML = `
         <td>${esc(r.timestampIST||"")}</td>
         <td>${esc(r.type||"")}</td>
+        <td>${esc(r.stage||"")}</td>
         <td>${esc(r.company||"")}</td>
         <td>${esc(r.contact||"")}</td>
         <td>
@@ -3782,7 +3779,7 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   // settings
   $("btnSettings").addEventListener("click", ()=>{
     $("scriptUrlInput").value = getScriptUrl();
-    const akEl = $("apiKeyInput"); if(akEl) akEl.value = getApiKey();
+    try{ $("apiKeyInput").value = (localStorage.getItem("boicrm_apiKey")||""); }catch(_){ }
     openOverlay("settingsOverlay");
   });
   $("btnCloseSettings").addEventListener("click", ()=>closeOverlay("settingsOverlay"));
@@ -3790,12 +3787,7 @@ document.addEventListener("DOMContentLoaded", async ()=>{
     const v = $("scriptUrlInput").value.trim();
     if(!v.endsWith("/exec")) { alert("URL must end with /exec"); return; }
     localStorage.setItem(LS_SCRIPT_URL, v);
-    const akEl = $("apiKeyInput");
-    if(akEl){
-      const ak = String(akEl.value||"").trim();
-      if(ak) localStorage.setItem(LS_API_KEY, ak);
-      else localStorage.removeItem(LS_API_KEY);
-    }
+    try{ localStorage.setItem("boicrm_apiKey", $("apiKeyInput")?.value?.trim()||""); }catch(_){ }
     closeOverlay("settingsOverlay");
     setStatus("Settings saved.");
   });
